@@ -159,3 +159,40 @@ class Cleaner:
         except Exception as e:
             log.error("Transform error: %s", e)
             return selected_text
+
+    def extract_terms(self, text: str) -> list[str]:
+        """Extract proper nouns, emails, acronyms, and notable terms from text.
+
+        Used for auto-dictionary learning — returns terms worth remembering.
+        """
+        if not self._client or not text or len(text) < 10:
+            return []
+
+        try:
+            response = self._client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=[
+                    {"role": "system", "content": (
+                        "Extract notable terms from the text that a voice dictation tool should learn. "
+                        "Include: proper nouns (names, companies, products), email addresses, "
+                        "acronyms, technical jargon, and unusual words that speech-to-text might misspell.\n"
+                        "Return ONLY a JSON array of strings. Example: [\"Udaya\", \"udaya@email.com\", \"EBITDA\"]\n"
+                        "If no notable terms found, return []\n"
+                        "Do NOT include common English words."
+                    )},
+                    {"role": "user", "content": text},
+                ],
+                temperature=0,
+                max_tokens=256,
+            )
+            content = response.choices[0].message.content.strip()
+            # Parse JSON array
+            import json
+            if content.startswith("["):
+                terms = json.loads(content)
+                if isinstance(terms, list):
+                    return [t for t in terms if isinstance(t, str) and len(t) > 1]
+            return []
+        except Exception as e:
+            log.debug("Term extraction failed: %s", e)
+            return []

@@ -118,6 +118,7 @@ function pollForReady() {
             connectWS();
             // Tell renderer backend is up
             sendToMain('backend-ready', {});
+            showPill(); // Show idle capsule immediately
             return;
           }
         } catch {}
@@ -143,17 +144,8 @@ function connectWS() {
       if (msg.type === 'status') {
         currentStatus = msg.status;
         updateTrayIcon(msg.status);
-
-        if (msg.status === 'recording') {
-          showPill();
-        } else if (msg.status === 'processing') {
-          // Keep pill visible, send processing state to pill
-          sendToPill('status', msg);
-        } else if (msg.status === 'idle') {
-          // Brief delay so user sees "Done" before pill hides
-          sendToPill('status', msg);
-          setTimeout(hidePill, 1200);
-        }
+        // Pill is always visible — just changes state (idle=small capsule, recording=expanded)
+        showPill();
       }
 
       // Forward ALL messages to main window and pill
@@ -224,9 +216,9 @@ function createPillWindow() {
   const { width } = screen.getPrimaryDisplay().workAreaSize;
 
   pillWindow = new BrowserWindow({
-    width: 180,
-    height: 40,
-    x: Math.round((width - 180) / 2),
+    width: 200,
+    height: 44,
+    x: Math.round((width - 200) / 2),
     y: 6,
     frame: false,
     transparent: true,

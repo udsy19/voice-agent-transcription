@@ -546,11 +546,35 @@ def process_audio(audio):
         emit({"type": "result", **entry})
         set_status("idle", f"Done ({dur:.1f}s)")
 
+        # Auto-learn: extract notable terms in background
+        if cleaned and S.dictionary and S.cleaner:
+            threading.Thread(target=_auto_learn_terms, args=(cleaned,), daemon=True).start()
+
     except Exception as e:
         log.error("Error: %s", e, exc_info=True)
         set_status("idle", f"Error: {e}")
     finally:
         S.processing = False
+
+
+def _auto_learn_terms(text: str):
+    """Extract proper nouns, emails, acronyms from text and add to dictionary."""
+    try:
+        terms = S.cleaner.extract_terms(text)
+        if not terms:
+            return
+        existing = set(t.lower() for t in S.dictionary.terms)
+        added = []
+        for term in terms:
+            if term.lower() not in existing and len(term) > 1:
+                S.dictionary.add_term(term)
+                existing.add(term.lower())
+                added.append(term)
+        if added:
+            log.info("Auto-learned: %s", ", ".join(added))
+            emit({"type": "terms_learned", "terms": added})
+    except Exception as e:
+        log.debug("Auto-learn failed: %s", e)
 
 
 def audio_level_monitor():
