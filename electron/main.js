@@ -222,10 +222,10 @@ function killPython() {
 
 function createMainWindow() {
   mainWindow = new BrowserWindow({
-    width: 540,
-    height: 740,
-    minWidth: 440,
-    minHeight: 520,
+    width: 1100,
+    height: 750,
+    minWidth: 700,
+    minHeight: 500,
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 16 },
     backgroundColor: '#FAF6F0',
@@ -253,10 +253,10 @@ function createPillWindow() {
   const { width } = screen.getPrimaryDisplay().workAreaSize;
 
   pillWindow = new BrowserWindow({
-    width: 170,
-    height: 38,
-    x: Math.round((width - 170) / 2),
-    y: 6,
+    width: 180,
+    height: 36,
+    x: Math.round((width - 180) / 2),
+    y: 4,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
