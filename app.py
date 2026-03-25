@@ -734,6 +734,9 @@ async def api_conversation_start():
     global _conversation_agent, _conversation_task
     if _conversation_agent and _conversation_agent.active:
         return {"ok": False, "reason": "already active"}
+    # Stop dictation recorder to free the mic for conversation VAD
+    if S.recorder and S.recorder.is_recording:
+        S.recorder.stop()
     try:
         from conversation.agent import ConversationAgent
         _conversation_agent = ConversationAgent(emit_fn=emit)

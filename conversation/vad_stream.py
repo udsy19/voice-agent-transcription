@@ -56,10 +56,16 @@ class VADStream:
             self._get_speech_prob = self._energy_vad
 
     def _energy_vad(self, audio: np.ndarray) -> float:
-        """Simple energy-based VAD fallback."""
+        """Simple energy-based VAD fallback.
+
+        Tuned for typical laptop mics: speech RMS ~0.02-0.1, silence ~0.001-0.005.
+        """
         rms = float(np.sqrt(np.mean(audio ** 2)))
-        # Map RMS to 0-1 probability
-        return min(1.0, rms / 0.02)
+        # Threshold at 0.008 — above = speech, below = silence
+        if rms < 0.008:
+            return 0.0
+        # Map 0.008-0.05 to 0.5-1.0
+        return min(1.0, 0.5 + (rms - 0.008) / 0.084)
 
     def _audio_callback(self, indata, frames, time_info, status):
         """Called by sounddevice for each audio chunk."""
@@ -83,7 +89,7 @@ class VADStream:
                 if not self._speech_active:
                     self._speech_active = True
                     self._audio_buffer = []
-                    log.debug("SPEECH_START")
+                    log.info("SPEECH_START (prob=%.2f)", prob)
                     if self._loop and self._result_queue:
                         asyncio.run_coroutine_threadsafe(
                             self._emit("speech_start"), self._loop
@@ -101,7 +107,7 @@ class VADStream:
                         audio = np.concatenate(self._audio_buffer)
                         self._audio_buffer = []
                         self._silence_start = 0.0
-                        log.debug("SPEECH_END (%.2fs)", len(audio) / SAMPLE_RATE)
+                        log.info("SPEECH_END (%.2fs audio)", len(audio) / SAMPLE_RATE)
                         if self._loop and self._result_queue:
                             asyncio.run_coroutine_threadsafe(
                                 self._result_queue.put(audio), self._loop
