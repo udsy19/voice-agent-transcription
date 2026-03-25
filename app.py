@@ -270,8 +270,12 @@ async def api_set_groq_key(body: dict):
 
 @api.get("/api/groq-status")
 async def api_groq_status():
-    has_key = bool(S.cleaner and S.cleaner._client)
-    return {"configured": has_key}
+    from config import GROQ_API_KEY
+    has_key = bool(GROQ_API_KEY)
+    has_client = bool(S.cleaner and S.cleaner._client)
+    # Mask key for display (show first 8 chars)
+    masked = GROQ_API_KEY[:8] + "..." if GROQ_API_KEY and len(GROQ_API_KEY) > 8 else ""
+    return {"configured": has_key or has_client, "masked_key": masked}
 
 
 @api.get("/api/permissions")
@@ -311,7 +315,8 @@ async def api_permissions():
         result["input_monitoring"] = "unknown"
 
     # Groq API key
-    result["groq_key"] = bool(S.cleaner and S.cleaner._client)
+    from config import GROQ_API_KEY
+    result["groq_key"] = bool(GROQ_API_KEY) or bool(S.cleaner and S.cleaner._client)
 
     return result
 
@@ -700,7 +705,10 @@ def request_mic_permission():
 def load_engine():
     request_mic_permission()
     S.recorder = Recorder()
-    S.transcriber = Transcriber(backend="parakeet")  # fastest local, falls back automatically
+    # Default to Groq API (most accurate + fast), fall back to faster-whisper if no key
+    from config import GROQ_API_KEY
+    default_backend = "groq" if GROQ_API_KEY else "faster-whisper"
+    S.transcriber = Transcriber(backend=default_backend)
     S.cleaner = Cleaner()
     S.dictionary = PersonalDictionary()
     S.snippets = SnippetStore()

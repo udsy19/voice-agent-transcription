@@ -571,11 +571,11 @@ select.inp{appearance:none;background:var(--bg) url("data:image/svg+xml,%3Csvg x
             <div class="card-row-sub" id="backendStatus">Loading...</div>
           </div>
           <div class="card-row-action">
-            <select class="inp" id="backendSelect" onchange="setBackend(this.value)" style="width:160px;font-size:12px">
-              <option value="parakeet">Parakeet MLX (fastest local)</option>
-              <option value="mlx">MLX Whisper (GPU)</option>
-              <option value="groq">Groq API (cloud)</option>
-              <option value="faster-whisper">Faster-Whisper (CPU)</option>
+            <select class="inp" id="backendSelect" onchange="setBackend(this.value)" style="width:200px;font-size:12px">
+              <option value="groq">Groq API — best accuracy</option>
+              <option value="mlx">MLX Whisper — local GPU</option>
+              <option value="parakeet">Parakeet — fastest local</option>
+              <option value="faster-whisper">Faster-Whisper — CPU fallback</option>
             </select>
           </div>
         </div>
@@ -831,9 +831,11 @@ async function checkBackendStatus() {
   try {
     const r = await fetch(`${API}/api/transcription-backend`);
     const d = await r.json();
-    document.getElementById('backendSelect').value = d.backend;
-    const names = {parakeet:'Parakeet MLX',mlx:'MLX Whisper',groq:'Groq API','faster-whisper':'Faster-Whisper'};
+    const sel = document.getElementById('backendSelect');
+    sel.value = d.backend;
+    const names = {parakeet:'Parakeet MLX (fast, less accurate)',mlx:'MLX Whisper (GPU, good)',groq:'Groq API (cloud, best accuracy)','faster-whisper':'Faster-Whisper (CPU, slow)'};
     document.getElementById('backendStatus').textContent = `Active: ${names[d.backend]||d.backend}`;
+    document.getElementById('backendStatus').style.color = d.backend === 'groq' ? '#38A169' : 'var(--mut)';
   } catch {}
 }
 async function checkGroqStatus() {
@@ -841,8 +843,13 @@ async function checkGroqStatus() {
     const r = await fetch(`${API}/api/groq-status`);
     const d = await r.json();
     const el = document.getElementById('groqStatus');
-    if (d.configured) { el.textContent = 'Configured ✓'; el.style.color = '#38A169'; }
-    else { el.textContent = 'Not configured — enter your key'; el.style.color = '#E53E3E'; }
+    if (d.configured) {
+      el.textContent = d.masked_key ? `Configured ✓ (${d.masked_key})` : 'Configured ✓';
+      el.style.color = '#38A169';
+    } else {
+      el.textContent = 'Not configured — enter your key';
+      el.style.color = '#E53E3E';
+    }
   } catch {}
 }
 async function setDomain(d) { await apiPost('domains/set', { domain: d }); }
