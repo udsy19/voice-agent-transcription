@@ -9,24 +9,22 @@ html,body{background:transparent;overflow:hidden;width:260px;height:70px}
   position:absolute;bottom:6px;left:50%;
   transform:translateX(-50%);
   display:flex;align-items:center;justify-content:center;
-  background:rgba(22,18,14,0.9);
+  background:rgba(22,18,14,0.92);
   border-radius:50px;
-  box-shadow:0 1px 8px rgba(0,0,0,0.25);
-  -webkit-app-region:drag;
-  transition:width .2s cubic-bezier(.2,1,.3,1),height .2s cubic-bezier(.2,1,.3,1),opacity .35s;
+  box-shadow:0 1px 6px rgba(0,0,0,0.2);
+  -webkit-app-region:no-drag;
+  cursor:pointer;
+  transition:width .2s cubic-bezier(.2,1,.3,1),height .2s cubic-bezier(.2,1,.3,1),opacity .3s;
 }
-/* idle: tiny capsule with line */
-.p.i{width:56px;height:20px;opacity:.5}
-.p.i:hover{opacity:.65}
-/* recording: expand */
-.p.r{width:168px;height:28px;opacity:1;padding:0 3px;gap:3px}
+/* idle: just a small dark capsule, no line */
+.p.i{width:48px;height:16px;opacity:.45}
+.p.i:hover{opacity:.6}
+/* recording */
+.p.r{width:168px;height:28px;opacity:1;padding:0 3px;gap:3px;cursor:default}
 /* processing */
-.p.x{width:120px;height:28px;opacity:1;padding:0 3px;gap:3px}
-/* done->idle */
-.p.d{width:56px;height:20px;opacity:0}
-
-/* idle line */
-.il{width:28px;height:1.5px;border-radius:1px;background:rgba(255,255,255,.2)}
+.p.x{width:120px;height:28px;opacity:1;padding:0 3px;gap:3px;cursor:default}
+/* done */
+.p.d{width:48px;height:16px;opacity:0}
 
 /* hover tooltip */
 .tip{
@@ -42,12 +40,10 @@ html,body{background:transparent;overflow:hidden;width:260px;height:70px}
 .p.i:hover .tip{opacity:1;transform:translateX(-50%) scale(1)}
 .p.r .tip,.p.x .tip,.p.d .tip{display:none}
 
-/* btns */
 .b{
   width:20px;height:20px;border-radius:50%;border:none;
   display:flex;align-items:center;justify-content:center;
-  cursor:pointer;-webkit-app-region:no-drag;flex-shrink:0;
-  opacity:0;pointer-events:none;transition:opacity .12s;
+  cursor:pointer;flex-shrink:0;opacity:0;pointer-events:none;transition:opacity .12s;
 }
 .p.r .b,.p.x .b{opacity:1;pointer-events:auto}
 .b:hover{opacity:.65!important}
@@ -56,10 +52,7 @@ html,body{background:transparent;overflow:hidden;width:260px;height:70px}
 .bx svg{width:6px;height:6px}
 .bs{background:rgba(200,50,60,.8)}
 .bs .sq{width:6px;height:6px;background:#fff;border-radius:1px}
-
 .m{flex:1;height:20px;overflow:hidden;display:flex;align-items:center}
-
-/* proc */
 .pv{display:none;align-items:center;justify-content:center;gap:4px;width:100%;height:100%}
 .p.x .pv{display:flex}
 .p.x canvas{display:none}
@@ -69,15 +62,14 @@ html,body{background:transparent;overflow:hidden;width:260px;height:70px}
 </style>
 </head>
 <body>
-<div class="p i" id="p">
-  <div class="tip">Hold <b>⌥R</b> to start dictating</div>
-  <div class="il" id="il"></div>
+<div class="p i" id="p" onclick="handleClick()">
+  <div class="tip">Click or hold <b>⌥R</b> to dictate</div>
   <button class="b bx" id="bx"><svg viewBox="0 0 6 6" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="1.2" stroke-linecap="round"><line x1=".5" y1=".5" x2="5.5" y2="5.5"/><line x1="5.5" y1=".5" x2=".5" y2="5.5"/></svg></button>
   <div class="m" id="m"><canvas id="c"></canvas><div class="pv"><div class="sp"></div><span id="pt"></span></div></div>
   <button class="b bs" id="bs"><div class="sq"></div></button>
 </div>
 <script>
-const p=document.getElementById('p'),c=document.getElementById('c'),m=document.getElementById('m'),il=document.getElementById('il');
+const p=document.getElementById('p'),c=document.getElementById('c'),m=document.getElementById('m');
 const ctx=c.getContext('2d');
 let tgt=0,cur=0,st='i',q='g',pw=0;
 
@@ -89,8 +81,6 @@ function draw(){
   if(W<10){requestAnimationFrame(draw);return}
   ctx.clearRect(0,0,W,H);
   cur+=(tgt-cur)*.25;
-
-  // Tight vertical bars — Wispr Flow style
   const N=30,bw=2,gap=Math.max(1.5,(W-N*bw)/(N-1));
   const cl={g:'rgba(255,255,255,.65)',f:'rgba(255,200,100,.55)',l:'rgba(255,120,120,.45)'};
   ctx.fillStyle=cl[q]||cl.g;
@@ -107,9 +97,15 @@ draw();
 function go(s,d){
   st=s;pw=0;
   p.className='p '+s;
-  il.style.display=s==='i'?'block':'none';
   if(s==='x')document.getElementById('pt').textContent=d&&d.includes('Clean')?'Cleaning':'';
-  if(s==='d')setTimeout(()=>{if(st==='d'){st='i';p.className='p i';il.style.display='block'}},900);
+  if(s==='d')setTimeout(()=>{if(st==='d'){st='i';p.className='p i'}},900);
+}
+
+// Click pill to start/stop recording
+function handleClick(){
+  if(st==='i'){
+    fetch('http://127.0.0.1:8528/api/start-recording',{method:'POST'}).catch(()=>{});
+  }
 }
 
 if(window.electronAPI){
@@ -118,7 +114,7 @@ if(window.electronAPI){
     if(msg.type==='status'){
       if(msg.status==='recording')go('r');
       else if(msg.status==='processing')go('x',msg.detail);
-      else if(msg.status==='idle'){if(st==='x'||st==='r')go('d');else{st='i';p.className='p i';il.style.display='block'}}
+      else if(msg.status==='idle'){if(st==='x'||st==='r')go('d');else{st='i';p.className='p i'}}
     }
   });
 }

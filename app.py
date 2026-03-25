@@ -128,6 +128,16 @@ async def health():
     return {"ok": True, "status": S.status}
 
 
+@api.post("/api/start-recording")
+async def api_start_recording():
+    """Start recording — for pill click."""
+    if S.recorder and not S.recorder.is_recording and not S.processing:
+        S.recorder.start()
+        set_status("recording", "Listening — click stop or release ⌥R")
+        return {"ok": True}
+    return {"ok": False}
+
+
 @api.post("/api/stop-recording")
 async def api_stop_recording():
     """Stop recording and process — for pill stop button."""
