@@ -6,196 +6,161 @@
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{background:transparent;overflow:hidden;width:200px;height:44px}
 
-/* ── Idle capsule (small, always visible) ── */
-.capsule{
-  position:absolute;
-  top:50%;left:50%;
+.pill{
+  position:absolute;top:50%;left:50%;
   transform:translate(-50%,-50%);
-  display:flex;align-items:center;justify-content:center;
-  background:rgba(15,10,5,0.85);
+  display:flex;align-items:center;
+  background:rgba(15,10,5,0.88);
   backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
-  box-shadow:0 2px 10px rgba(0,0,0,0.25),inset 0 0 0 0.5px rgba(255,255,255,0.04);
+  box-shadow:0 2px 12px rgba(0,0,0,0.3),inset 0 0 0 0.5px rgba(255,255,255,0.05);
   -webkit-app-region:drag;
-  transition:all .3s cubic-bezier(.16,1,.3,1);
-  overflow:hidden;
+  transition:width .25s cubic-bezier(.16,1,.3,1),height .25s cubic-bezier(.16,1,.3,1),border-radius .25s,opacity .5s;
 }
 
-/* Idle state: small capsule with subtle line */
-.capsule.idle{
-  width:80px;height:28px;border-radius:14px;
-  opacity:.7;
-}
-.capsule.idle:hover{opacity:.9}
+/* Idle: small capsule */
+.pill.idle{width:72px;height:26px;border-radius:13px;opacity:.6;gap:0;padding:0}
+.pill.idle:hover{opacity:.8}
 
-/* Recording state: expanded with controls */
-.capsule.recording,.capsule.processing,.capsule.done{
-  width:188px;height:36px;border-radius:18px;
-  opacity:1;
-}
-.capsule.done{
-  opacity:0;
-  transition:opacity .6s ease-out,width .3s,height .3s;
-}
+/* Recording: expanded */
+.pill.rec{width:190px;height:34px;border-radius:17px;opacity:1;gap:5px;padding:0 5px}
 
-/* ── Idle content (small line indicator) ── */
-.idle-bars{
-  display:flex;align-items:center;gap:2px;height:100%;
-  padding:0 16px;
-}
-.idle-bars .ib{
-  width:2px;height:4px;background:rgba(255,255,255,0.25);
-  border-radius:1px;transition:height .15s ease;
-}
-.capsule.idle:hover .ib{height:6px}
+/* Processing */
+.pill.proc{width:150px;height:34px;border-radius:17px;opacity:1;gap:5px;padding:0 5px}
 
-/* ── Recording content ── */
-.rec-content{
-  display:none;align-items:center;gap:4px;
-  padding:0 5px;width:100%;height:100%;
-}
-.capsule.recording .rec-content,
-.capsule.processing .rec-content,
-.capsule.done .rec-content{display:flex}
-.capsule.idle .idle-bars{display:flex}
-.capsule.recording .idle-bars,
-.capsule.processing .idle-bars,
-.capsule.done .idle-bars{display:none}
+/* Done: fade out then shrink */
+.pill.done{width:72px;height:26px;border-radius:13px;opacity:0}
 
+/* Idle indicator — thin line */
+.idle-line{
+  width:40px;height:2px;background:rgba(255,255,255,0.2);
+  border-radius:1px;margin:0 auto;
+}
+.pill.idle:hover .idle-line{background:rgba(255,255,255,0.3)}
+
+/* Buttons */
 .btn{
-  width:26px;height:26px;border-radius:50%;border:none;
+  width:24px;height:24px;border-radius:50%;border:none;
   display:flex;align-items:center;justify-content:center;
-  cursor:pointer;transition:all .1s;-webkit-app-region:no-drag;flex-shrink:0;
+  cursor:pointer;-webkit-app-region:no-drag;flex-shrink:0;
+  transition:opacity .1s;opacity:0;pointer-events:none;
 }
-.btn:hover{opacity:.7}
+.pill.rec .btn,.pill.proc .btn{opacity:1;pointer-events:auto}
+.btn:hover{opacity:.7!important}
 .btn:active{transform:scale(.88)}
 .btn-x{background:rgba(255,255,255,0.08)}
 .btn-x svg{width:8px;height:8px}
 .btn-stop{background:#dc3545}
 .btn-stop .sq{width:8px;height:8px;background:#fff;border-radius:1.5px}
 
-.mid{flex:1;height:26px;display:flex;align-items:center;overflow:hidden}
+/* Mid area */
+.mid{flex:1;height:24px;overflow:hidden;display:flex;align-items:center}
 canvas{display:block}
 
-.proc{
-  display:none;align-items:center;justify-content:center;gap:5px;
-  width:100%;height:100%;
-}
-.proc.on{display:flex}
-.spin{
-  width:11px;height:11px;border:1.5px solid rgba(255,255,255,0.1);
+/* Processing spinner */
+.proc-view{display:none;align-items:center;justify-content:center;gap:5px;width:100%;height:100%}
+.pill.proc .proc-view{display:flex}
+.pill.proc canvas{display:none}
+.sp{
+  width:12px;height:12px;border:1.5px solid rgba(255,255,255,0.1);
   border-top-color:rgba(255,255,255,0.5);border-radius:50%;
-  animation:sp .5s linear infinite;flex-shrink:0;
+  animation:spn .5s linear infinite;flex-shrink:0;
 }
-@keyframes sp{to{transform:rotate(360deg)}}
-.proc span{font:500 9px/1 -apple-system,system-ui,sans-serif;color:rgba(255,255,255,0.35)}
+@keyframes spn{to{transform:rotate(360deg)}}
+.proc-view span{font:500 9px/1 -apple-system,system-ui,sans-serif;color:rgba(255,255,255,0.3)}
 </style>
 </head>
 <body>
-<div class="capsule idle" id="cap">
-  <!-- Idle: small bars -->
-  <div class="idle-bars" id="idleBars"></div>
-
-  <!-- Recording/Processing/Done: full controls -->
-  <div class="rec-content">
-    <button class="btn btn-x" id="bx">
-      <svg viewBox="0 0 8 8" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" stroke-linecap="round">
-        <line x1="1" y1="1" x2="7" y2="7"/><line x1="7" y1="1" x2="1" y2="7"/>
-      </svg>
-    </button>
-    <div class="mid">
-      <canvas id="cv"></canvas>
-      <div class="proc" id="proc"><div class="spin"></div><span id="pt">Transcribing</span></div>
-    </div>
-    <button class="btn btn-stop" id="bs"><div class="sq"></div></button>
+<div class="pill idle" id="pill">
+  <div class="idle-line" id="idleLine"></div>
+  <button class="btn btn-x" id="bx">
+    <svg viewBox="0 0 8 8" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" stroke-linecap="round">
+      <line x1="1" y1="1" x2="7" y2="7"/><line x1="7" y1="1" x2="1" y2="7"/>
+    </svg>
+  </button>
+  <div class="mid" id="mid">
+    <canvas id="cv"></canvas>
+    <div class="proc-view"><div class="sp"></div><span id="pt">Transcribing</span></div>
   </div>
+  <button class="btn btn-stop" id="bs"><div class="sq"></div></button>
 </div>
 
 <script>
-const cap=document.getElementById('cap');
+const pill=document.getElementById('pill');
 const cv=document.getElementById('cv');
-const mid=document.querySelector('.mid');
-const proc=document.getElementById('proc');
-const idleBars=document.getElementById('idleBars');
+const mid=document.getElementById('mid');
+const ctx=cv.getContext('2d');
 
-// Create idle indicator bars
-for(let i=0;i<12;i++){
-  const b=document.createElement('div');
-  b.className='ib';
-  idleBars.appendChild(b);
-}
+let tgt=0,cur=0,st='idle',q='good',prevW=0;
 
-let lastW=0;
 function sz(){
-  if(!mid)return;
   const r=mid.getBoundingClientRect();
-  if(r.width<10)return;
   const w=Math.floor(r.width),h=Math.floor(r.height);
-  if(w===lastW)return; // no change
-  lastW=w;
+  if(w<5||w===prevW)return;
+  prevW=w;
   cv.width=w*2;cv.height=h*2;
   cv.style.width=w+'px';cv.style.height=h+'px';
 }
 
-const ctx=cv.getContext('2d');
-let tgt=0,cur=0,st='idle',q='good';
-
 function draw(){
-  if(st==='idle'){requestAnimationFrame(draw);return}
-  sz(); // resize every frame during recording (handles CSS transition)
+  if(st==='idle'||st==='done'){requestAnimationFrame(draw);return}
+  if(st==='proc'){requestAnimationFrame(draw);return}
+  sz();
 
   const W=cv.width,H=cv.height;
   if(W<10){requestAnimationFrame(draw);return}
-  const N=16,GAP=3,BW=Math.max(2,(W-(N-1)*GAP)/N);
   ctx.clearRect(0,0,W,H);
 
-  if(st==='recording'){
-    cur+=(tgt-cur)*.2;
-    const cols={good:'rgba(255,255,255,.65)',fair:'rgba(255,200,100,.6)',low:'rgba(255,120,120,.45)'};
-    ctx.fillStyle=cols[q]||cols.good;
-    for(let i=0;i<N;i++){
-      const ph=Date.now()/140+i*.9,w=Math.sin(ph)*.4+.6;
-      const h=Math.max(3,Math.min(H*.8,cur*500*w+Math.random()*cur*60));
-      ctx.beginPath();ctx.roundRect(i*(BW+GAP),(H-h)/2,BW,h,BW/2);ctx.fill();
-    }
-  } else if(st==='processing'){
-    const sx=((Date.now()/8)%(W+80))-40;
-    for(let i=0;i<N;i++){
-      const wave=Math.sin(Date.now()/350+i*.4)*.5+.5,h=4+wave*8;
-      let a=.08;const d=Math.abs(i*(BW+GAP)-sx);if(d<40)a+=(1-d/40)*.2;
-      ctx.fillStyle=`rgba(255,255,255,${a})`;
-      ctx.beginPath();ctx.roundRect(i*(BW+GAP),(H-h)/2,BW,h,BW/2);ctx.fill();
-    }
-  } else if(st==='done'){
-    for(let i=0;i<N;i++){
-      ctx.fillStyle='rgba(255,255,255,.06)';
-      ctx.beginPath();ctx.roundRect(i*(BW+GAP),(H-3)/2,BW,3,1.5);ctx.fill();
-    }
+  // Wispr Flow style: thin continuous waveform line, not bars
+  cur+=(tgt-cur)*.15;
+  const col={good:'rgba(255,255,255,0.6)',fair:'rgba(255,200,100,0.5)',low:'rgba(255,120,120,0.4)'};
+  ctx.strokeStyle=col[q]||col.good;
+  ctx.lineWidth=2.5;
+  ctx.lineCap='round';
+  ctx.lineJoin='round';
+  ctx.beginPath();
+
+  const points=32;
+  for(let i=0;i<=points;i++){
+    const x=(i/points)*W;
+    const t=Date.now()/120;
+    // Multiple sine waves for organic feel
+    const wave=Math.sin(t+i*.4)*.3+Math.sin(t*1.3+i*.7)*.2+Math.sin(t*.7+i*1.1)*.15;
+    const amp=cur*H*1.8;
+    const y=H/2+wave*Math.min(amp,H*.4);
+    if(i===0)ctx.moveTo(x,y);
+    else ctx.lineTo(x,y);
   }
+  ctx.stroke();
+
+  // Add subtle glow
+  ctx.strokeStyle=col[q]||col.good;
+  ctx.globalAlpha=0.15;
+  ctx.lineWidth=6;
+  ctx.stroke();
+  ctx.globalAlpha=1;
+  ctx.lineWidth=2.5;
+
   requestAnimationFrame(draw);
 }
 draw();
 
 function setState(s,d){
-  st=s;sized=false;
-  cap.className='capsule '+s;
-  cv.style.display=s==='processing'?'none':'block';
-  proc.classList.toggle('on',s==='processing');
-  if(s==='processing')document.getElementById('pt').textContent=d&&d.includes('Clean')?'Cleaning':'Transcribing';
-  if(s==='done'){
-    // After done animation, go back to idle
-    setTimeout(()=>{st='idle';cap.className='capsule idle'},1500);
-  }
+  st=s;prevW=0;
+  pill.className='pill '+s;
+  document.getElementById('idleLine').style.display=s==='idle'?'block':'none';
+  if(s==='proc')document.getElementById('pt').textContent=d&&d.includes('Clean')?'Cleaning':'Transcribing';
+  if(s==='done')setTimeout(()=>{if(st==='done'){st='idle';pill.className='pill idle';document.getElementById('idleLine').style.display='block'}},1200);
 }
 
 if(window.electronAPI){
   window.electronAPI.onWsMessage(m=>{
     if(m.type==='audio_level'){tgt=m.rms;if(m.quality)q=m.quality}
     if(m.type==='status'){
-      if(m.status==='recording')setState('recording');
-      else if(m.status==='processing')setState('processing',m.detail);
+      if(m.status==='recording')setState('rec');
+      else if(m.status==='processing')setState('proc',m.detail);
       else if(m.status==='idle'){
-        if(st==='processing'||st==='recording')setState('done');
-        else{st='idle';cap.className='capsule idle'}
+        if(st==='proc'||st==='rec')setState('done');
+        else{st='idle';pill.className='pill idle';document.getElementById('idleLine').style.display='block'}
       }
     }
   });
