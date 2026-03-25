@@ -475,6 +475,23 @@ select.inp{appearance:none;background:var(--bg) url("data:image/svg+xml,%3Csvg x
       <div class="card">
         <div class="card-row">
           <div>
+            <div class="card-row-label">Transcription Engine</div>
+            <div class="card-row-sub" id="backendStatus">Loading...</div>
+          </div>
+          <div class="card-row-action">
+            <select class="inp" id="backendSelect" onchange="setBackend(this.value)" style="width:160px;font-size:12px">
+              <option value="parakeet">Parakeet MLX (fastest local)</option>
+              <option value="mlx">MLX Whisper (GPU)</option>
+              <option value="groq">Groq API (cloud)</option>
+              <option value="faster-whisper">Faster-Whisper (CPU)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-row">
+          <div>
             <div class="card-row-label">Shortcut</div>
             <div class="card-row-sub">Hold <b>Right Option (⌥)</b> and speak</div>
           </div>
@@ -713,6 +730,20 @@ async function setGroqKey() {
     document.getElementById('groqStatus').style.color = '#38A169';
   }
 }
+async function setBackend(b) {
+  document.getElementById('backendStatus').textContent = 'Switching...';
+  await apiPost('transcription-backend', {backend: b});
+  setTimeout(checkBackendStatus, 1000);
+}
+async function checkBackendStatus() {
+  try {
+    const r = await fetch(`${API}/api/transcription-backend`);
+    const d = await r.json();
+    document.getElementById('backendSelect').value = d.backend;
+    const names = {parakeet:'Parakeet MLX',mlx:'MLX Whisper',groq:'Groq API','faster-whisper':'Faster-Whisper'};
+    document.getElementById('backendStatus').textContent = `Active: ${names[d.backend]||d.backend}`;
+  } catch {}
+}
 async function checkGroqStatus() {
   try {
     const r = await fetch(`${API}/api/groq-status`);
@@ -908,6 +939,7 @@ async function refresh() {
 document.getElementById('scratchArea').value = localStorage.getItem('scratchpad') || '';
 renderStylePage();
 checkGroqStatus();
+checkBackendStatus();
 setupListeners();
 // Poll refresh every 5s as fallback
 setInterval(() => { if (connected) refresh(); }, 5000);

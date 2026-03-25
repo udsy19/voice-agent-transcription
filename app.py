@@ -162,6 +162,7 @@ async def get_state():
         "app_overrides": S.styles._app_overrides if S.styles else {},
         "domains": S.domains.list_domains() if S.domains else {},
         "active_domain": S.domains.get_active() if S.domains else "",
+        "transcription_backend": S.transcriber.backend if S.transcriber else "loading",
         "macros": S.macros.list_all() if S.macros else {},
     }
 
@@ -255,6 +256,21 @@ async def api_set_groq_key(body: dict):
 async def api_groq_status():
     has_key = bool(S.cleaner and S.cleaner._client)
     return {"configured": has_key}
+
+
+@api.get("/api/transcription-backend")
+async def api_get_backend():
+    backend = S.transcriber.backend if S.transcriber else "loading"
+    return {"backend": backend, "available": ["parakeet", "mlx", "groq", "faster-whisper"]}
+
+
+@api.post("/api/transcription-backend")
+async def api_set_backend(body: dict):
+    backend = body.get("backend", "").strip()
+    if backend and S.transcriber:
+        S.transcriber.set_backend(backend)
+        return {"ok": True, "backend": S.transcriber.backend}
+    return {"ok": False}
 
 
 @api.post("/api/styles/set-role")
@@ -626,7 +642,7 @@ def request_mic_permission():
 def load_engine():
     request_mic_permission()
     S.recorder = Recorder()
-    S.transcriber = Transcriber()
+    S.transcriber = Transcriber(backend="parakeet")  # fastest local, falls back automatically
     S.cleaner = Cleaner()
     S.dictionary = PersonalDictionary()
     S.snippets = SnippetStore()

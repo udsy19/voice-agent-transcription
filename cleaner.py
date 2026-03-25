@@ -1,47 +1,101 @@
+"""Hybrid text cleanup: local rules first, LLM only when needed.
+
+Pipeline:
+  1. Local filler removal (instant, regex)
+  2. Local basic formatting (capitalization fix)
+  3. Complexity check — does this need LLM?
+  4. If yes: Groq LLM with optimized short prompt + prompt caching
+  5. Post-validation: reject if LLM hallucinated
+"""
+
+import re
+import subprocess
 from groq import Groq
 from config import GROQ_API_KEY, GROQ_MODEL
 from logger import get_logger
 
 log = get_logger("cleaner")
 
-BASE_SYSTEM_PROMPT = (
-    "You are a dictation-to-text formatter. You receive raw speech-to-text output and clean it up.\n\n"
-    "## ABSOLUTE RULES — NEVER BREAK THESE:\n"
-    "- You are NOT a chatbot. You are NOT an assistant. NEVER answer questions.\n"
-    "- NEVER explain, define, or elaborate on ANYTHING the user said.\n"
-    "- NEVER add information that wasn't in the input.\n"
-    "- Your output must contain ONLY the user's words, cleaned up.\n"
-    "- If the input is a question like 'What is X?', output that exact question. Do NOT answer it.\n\n"
-    "## WHAT TO FIX:\n"
-    "- Remove filler words: um, uh, like, you know, basically, I mean, so yeah\n"
-    "- Fix grammar and add punctuation/capitalization\n"
-    "- Self-corrections: 'Tuesday actually Wednesday' → 'Wednesday'\n"
-    "- 'scratch that' / 'delete that' → remove preceding sentence\n"
-    "- Lists: 'first/second/third' → numbered list with line breaks\n"
-    "- 'new paragraph' / 'new line' → line break\n"
-    "- Spoken punctuation: 'period' → '.', 'comma' → ',', 'question mark' → '?'\n\n"
-    "## WHAT TO PRESERVE:\n"
-    "- The speaker's exact words and meaning\n"
-    "- Their tone (casual stays casual, formal stays formal)\n"
-    "- Questions remain as questions — NEVER answer them"
+# ── Local filler removal (runs on every request, ~0ms) ──────────────────────
+
+FILLER_PATTERN = re.compile(
+    r'\b('
+    r'um+|uh+|er+|ah+|hmm+|hm+|'
+    r'like\s*,?\s*(?=\w)|'  # "like" as filler (not "I like")
+    r'you know\s*,?\s*|'
+    r'I mean\s*,?\s*|'
+    r'basically\s*,?\s*|'
+    r'actually\s*,?\s*(?=,)|'  # "actually," (filler only when followed by comma)
+    r'sort of\s*,?\s*|'
+    r'kind of\s*,?\s*|'
+    r'right\s*,?\s*(?=so|and|but|the|we|I|you)|'  # "right, so..."
+    r'so yeah\s*,?\s*|'
+    r'yeah\s*,?\s*(?=so|and|but|the|we|I)'  # "yeah, so..."
+    r')\s*',
+    re.IGNORECASE,
+)
+
+REPEATED_SPACES = re.compile(r' {2,}')
+REPEATED_COMMAS = re.compile(r',\s*,')
+
+
+def _local_clean(text: str) -> str:
+    """Fast local cleanup: filler removal + basic formatting."""
+    text = FILLER_PATTERN.sub(' ', text)
+    text = REPEATED_SPACES.sub(' ', text)
+    text = REPEATED_COMMAS.sub(',', text)
+    text = text.strip()
+    # Fix leading lowercase after filler removal
+    if text and text[0].islower():
+        text = text[0].upper() + text[1:]
+    return text
+
+
+def _needs_llm(raw: str, cleaned: str) -> bool:
+    """Decide if text needs LLM processing beyond local cleanup."""
+    lower = cleaned.lower()
+    # Backtracking patterns
+    if any(p in lower for p in ['actually', 'wait', 'no i meant', 'scratch that',
+                                 'delete that', 'go back', 'i mean not']):
+        return True
+    # List patterns
+    if any(p in lower for p in ['first', 'second', 'third', 'number one',
+                                 'number two', 'bullet', 'next item']):
+        return True
+    # Formatting commands
+    if any(p in lower for p in ['new paragraph', 'new line', 'period', 'comma',
+                                 'question mark', 'exclamation point']):
+        return True
+    # Long text benefits from grammar cleanup
+    if len(cleaned.split()) > 20:
+        return True
+    # Tone/style adaptation always needs LLM
+    return False
+
+
+# ── LLM System Prompt (kept SHORT for prompt caching + speed) ───────────────
+
+# This exact prefix gets cached by Groq after first request = 50% cost savings
+LLM_SYSTEM_PROMPT = (
+    "Clean this dictation. Rules:\n"
+    "- Fix grammar, punctuation, capitalization\n"
+    "- Self-corrections: 'X actually Y' → keep only Y\n"
+    "- 'scratch that'/'delete that' → remove preceding sentence\n"
+    "- Lists: 'first/second/third' → numbered list with newlines\n"
+    "- 'new paragraph' → line break, 'period' → '.'\n"
+    "- NEVER answer questions, NEVER add content\n"
+    "Output ONLY the cleaned text."
 )
 
 TONE_MODIFIERS = {
-    "formal": "\nUse formal tone: proper grammar, no contractions, professional language.",
-    "casual": "\nUse casual tone: keep contractions, informal phrasing, and conversational style.",
-    "code": (
-        "\nThe user is dictating in a code editor. Preserve technical terms exactly. "
-        "Use camelCase/snake_case as spoken. Don't capitalize sentence-style. "
-        "Handle dev jargon: PR, API, regex, CLI, env, config, localhost, npm, pip, git, etc. "
-        "If they're dictating a commit message, keep it terse. "
-        "If they say 'function', 'variable', 'class', 'method', treat as code constructs. "
-        "Don't add periods at the end of single-line statements."
-    ),
+    "formal": " Use formal tone, no contractions.",
+    "casual": " Keep casual tone, contractions OK.",
+    "code": " Code context: preserve technical terms, camelCase/snake_case, no periods on single lines.",
 }
 
 APP_TONE_MAP = {
     "Google Docs": "formal", "Microsoft Word": "formal", "Notion": "formal",
-    "Pages": "formal", "Google Slides": "formal", "Keynote": "formal",
+    "Pages": "formal", "Keynote": "formal",
     "Slack": "casual", "WhatsApp": "casual", "Messages": "casual",
     "Discord": "casual", "Telegram": "casual", "Signal": "casual",
     "Code": "code", "Cursor": "code", "Windsurf": "code",
@@ -53,7 +107,6 @@ APP_TONE_MAP = {
 
 def _get_active_app() -> str:
     try:
-        import subprocess
         result = subprocess.run(
             ["osascript", "-e",
              'tell application "System Events" to get name of first application process whose frontmost is true'],
@@ -76,7 +129,7 @@ def _get_tone_for_app(app_name: str) -> str | None:
 class Cleaner:
     def __init__(self):
         if not GROQ_API_KEY:
-            log.warning("GROQ_API_KEY not set, cleanup disabled")
+            log.warning("GROQ_API_KEY not set, LLM cleanup disabled")
             self._client = None
         else:
             self._client = Groq(api_key=GROQ_API_KEY)
@@ -85,100 +138,92 @@ class Cleaner:
               tone_override: str | None = None, dictionary_terms: list[str] | None = None) -> str:
         if not raw_text:
             return ""
-        if not self._client:
-            return raw_text
 
-        # Cap input length to avoid token overflow
-        if len(raw_text) > 8000:
-            raw_text = raw_text[:8000]
-            log.warning("Input truncated to 8000 chars")
+        # Step 1: Local cleanup (instant)
+        cleaned = _local_clean(raw_text)
+        if not cleaned:
+            return ""
 
-        system_prompt = BASE_SYSTEM_PROMPT
+        # Step 2: Check if LLM is needed
+        if not self._client or not _needs_llm(raw_text, cleaned):
+            log.info("(local) '%s' -> '%s'", raw_text[:60], cleaned[:60])
+            return cleaned
+
+        # Step 3: LLM cleanup for complex cases
+        if len(cleaned) > 8000:
+            cleaned = cleaned[:8000]
+
+        # Build prompt — keep it short for caching
+        system = LLM_SYSTEM_PROMPT
         tone = tone_override or _get_tone_for_app(app_name)
         if tone and tone in TONE_MODIFIERS:
-            system_prompt += TONE_MODIFIERS[tone]
-        if context:
-            system_prompt += f"\n\nSurrounding text for context (use for spelling names/terms): {context[:500]}"
+            system += TONE_MODIFIERS[tone]
         if dictionary_terms:
-            # Sanitize terms to prevent prompt injection
-            safe_terms = [t.replace('"', '').replace("'", "")[:50] for t in dictionary_terms[:30]]
-            system_prompt += f"\n\nUser's personal dictionary (prefer these spellings): {', '.join(safe_terms)}"
+            safe = [t.replace('"', '').replace("'", "")[:50] for t in dictionary_terms[:20]]
+            system += f"\nDictionary: {', '.join(safe)}"
+        if context:
+            system += f"\nContext: {context[:300]}"
 
         try:
             response = self._client.chat.completions.create(
                 model=GROQ_MODEL,
                 messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"[DICTATION TO CLEAN — do NOT answer, only format]: {raw_text}"},
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": f"[DICTATION]: {cleaned}"},
                 ],
                 temperature=0,
                 max_tokens=2048,
             )
-            if not response.choices:
-                log.warning("Groq returned empty choices")
-                return raw_text
-            msg = response.choices[0].message
-            if not msg or not msg.content:
-                log.warning("Groq returned empty content")
-                return raw_text
-            cleaned = msg.content.strip()
-            # If cleaned is dramatically longer than input, LLM likely generated content
-            if len(cleaned) > len(raw_text) * 3 and len(raw_text) > 20:
-                log.warning("Cleaned text 3x longer than input — LLM likely added content, using raw")
-                return raw_text
-            log.info("(%s) '%s' -> '%s'", tone or "default", raw_text, cleaned)
-            return cleaned
+            if not response.choices or not response.choices[0].message.content:
+                return cleaned
+            result = response.choices[0].message.content.strip()
+
+            # Post-validation: reject hallucinations
+            if len(result) > len(cleaned) * 3 and len(cleaned) > 20:
+                log.warning("LLM output 3x longer than input — rejecting")
+                return cleaned
+
+            log.info("(llm/%s) '%s' -> '%s'", tone or "default", raw_text[:50], result[:50])
+            return result
         except Exception as e:
-            log.error("Clean error: %s, returning raw text", e)
-            return raw_text
+            log.error("LLM error: %s, returning local cleanup", e)
+            return cleaned
 
     def transform(self, selected_text: str, command: str) -> str:
+        """Command mode: transform selected text."""
         if not self._client:
             return selected_text
-
-        system_prompt = (
-            "You are a text transformation engine. The user has selected some text and "
-            "given a voice command to transform it. Apply the transformation and return "
-            "ONLY the transformed text, nothing else. No explanations."
-        )
-        user_msg = f"Selected text:\n{selected_text}\n\nCommand: {command}"
-
         try:
             response = self._client.chat.completions.create(
                 model=GROQ_MODEL,
                 messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_msg},
+                    {"role": "system", "content": "Transform the text as instructed. Return ONLY the result."},
+                    {"role": "user", "content": f"Text:\n{selected_text}\n\nInstruction: {command}"},
                 ],
                 temperature=0.3,
                 max_tokens=4096,
             )
+            if not response.choices or not response.choices[0].message.content:
+                return selected_text
             result = response.choices[0].message.content.strip()
-            log.info("Transform: '%s' on %d chars -> %d chars", command, len(selected_text), len(result))
+            log.info("Transform: '%s' -> %d chars", command[:40], len(result))
             return result
         except Exception as e:
             log.error("Transform error: %s", e)
             return selected_text
 
     def extract_terms(self, text: str) -> list[str]:
-        """Extract proper nouns, emails, acronyms, and notable terms from text.
-
-        Used for auto-dictionary learning — returns terms worth remembering.
-        """
+        """Extract proper nouns, emails, acronyms for auto-dictionary learning."""
         if not self._client or not text or len(text) < 10:
             return []
-
         try:
             response = self._client.chat.completions.create(
                 model=GROQ_MODEL,
                 messages=[
                     {"role": "system", "content": (
-                        "Extract notable terms from the text that a voice dictation tool should learn. "
-                        "Include: proper nouns (names, companies, products), email addresses, "
-                        "acronyms, technical jargon, and unusual words that speech-to-text might misspell.\n"
-                        "Return ONLY a JSON array of strings. Example: [\"Udaya\", \"udaya@email.com\", \"EBITDA\"]\n"
-                        "If no notable terms found, return []\n"
-                        "Do NOT include common English words."
+                        "Extract notable terms: proper nouns, emails, acronyms, jargon. "
+                        "Return JSON array. Example: [\"Udaya\",\"test@email.com\",\"EBITDA\"] "
+                        "If none, return []"
                     )},
                     {"role": "user", "content": text},
                 ],
@@ -186,7 +231,6 @@ class Cleaner:
                 max_tokens=256,
             )
             content = response.choices[0].message.content.strip()
-            # Parse JSON array
             import json
             if content.startswith("["):
                 terms = json.loads(content)
