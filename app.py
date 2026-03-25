@@ -378,7 +378,7 @@ _key_lock = threading.Lock()
 
 
 def on_key_press(key):
-    """Hold Right Option to start recording."""
+    """Hold Right Option to start recording (works in both modes)."""
     if key != TRIGGER_KEY:
         return
     with _key_lock:
@@ -389,7 +389,11 @@ def on_key_press(key):
         S.key_held = True
         if not S.recorder.is_recording:
             S.recorder.start()
-            set_status("recording", "Listening — release to transcribe")
+            if _conversation_agent and _conversation_agent.active:
+                set_status("recording", "Listening — release to get response")
+                emit({"type": "conversation", "status": "transcribing"})
+            else:
+                set_status("recording", "Listening — release to transcribe")
 
 
 def on_key_release(key):
@@ -402,7 +406,34 @@ def on_key_release(key):
         if S.key_held:
             S.key_held = False
             if S.recorder and S.recorder.is_recording:
-                stop_and_process()
+                if _conversation_agent and _conversation_agent.active:
+                    _stop_and_converse()
+                else:
+                    stop_and_process()
+
+
+def _stop_and_converse():
+    """Stop recording and send audio to conversation agent."""
+    audio = S.recorder.stop()
+    if audio is None:
+        set_status("idle", "Too short or silent")
+        emit({"type": "conversation", "status": "listening"})
+        return
+    S.processing = True
+
+    async def _run():
+        try:
+            await _conversation_agent.process_audio(audio)
+        except Exception as e:
+            log.error("Conversation error: %s", e, exc_info=True)
+        finally:
+            S.processing = False
+
+    loop = getattr(emit, '_loop', None)
+    if loop:
+        asyncio.run_coroutine_threadsafe(_run(), loop)
+    else:
+        S.processing = False
 
 
 def toggle_hands_free():
@@ -734,12 +765,10 @@ async def api_conversation_start():
     global _conversation_agent, _conversation_task
     if _conversation_agent and _conversation_agent.active:
         return {"ok": False, "reason": "already active"}
-    # Stop dictation recorder to free the mic for conversation VAD
-    if S.recorder and S.recorder.is_recording:
-        S.recorder.stop()
     try:
         from conversation.agent import ConversationAgent
         _conversation_agent = ConversationAgent(emit_fn=emit)
+        # Start initializes models/MCP but doesn't listen — audio comes via hotkey
         _conversation_task = asyncio.create_task(_conversation_agent.start())
         return {"ok": True}
     except Exception as e:

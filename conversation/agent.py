@@ -1,10 +1,8 @@
-"""Conversation Agent — 3-tier routing + agentic execution loop.
+"""Conversation Agent — walkie-talkie style.
 
-Tier 1: Instant (<100ms) — regex match, direct execution, no LLM
-Tier 2: Fast (~400ms)    — Groq + tools, no vision
-Tier 3: Think (~800ms+)  — Claude + vision + agentic loop
-
-Target: ~550ms average from silence to first audio.
+Hold Right Option → speak → release → Claude responds via TTS.
+Same hotkey as dictation, but routes to Claude instead of paste.
+Uses 3-tier routing + agentic execution loop.
 """
 
 import asyncio
@@ -17,7 +15,6 @@ import anthropic
 from groq import Groq
 from logger import get_logger
 from transcriber import Transcriber
-from conversation.vad_stream import VADStream
 from conversation.context import ScreenContext
 from conversation.tts import StreamingTTS
 from conversation.memory import AgentMemory
@@ -43,7 +40,7 @@ TOOL PRIORITY (fastest to slowest):
 2. read_app_ui → click_element — for any app with standard UI
 3. MCP tools — for Gmail, Google Calendar, filesystem
 4. query_screen_memory — for retrieving past context
-5. click_at_coordinates — absolute last resort, only if nothing else works
+5. click_at_coordinates — absolute last resort
 
 RULES:
 - Respond in natural spoken language. No markdown, no bullet points.
@@ -51,12 +48,11 @@ RULES:
 - Never ask permission for read operations or reversible actions
 - Always ask before: sending emails/messages, deleting, purchases, calendar changes
 - If a step fails, try the next tool in priority order
-- Maximum 5 tool calls before asking user for guidance
-- Always read_app_ui BEFORE clicking in an unfamiliar app"""
+- Maximum 5 tool calls before asking user for guidance"""
 
-MEMORY_EXTRACT_INTERVAL = 10
 MODEL_VISION = "claude-sonnet-4-20250514"
 MODEL_FAST = "llama-3.3-70b-versatile"
+MEMORY_EXTRACT_INTERVAL = 10
 
 
 class ConversationAgent:
@@ -69,7 +65,6 @@ class ConversationAgent:
 
         self.claude = anthropic.Anthropic(api_key=api_key) if api_key else None
         self.groq = Groq(api_key=groq_key) if groq_key else None
-        self.vad = VADStream(stop_secs=0.4)
         self.context = ScreenContext()
         self.tts = StreamingTTS()
         self.memory = AgentMemory()
@@ -83,31 +78,19 @@ class ConversationAgent:
         self._app_context = ""
 
     async def start(self):
+        """Initialize conversation mode. Audio is pushed via process_audio()."""
         self.active = True
         self._emit({"type": "conversation", "status": "warming_up"})
 
-        # Parallel warmup + MCP startup
         await asyncio.gather(
             self._warmup(),
             self._start_mcp(),
             return_exceptions=True,
         )
 
-        # Build app context once
         self._app_context = build_app_context()
-
         self._emit({"type": "conversation", "status": "listening"})
         log.info("Conversation ready. Apps: %s", get_installed_apps())
-
-        try:
-            async for audio_chunk in self.vad.start():
-                if not self.active:
-                    break
-                await self._handle_utterance(audio_chunk)
-        except Exception as e:
-            log.error("Conversation loop error: %s", e, exc_info=True)
-        finally:
-            await self.stop()
 
     async def _warmup(self):
         t0 = time.time()
@@ -124,18 +107,20 @@ class ConversationAgent:
         except Exception as e:
             log.warning("MCP: %s", e)
 
-    # ── Main utterance handler ───────────────────────────────────────────────
-
-    async def _handle_utterance(self, audio: np.ndarray):
+    async def process_audio(self, audio: np.ndarray):
+        """Process a recorded audio chunk (called when user releases hotkey)."""
+        if not self.active:
+            return
         t0 = time.time()
 
+        # Interrupt TTS if still playing
         if self.tts.is_playing:
             self.tts.interrupt()
             await asyncio.sleep(0.05)
 
         self._emit({"type": "conversation", "status": "transcribing"})
 
-        # Parallel: transcribe + screen + memory (memory uses previous turn)
+        # Parallel: transcribe + screen + memory
         prev = ""
         if self.memory.session_history:
             last = self.memory.session_history[-1]
@@ -156,12 +141,11 @@ class ConversationAgent:
         self._emit({"type": "conversation", "status": "thinking", "user_text": transcript})
         self.memory.add_to_session("user", transcript)
 
-        # === ROUTE ===
+        # Route
         tier, instant_action = route(transcript)
         current_app = screen.get("active_app", "")
 
         if tier == "instant" and instant_action:
-            # Tier 1: execute directly, no LLM
             result = await self.desktop.execute_instant(instant_action)
             narration = self._narrate_instant(instant_action, result)
             self._emit({"type": "conversation", "status": "speaking", "agent_text": narration})
@@ -170,11 +154,9 @@ class ConversationAgent:
             log.info("Tier 1 (%.0fms): %s", (time.time() - t0) * 1000, narration)
 
         elif tier == "groq" and self.groq:
-            # Tier 2: fast Groq, no vision
             await self._call_groq(transcript, screen, mem_block, t0)
 
         else:
-            # Tier 3: Claude with vision + agentic loop
             if self.claude:
                 await self._call_claude(transcript, screen, mem_block, t0)
             elif self.groq:
@@ -195,7 +177,6 @@ class ConversationAgent:
             )
 
     def _narrate_instant(self, action: dict, result: str) -> str:
-        """Generate spoken narration for an instant action."""
         act = action.get("action", "")
         if act == "open_app":
             return f"Opening {action.get('app', 'app')}."
@@ -205,13 +186,7 @@ class ConversationAgent:
             return "Undone."
         elif act == "screenshot":
             return "Screenshot taken."
-        elif act == "media":
-            return "Done."
-        elif act == "volume":
-            return f"Volume {action.get('direction', 'adjusted')}."
         return "Done."
-
-    # ── Tier 2: Groq (fast, no vision) ───────────────────────────────────────
 
     async def _call_groq(self, transcript, screen, mem_block, t0):
         system = self._build_system(screen, mem_block, include_apps=True)
@@ -258,8 +233,6 @@ class ConversationAgent:
             log.error("Groq: %s", e)
             await self.tts.speak("Sorry, I couldn't process that.")
 
-    # ── Tier 3: Claude (vision + agentic tool loop) ──────────────────────────
-
     async def _call_claude(self, transcript, screen, mem_block, t0):
         system = self._build_system(screen, mem_block, include_apps=True)
 
@@ -278,7 +251,6 @@ class ConversationAgent:
         mcp_tools = await self.mcp.list_tools()
         all_tools = TOOLS + mcp_tools
 
-        # Agentic loop — up to 5 tool calls
         for iteration in range(5):
             try:
                 response = self.claude.messages.create(
@@ -292,17 +264,15 @@ class ConversationAgent:
                 return
 
             if response.stop_reason == "tool_use":
-                # Speak filler immediately
                 first_tool = next((b for b in response.content if b.type == "tool_use"), None)
                 if first_tool:
                     fillers = TOOL_FILLERS.get(first_tool.name, ["On it..."])
                     asyncio.create_task(self.tts.speak(random.choice(fillers)))
 
-                # Execute all tool calls
                 tool_results = []
                 for block in response.content:
                     if block.type == "tool_use":
-                        log.info("Tool [%d]: %s(%s)", iteration, block.name, str(block.input)[:60])
+                        log.info("Tool [%d]: %s", iteration, block.name)
                         result = await self._execute_tool(block.name, block.input)
                         tool_results.append({
                             "type": "tool_result",
@@ -312,12 +282,10 @@ class ConversationAgent:
 
                 messages.append({"role": "assistant", "content": response.content})
                 messages.append({"role": "user", "content": tool_results})
-                continue  # next iteration
+                continue
 
-            # End turn — speak response
             reply = " ".join(b.text for b in response.content if hasattr(b, "text")).strip()
             if reply:
-                # Wait for filler to finish
                 while self.tts.is_playing:
                     await asyncio.sleep(0.05)
 
@@ -325,15 +293,12 @@ class ConversationAgent:
                 log.info("Agent (%.0fms): %s", (time.time() - t0) * 1000, reply[:80])
                 self._emit({"type": "conversation", "status": "speaking", "agent_text": reply})
 
-                # Speak sentence by sentence
                 sentences = SENTENCE_END.split(reply)
                 for s in sentences:
                     s = s.strip()
                     if s and self.active:
                         await self.tts.speak(s + ("." if s[-1] not in ".!?" else ""))
             break
-
-    # ── Tool execution ───────────────────────────────────────────────────────
 
     async def _execute_tool(self, name: str, args: dict) -> str:
         try:
@@ -362,8 +327,6 @@ class ConversationAgent:
         except Exception as e:
             return f"Error: {e}"
 
-    # ── Helpers ──────────────────────────────────────────────────────────────
-
     def _build_system(self, screen, mem_block, include_apps=False) -> str:
         parts = [SYSTEM_PROMPT]
         if mem_block:
@@ -379,7 +342,6 @@ class ConversationAgent:
     async def stop(self):
         self.active = False
         self.tts.interrupt()
-        await self.vad.stop()
         await self.mcp.stop_servers()
         self._emit({"type": "conversation", "status": "stopped"})
         log.info("Conversation stopped")
