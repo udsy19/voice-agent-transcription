@@ -93,7 +93,7 @@ def emit(msg: dict):
 
 
 def add_history(entry):
-    add_history(entry)
+    S.history.append(entry)
     if len(S.history) > 100:
         S.history = S.history[-100:]
 

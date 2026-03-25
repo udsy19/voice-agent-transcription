@@ -124,20 +124,24 @@ for(let i=0;i<12;i++){
   idleBars.appendChild(b);
 }
 
+let lastW=0;
 function sz(){
   if(!mid)return;
   const r=mid.getBoundingClientRect();
   if(r.width<10)return;
-  cv.width=Math.floor(r.width)*2;cv.height=Math.floor(r.height)*2;
-  cv.style.width=Math.floor(r.width)+'px';cv.style.height=Math.floor(r.height)+'px';
+  const w=Math.floor(r.width),h=Math.floor(r.height);
+  if(w===lastW)return; // no change
+  lastW=w;
+  cv.width=w*2;cv.height=h*2;
+  cv.style.width=w+'px';cv.style.height=h+'px';
 }
 
 const ctx=cv.getContext('2d');
-let tgt=0,cur=0,st='idle',q='good',sized=false;
+let tgt=0,cur=0,st='idle',q='good';
 
 function draw(){
-  if(!sized&&st!=='idle'){sz();sized=true}
   if(st==='idle'){requestAnimationFrame(draw);return}
+  sz(); // resize every frame during recording (handles CSS transition)
 
   const W=cv.width,H=cv.height;
   if(W<10){requestAnimationFrame(draw);return}

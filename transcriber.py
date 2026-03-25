@@ -50,11 +50,12 @@ class Transcriber:
         if backend == "parakeet":
             try:
                 import parakeet_mlx
-                self._model = parakeet_mlx
+                self._model = parakeet_mlx.from_pretrained('mlx-community/parakeet-tdt-0.6b-v2')
+                self._backend_name = "parakeet"
                 log.info("Loaded Parakeet MLX (%.1fs)", time.time() - t0)
                 return
-            except ImportError:
-                log.warning("parakeet-mlx not installed, falling back to mlx")
+            except Exception as e:
+                log.warning("Parakeet failed to load: %s, falling back to mlx", e)
                 backend = "mlx"
 
         if backend == "mlx":
@@ -144,11 +145,9 @@ class Transcriber:
 
     def _transcribe_parakeet(self, audio: np.ndarray) -> str:
         try:
-            result = self._model.transcribe(audio)
-            if isinstance(result, str):
-                return result.strip()
-            if isinstance(result, dict):
-                return result.get("text", "").strip()
+            wav_path = _audio_to_wav(audio)
+            result = self._model.transcribe(wav_path)
+            # AlignedResult has .text property
             if hasattr(result, 'text'):
                 return result.text.strip()
             return str(result).strip()
