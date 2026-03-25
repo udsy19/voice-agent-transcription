@@ -4,168 +4,120 @@
 <meta charset="UTF-8">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{background:transparent;overflow:hidden;width:200px;height:44px}
+html,body{background:transparent;overflow:hidden;width:170px;height:38px}
 
-.pill{
+.p{
   position:absolute;top:50%;left:50%;
   transform:translate(-50%,-50%);
-  display:flex;align-items:center;
-  background:rgba(15,10,5,0.88);
-  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
-  box-shadow:0 2px 12px rgba(0,0,0,0.3),inset 0 0 0 0.5px rgba(255,255,255,0.05);
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(18,12,8,0.92);
+  border-radius:50px;
+  box-shadow:0 2px 10px rgba(0,0,0,0.3);
   -webkit-app-region:drag;
-  transition:width .25s cubic-bezier(.16,1,.3,1),height .25s cubic-bezier(.16,1,.3,1),border-radius .25s,opacity .5s;
+  transition:width .2s cubic-bezier(.16,1,.3,1),height .2s cubic-bezier(.16,1,.3,1),opacity .4s;
 }
 
-/* Idle: small capsule */
-.pill.idle{width:72px;height:26px;border-radius:13px;opacity:.6;gap:0;padding:0}
-.pill.idle:hover{opacity:.8}
+/* idle */
+.p.i{width:64px;height:22px;opacity:.55}
+.p.i:hover{opacity:.7}
+/* recording */
+.p.r{width:160px;height:30px;opacity:1;gap:4px;padding:0 4px}
+/* processing */
+.p.pr{width:130px;height:30px;opacity:1;gap:4px;padding:0 4px}
+/* done */
+.p.d{width:64px;height:22px;opacity:0}
 
-/* Recording: expanded */
-.pill.rec{width:190px;height:34px;border-radius:17px;opacity:1;gap:5px;padding:0 5px}
+/* idle dots */
+.dots{display:flex;gap:3px;align-items:center}
+.dot{width:2.5px;height:2.5px;border-radius:50%;background:rgba(255,255,255,.25)}
 
-/* Processing */
-.pill.proc{width:150px;height:34px;border-radius:17px;opacity:1;gap:5px;padding:0 5px}
-
-/* Done: fade out then shrink */
-.pill.done{width:72px;height:26px;border-radius:13px;opacity:0}
-
-/* Idle indicator — thin line */
-.idle-line{
-  width:40px;height:2px;background:rgba(255,255,255,0.2);
-  border-radius:1px;margin:0 auto;
-}
-.pill.idle:hover .idle-line{background:rgba(255,255,255,0.3)}
-
-/* Buttons */
-.btn{
-  width:24px;height:24px;border-radius:50%;border:none;
+/* buttons */
+.b{
+  width:22px;height:22px;border-radius:50%;border:none;
   display:flex;align-items:center;justify-content:center;
   cursor:pointer;-webkit-app-region:no-drag;flex-shrink:0;
-  transition:opacity .1s;opacity:0;pointer-events:none;
+  opacity:0;pointer-events:none;transition:opacity .15s;
 }
-.pill.rec .btn,.pill.proc .btn{opacity:1;pointer-events:auto}
-.btn:hover{opacity:.7!important}
-.btn:active{transform:scale(.88)}
-.btn-x{background:rgba(255,255,255,0.08)}
-.btn-x svg{width:8px;height:8px}
-.btn-stop{background:#dc3545}
-.btn-stop .sq{width:8px;height:8px;background:#fff;border-radius:1.5px}
+.p.r .b,.p.pr .b{opacity:1;pointer-events:auto}
+.b:hover{opacity:.7!important}
+.b:active{transform:scale(.85)}
+.bx{background:rgba(255,255,255,.1)}
+.bx svg{width:7px;height:7px}
+.bs{background:rgba(220,53,69,.85)}
+.bs .sq{width:7px;height:7px;background:#fff;border-radius:1.5px}
 
-/* Mid area */
-.mid{flex:1;height:24px;overflow:hidden;display:flex;align-items:center}
-canvas{display:block}
+.m{flex:1;height:22px;overflow:hidden;display:flex;align-items:center}
 
-/* Processing spinner */
-.proc-view{display:none;align-items:center;justify-content:center;gap:5px;width:100%;height:100%}
-.pill.proc .proc-view{display:flex}
-.pill.proc canvas{display:none}
-.sp{
-  width:12px;height:12px;border:1.5px solid rgba(255,255,255,0.1);
-  border-top-color:rgba(255,255,255,0.5);border-radius:50%;
-  animation:spn .5s linear infinite;flex-shrink:0;
-}
-@keyframes spn{to{transform:rotate(360deg)}}
-.proc-view span{font:500 9px/1 -apple-system,system-ui,sans-serif;color:rgba(255,255,255,0.3)}
+/* processing */
+.pv{display:none;align-items:center;justify-content:center;gap:4px;width:100%;height:100%}
+.p.pr .pv{display:flex}
+.p.pr canvas{display:none}
+.sp{width:10px;height:10px;border:1.5px solid rgba(255,255,255,.1);border-top-color:rgba(255,255,255,.45);border-radius:50%;animation:s .5s linear infinite;flex-shrink:0}
+@keyframes s{to{transform:rotate(360deg)}}
+.pv span{font:500 8px/1 -apple-system,system-ui,sans-serif;color:rgba(255,255,255,.3)}
 </style>
 </head>
 <body>
-<div class="pill idle" id="pill">
-  <div class="idle-line" id="idleLine"></div>
-  <button class="btn btn-x" id="bx">
-    <svg viewBox="0 0 8 8" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" stroke-linecap="round">
-      <line x1="1" y1="1" x2="7" y2="7"/><line x1="7" y1="1" x2="1" y2="7"/>
-    </svg>
-  </button>
-  <div class="mid" id="mid">
-    <canvas id="cv"></canvas>
-    <div class="proc-view"><div class="sp"></div><span id="pt">Transcribing</span></div>
-  </div>
-  <button class="btn btn-stop" id="bs"><div class="sq"></div></button>
+<div class="p i" id="p">
+  <div class="dots" id="dots"></div>
+  <button class="b bx" id="bx"><svg viewBox="0 0 7 7" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.3" stroke-linecap="round"><line x1="1" y1="1" x2="6" y2="6"/><line x1="6" y1="1" x2="1" y2="6"/></svg></button>
+  <div class="m" id="m"><canvas id="c"></canvas><div class="pv"><div class="sp"></div><span id="pt"></span></div></div>
+  <button class="b bs" id="bs"><div class="sq"></div></button>
 </div>
-
 <script>
-const pill=document.getElementById('pill');
-const cv=document.getElementById('cv');
-const mid=document.getElementById('mid');
-const ctx=cv.getContext('2d');
+const p=document.getElementById('p'),c=document.getElementById('c'),m=document.getElementById('m'),x=c.getContext('2d');
+const dots=document.getElementById('dots');
+for(let i=0;i<8;i++){const d=document.createElement('div');d.className='dot';dots.appendChild(d)}
 
-let tgt=0,cur=0,st='idle',q='good',prevW=0;
-
-function sz(){
-  const r=mid.getBoundingClientRect();
-  const w=Math.floor(r.width),h=Math.floor(r.height);
-  if(w<5||w===prevW)return;
-  prevW=w;
-  cv.width=w*2;cv.height=h*2;
-  cv.style.width=w+'px';cv.style.height=h+'px';
-}
+let tgt=0,cur=0,st='i',q='g',pw=0;
 
 function draw(){
-  if(st==='idle'||st==='done'){requestAnimationFrame(draw);return}
-  if(st==='proc'){requestAnimationFrame(draw);return}
-  sz();
-
-  const W=cv.width,H=cv.height;
+  if(st!=='r'){requestAnimationFrame(draw);return}
+  const r=m.getBoundingClientRect(),w=Math.floor(r.width),h=Math.floor(r.height);
+  if(w>5&&w!==pw){pw=w;c.width=w*2;c.height=h*2;c.style.width=w+'px';c.style.height=h+'px'}
+  const W=c.width,H=c.height;
   if(W<10){requestAnimationFrame(draw);return}
-  ctx.clearRect(0,0,W,H);
+  x.clearRect(0,0,W,H);
 
-  // Wispr Flow style: thin continuous waveform line, not bars
-  cur+=(tgt-cur)*.15;
-  const col={good:'rgba(255,255,255,0.6)',fair:'rgba(255,200,100,0.5)',low:'rgba(255,120,120,0.4)'};
-  ctx.strokeStyle=col[q]||col.good;
-  ctx.lineWidth=2.5;
-  ctx.lineCap='round';
-  ctx.lineJoin='round';
-  ctx.beginPath();
+  cur+=(tgt-cur)*.2;
 
-  const points=32;
-  for(let i=0;i<=points;i++){
-    const x=(i/points)*W;
-    const t=Date.now()/120;
-    // Multiple sine waves for organic feel
-    const wave=Math.sin(t+i*.4)*.3+Math.sin(t*1.3+i*.7)*.2+Math.sin(t*.7+i*1.1)*.15;
-    const amp=cur*H*1.8;
-    const y=H/2+wave*Math.min(amp,H*.4);
-    if(i===0)ctx.moveTo(x,y);
-    else ctx.lineTo(x,y);
+  // Wispr Flow style: tight vertical bars, closely packed
+  const N=28,bw=2,gap=Math.max(1,(W-N*bw)/(N-1));
+  const col={g:'rgba(255,255,255,.7)',f:'rgba(255,200,100,.6)',l:'rgba(255,120,120,.5)'};
+  x.fillStyle=col[q]||col.g;
+
+  for(let i=0;i<N;i++){
+    const t=Date.now()/100;
+    // Each bar: base height from audio + sine variation for organic movement
+    const wave=Math.sin(t+i*.5)*.25+Math.sin(t*1.7+i*.8)*.15+.6;
+    const h=Math.max(2,Math.min(H*.8,cur*350*wave));
+    const bx=i*(bw+gap);
+    x.beginPath();
+    x.roundRect(bx,(H-h)/2,bw,h,1);
+    x.fill();
   }
-  ctx.stroke();
-
-  // Add subtle glow
-  ctx.strokeStyle=col[q]||col.good;
-  ctx.globalAlpha=0.15;
-  ctx.lineWidth=6;
-  ctx.stroke();
-  ctx.globalAlpha=1;
-  ctx.lineWidth=2.5;
-
   requestAnimationFrame(draw);
 }
 draw();
 
-function setState(s,d){
-  st=s;prevW=0;
-  pill.className='pill '+s;
-  document.getElementById('idleLine').style.display=s==='idle'?'block':'none';
-  if(s==='proc')document.getElementById('pt').textContent=d&&d.includes('Clean')?'Cleaning':'Transcribing';
-  if(s==='done')setTimeout(()=>{if(st==='done'){st='idle';pill.className='pill idle';document.getElementById('idleLine').style.display='block'}},1200);
+function set(s,d){
+  st=s;pw=0;
+  p.className='p '+s;
+  dots.style.display=s==='i'?'flex':'none';
+  if(s==='pr')document.getElementById('pt').textContent=d&&d.includes('Clean')?'Cleaning':'';
+  if(s==='d')setTimeout(()=>{if(st==='d'){st='i';p.className='p i';dots.style.display='flex'}},1000);
 }
 
 if(window.electronAPI){
   window.electronAPI.onWsMessage(m=>{
-    if(m.type==='audio_level'){tgt=m.rms;if(m.quality)q=m.quality}
+    if(m.type==='audio_level'){tgt=m.rms;if(m.quality)q=m.quality[0]}
     if(m.type==='status'){
-      if(m.status==='recording')setState('rec');
-      else if(m.status==='processing')setState('proc',m.detail);
-      else if(m.status==='idle'){
-        if(st==='proc'||st==='rec')setState('done');
-        else{st='idle';pill.className='pill idle';document.getElementById('idleLine').style.display='block'}
-      }
+      if(m.status==='recording')set('r');
+      else if(m.status==='processing')set('pr',m.detail);
+      else if(m.status==='idle'){if(st==='pr'||st==='r')set('d');else{st='i';p.className='p i';dots.style.display='flex'}}
     }
   });
 }
-
 document.getElementById('bx').onclick=e=>{e.stopPropagation();fetch('http://127.0.0.1:8528/api/cancel-recording',{method:'POST'}).catch(()=>{})};
 document.getElementById('bs').onclick=e=>{e.stopPropagation();fetch('http://127.0.0.1:8528/api/stop-recording',{method:'POST'}).catch(()=>{})};
 </script>
