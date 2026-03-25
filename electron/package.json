@@ -1,0 +1,16 @@
+{
+  "name": "voice-agent",
+  "version": "1.0.0",
+  "description": "Voice dictation desktop app",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^41.0.3"
+  },
+  "dependencies": {
+    "ws": "^8.20.0"
+  }
+}

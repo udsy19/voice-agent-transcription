@@ -1,0 +1,19 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+electron/node_modules/
+node_modules/
+Voice Agent.app/
+dist/
+build/
+*.app
+personal_dictionary.json
+snippets.json
+styles.json
+domains.json
+macros.json
+sync_config.json
+*.log
+.DS_Store
+launch_backend.sh
