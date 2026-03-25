@@ -4,11 +4,41 @@
   "description": "Voice dictation desktop app",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "build": "electron-builder --mac",
+    "build:dir": "electron-builder --mac --dir"
   },
   "type": "commonjs",
+  "build": {
+    "appId": "com.voiceagent.app",
+    "productName": "Voice Agent",
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": ["dmg"],
+      "icon": null,
+      "darkModeSupport": true,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Voice Agent needs microphone access to transcribe your speech.",
+        "NSAppleEventsUsageDescription": "Voice Agent needs this to detect the active app and paste text."
+      }
+    },
+    "extraResources": [
+      {
+        "from": "..",
+        "to": "python",
+        "filter": ["*.py", "requirements.txt", ".env.example"]
+      }
+    ],
+    "files": [
+      "main.js",
+      "preload.js",
+      "ui/**/*"
+    ],
+    "asar": false
+  },
   "devDependencies": {
-    "electron": "^41.0.3"
+    "electron": "^41.0.3",
+    "electron-builder": "^26.8.1"
   },
   "dependencies": {
     "ws": "^8.20.0"

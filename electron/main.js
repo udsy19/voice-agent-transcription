@@ -5,13 +5,25 @@ const { spawn } = require('child_process');
 const WebSocket = require('ws');
 const http = require('http');
 
-const PROJECT_DIR = path.join(__dirname, '..');
 const PORT = 8528;
-const PYTHON = fs.existsSync('/usr/local/bin/python3')
-  ? '/usr/local/bin/python3'
-  : fs.existsSync('/opt/homebrew/bin/python3')
-    ? '/opt/homebrew/bin/python3'
-    : 'python3';
+
+// In packaged app: Python files are in Resources/python/
+// In dev mode: Python files are in the parent directory
+const IS_PACKAGED = app.isPackaged;
+const PROJECT_DIR = IS_PACKAGED
+  ? path.join(process.resourcesPath, 'python')
+  : path.join(__dirname, '..');
+
+// Data directory (persistent, survives updates)
+const DATA_DIR = path.join(app.getPath('userData'));
+
+// Find Python binary
+const PYTHON_CANDIDATES = [
+  '/usr/local/bin/python3',
+  '/opt/homebrew/bin/python3',
+  '/usr/bin/python3',
+];
+const PYTHON = PYTHON_CANDIDATES.find(p => fs.existsSync(p)) || 'python3';
 
 let mainWindow = null;
 let pillWindow = null;
@@ -80,10 +92,14 @@ function startPython() {
     return;
   }
 
-  console.log('[main] Starting Python backend...');
+  console.log(`[main] Starting Python (${IS_PACKAGED ? 'packaged' : 'dev'}) from ${PROJECT_DIR}`);
+  const env = loadEnv();
+  env.PYTHONPATH = PROJECT_DIR;
+  env.VOICE_AGENT_DATA_DIR = DATA_DIR;
+
   pythonProcess = spawn(PYTHON, [path.join(PROJECT_DIR, 'app.py'), '--no-browser'], {
     cwd: '/tmp',
-    env: loadEnv(),
+    env,
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 

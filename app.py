@@ -241,8 +241,14 @@ async def api_set_groq_key(body: dict):
         return {"ok": False, "reason": "empty key"}
     # Save to .env
     from pathlib import Path
-    env_path = Path(__file__).parent / ".env"
+    from config import DATA_DIR
+    env_path = DATA_DIR / ".env"
     env_path.write_text(f"GROQ_API_KEY={key}\n")
+    # Also save to project dir for dev mode
+    try:
+        (Path(__file__).parent / ".env").write_text(f"GROQ_API_KEY={key}\n")
+    except Exception:
+        pass
     # Reinitialize cleaner
     import config
     config.GROQ_API_KEY = key

@@ -11,7 +11,8 @@ from logger import get_logger
 
 log = get_logger("domains")
 
-DOMAINS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "domains.json")
+from config import DATA_DIR
+DOMAINS_PATH = str(DATA_DIR / "domains.json")
 
 BUILTIN_DOMAINS = {
     "tech": {

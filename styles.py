@@ -4,7 +4,8 @@ from logger import get_logger
 
 log = get_logger("styles")
 
-STYLES_PATH = os.path.join(os.path.dirname(__file__), "styles.json")
+from config import DATA_DIR
+STYLES_PATH = str(DATA_DIR / "styles.json")
 
 DEFAULT_STYLES = {
     "formal": {"description": "Professional and polished", "prompt": "Use formal tone: proper grammar, no contractions, professional language."},

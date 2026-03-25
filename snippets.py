@@ -6,8 +6,9 @@ from logger import get_logger
 
 log = get_logger("snippets")
 
-SNIPPETS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "snippets.json")
-SHARED_SNIPPETS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "shared_snippets.json")
+from config import DATA_DIR
+SNIPPETS_PATH = str(DATA_DIR / "snippets.json")
+SHARED_SNIPPETS_PATH = str(DATA_DIR / "shared_snippets.json")
 MATCH_THRESHOLD = 0.75
 _file_lock = threading.Lock()
 

@@ -15,7 +15,8 @@ from logger import get_logger
 
 log = get_logger("macros")
 
-MACROS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "macros.json")
+from config import DATA_DIR
+MACROS_PATH = str(DATA_DIR / "macros.json")
 
 BUILTIN_MACROS = {
     "email mode": {

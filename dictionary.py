@@ -6,7 +6,8 @@ from logger import get_logger
 
 log = get_logger("dictionary")
 
-DICT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "personal_dictionary.json")
+from config import DATA_DIR
+DICT_PATH = str(DATA_DIR / "personal_dictionary.json")
 _file_lock = threading.Lock()
 
 
