@@ -27,8 +27,10 @@ fi
 [ -f "$DIR/.env" ] && { set -a; source "$DIR/.env"; set +a; }
 export PYTHONPATH="$DIR"
 
-# Kill any existing instances
+# Kill ALL existing instances (app, electron, packaged app)
 pkill -f "app.py.*--no-browser" 2>/dev/null || true
+pkill -f "Voice Agent" 2>/dev/null || true
+pkill -f "Electron.*voice-agent" 2>/dev/null || true
 sleep 0.5
 
 # Check if port is free

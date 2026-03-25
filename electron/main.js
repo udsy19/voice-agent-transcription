@@ -85,12 +85,33 @@ function loadEnv() {
 }
 
 function startPython() {
-  // Check if backend is already running externally (started by start.sh)
+  // Check if backend is already running (started by start.sh or another instance)
   if (process.env.VOICE_AGENT_EXTERNAL_BACKEND) {
     console.log('[main] External backend mode — skipping Python spawn');
     pollForReady();
     return;
   }
+
+  // Also check if port is already in use (another instance running)
+  const checkReq = http.get(`http://127.0.0.1:${PORT}/api/health`, (res) => {
+    let body = '';
+    res.on('data', c => body += c);
+    res.on('end', () => {
+      try {
+        if (JSON.parse(body).ok) {
+          console.log('[main] Backend already running on port — connecting');
+          onBackendReady();
+          return;
+        }
+      } catch {}
+      actuallyStartPython();
+    });
+  });
+  checkReq.on('error', () => actuallyStartPython());
+  checkReq.setTimeout(1000, () => { checkReq.destroy(); actuallyStartPython(); });
+}
+
+function actuallyStartPython() {
 
   console.log(`[main] Starting Python (${IS_PACKAGED ? 'packaged' : 'dev'}) from ${PROJECT_DIR}`);
   const env = loadEnv();
