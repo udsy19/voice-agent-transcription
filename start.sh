@@ -40,6 +40,13 @@ if lsof -i :8528 -sTCP:LISTEN &>/dev/null; then
     sleep 1
 fi
 
+# Fix SSL certs for macOS Python
+SSL_CERT=$(python3 -c "import certifi; print(certifi.where())" 2>/dev/null)
+if [ -n "$SSL_CERT" ]; then
+    export SSL_CERT_FILE="$SSL_CERT"
+    export REQUESTS_CA_BUNDLE="$SSL_CERT"
+fi
+
 echo "Starting Voice Agent..."
 
 # Start Python backend from /tmp (numpy cwd fix)

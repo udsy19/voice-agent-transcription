@@ -37,8 +37,19 @@ def _download_models():
             continue
         log.info("Downloading %s...", filename)
         try:
+            import ssl
             import urllib.request
-            urllib.request.urlretrieve(url, path)
+            # Try with certifi certs
+            try:
+                import certifi
+                ctx = ssl.create_default_context(cafile=certifi.where())
+            except Exception:
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+            opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx))
+            with opener.open(url) as resp, open(path, 'wb') as f:
+                f.write(resp.read())
             log.info("Downloaded %s (%.1f MB)", filename, path.stat().st_size / 1e6)
         except Exception as e:
             log.error("Failed to download %s: %s", filename, e)

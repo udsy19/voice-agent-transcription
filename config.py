@@ -3,6 +3,14 @@ import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
+# Fix SSL on macOS Python 3.13 (missing system certs)
+try:
+    import certifi
+    os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+    os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
+except ImportError:
+    pass
+
 # ── Paths ────────────────────────────────────────────────────────────────────
 
 # Project source directory (where the .py files live)

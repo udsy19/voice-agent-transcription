@@ -37,22 +37,22 @@ class VADStream:
         return self._speech_active
 
     def _load_model(self):
-        """Load Silero VAD model via torch hub or ONNX."""
+        """Load Silero VAD or fall back to energy-based VAD."""
         try:
             import torch
             model, utils = torch.hub.load(
                 repo_or_dir='snakers4/silero-vad',
                 model='silero_vad',
-                force_reload=False
+                force_reload=False,
+                trust_repo=True,
             )
             self._model = model
             self._get_speech_prob = lambda audio: float(
                 model(torch.from_numpy(audio), SAMPLE_RATE).item()
             )
             log.info("Loaded Silero VAD (PyTorch)")
-        except ImportError:
-            # Fallback: simple energy-based VAD
-            log.warning("PyTorch not available, using energy-based VAD")
+        except Exception as e:
+            log.warning("Silero VAD failed (%s), using energy-based VAD", e)
             self._get_speech_prob = self._energy_vad
 
     def _energy_vad(self, audio: np.ndarray) -> float:
