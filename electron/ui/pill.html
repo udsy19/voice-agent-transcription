@@ -6,75 +6,100 @@
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{background:transparent;overflow:hidden;width:260px;height:70px}
 .p{
-  position:absolute;bottom:6px;left:50%;
-  transform:translateX(-50%);
+  position:absolute;bottom:6px;left:50%;transform:translateX(-50%);
   display:flex;align-items:center;justify-content:center;
-  background:rgba(22,18,14,0.92);
-  border-radius:50px;
+  background:rgba(22,18,14,0.92);border-radius:50px;
   box-shadow:0 1px 6px rgba(0,0,0,0.2);
-  -webkit-app-region:no-drag;
-  cursor:pointer;
-  transition:width .2s cubic-bezier(.2,1,.3,1),height .2s cubic-bezier(.2,1,.3,1),opacity .3s;
+  -webkit-app-region:no-drag;cursor:pointer;
+  transition:width .2s cubic-bezier(.2,1,.3,1),height .2s cubic-bezier(.2,1,.3,1),opacity .3s,background .3s;
 }
-/* idle: just a small dark capsule, no line */
+/* dictation idle */
 .p.i{width:48px;height:16px;opacity:.45}
 .p.i:hover{opacity:.6}
-/* recording */
+/* dictation recording */
 .p.r{width:168px;height:28px;opacity:1;padding:0 3px;gap:3px;cursor:default}
-/* processing */
+/* dictation processing */
 .p.x{width:120px;height:28px;opacity:1;padding:0 3px;gap:3px;cursor:default}
-/* done */
+/* dictation done */
 .p.d{width:48px;height:16px;opacity:0}
 
-/* hover tooltip */
+/* conversation listening — blue tint */
+.p.cl{width:56px;height:20px;opacity:.7;background:rgba(40,80,180,0.85)}
+.p.cl:hover{opacity:.85}
+/* conversation active (user speaking) */
+.p.ca{width:168px;height:28px;opacity:1;padding:0 3px;gap:3px;background:rgba(40,80,180,0.9);cursor:default}
+/* conversation thinking */
+.p.ct{width:120px;height:28px;opacity:1;padding:0 3px;gap:3px;background:rgba(180,120,30,0.9);cursor:default}
+/* conversation speaking */
+.p.cs{width:140px;height:28px;opacity:1;padding:0 3px;gap:3px;background:rgba(40,160,80,0.85);cursor:default}
+
+/* tooltip */
 .tip{
   position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%) scale(.95);
   background:rgba(22,18,14,0.95);color:rgba(255,255,255,.85);
   font:500 12px/1 -apple-system,system-ui,sans-serif;
   padding:8px 14px;border-radius:10px;white-space:nowrap;
-  box-shadow:0 2px 12px rgba(0,0,0,0.3);
-  opacity:0;pointer-events:none;
+  box-shadow:0 2px 12px rgba(0,0,0,0.3);opacity:0;pointer-events:none;
   transition:opacity .15s,transform .15s cubic-bezier(.2,1,.3,1);
 }
 .tip b{color:rgba(200,160,220,0.9);font-weight:600}
-.p.i:hover .tip{opacity:1;transform:translateX(-50%) scale(1)}
-.p.r .tip,.p.x .tip,.p.d .tip{display:none}
+.p.i:hover .tip,.p.cl:hover .tip{opacity:1;transform:translateX(-50%) scale(1)}
 
+/* buttons */
 .b{
   width:20px;height:20px;border-radius:50%;border:none;
   display:flex;align-items:center;justify-content:center;
   cursor:pointer;flex-shrink:0;opacity:0;pointer-events:none;transition:opacity .12s;
 }
-.p.r .b,.p.x .b{opacity:1;pointer-events:auto}
+.p.r .b,.p.x .b,.p.ca .b,.p.ct .b,.p.cs .b{opacity:1;pointer-events:auto}
 .b:hover{opacity:.65!important}
 .b:active{transform:scale(.85)}
-.bx{background:rgba(255,255,255,.08)}
+.bx{background:rgba(255,255,255,.1)}
 .bx svg{width:6px;height:6px}
 .bs{background:rgba(200,50,60,.8)}
 .bs .sq{width:6px;height:6px;background:#fff;border-radius:1px}
+
 .m{flex:1;height:20px;overflow:hidden;display:flex;align-items:center}
+
+/* processing/thinking spinner */
 .pv{display:none;align-items:center;justify-content:center;gap:4px;width:100%;height:100%}
-.p.x .pv{display:flex}
-.p.x canvas{display:none}
+.p.x .pv,.p.ct .pv{display:flex}
+.p.x canvas,.p.ct canvas{display:none}
 .sp{width:9px;height:9px;border:1.5px solid rgba(255,255,255,.08);border-top-color:rgba(255,255,255,.4);border-radius:50%;animation:s .5s linear infinite}
 @keyframes s{to{transform:rotate(360deg)}}
-.pv span{font:500 8px/1 -apple-system,sans-serif;color:rgba(255,255,255,.25)}
+.pv span{font:500 8px/1 -apple-system,sans-serif;color:rgba(255,255,255,.35)}
+
+/* speaking wave (green) */
+.sw{display:none;align-items:center;justify-content:center;gap:2px;width:100%;height:100%}
+.p.cs .sw{display:flex}
+.p.cs canvas,.p.cs .pv{display:none}
+.sw .wb{width:2px;background:rgba(255,255,255,.5);border-radius:1px;animation:wb .6s ease-in-out infinite alternate}
+@keyframes wb{from{height:3px}to{height:14px}}
 </style>
 </head>
 <body>
-<div class="p i" id="p" onclick="handleClick()">
-  <div class="tip">Click or hold <b>⌥R</b> to dictate</div>
+<div class="p i" id="p" onclick="handleClick()" oncontextmenu="toggleMode(event)">
+  <div class="tip" id="tip">Click or hold <b>⌥R</b> to dictate</div>
   <button class="b bx" id="bx"><svg viewBox="0 0 6 6" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="1.2" stroke-linecap="round"><line x1=".5" y1=".5" x2="5.5" y2="5.5"/><line x1="5.5" y1=".5" x2=".5" y2="5.5"/></svg></button>
-  <div class="m" id="m"><canvas id="c"></canvas><div class="pv"><div class="sp"></div><span id="pt"></span></div></div>
+  <div class="m" id="m">
+    <canvas id="c"></canvas>
+    <div class="pv"><div class="sp"></div><span id="pt"></span></div>
+    <div class="sw" id="sw"></div>
+  </div>
   <button class="b bs" id="bs"><div class="sq"></div></button>
 </div>
 <script>
 const p=document.getElementById('p'),c=document.getElementById('c'),m=document.getElementById('m');
+const tip=document.getElementById('tip'),sw=document.getElementById('sw');
 const ctx=c.getContext('2d');
 let tgt=0,cur=0,st='i',q='g',pw=0;
+let mode='dictation'; // 'dictation' or 'conversation'
+
+// Create speaking wave bars
+for(let i=0;i<12;i++){const b=document.createElement('div');b.className='wb';b.style.animationDelay=(i*0.08)+'s';sw.appendChild(b)}
 
 function draw(){
-  if(st!=='r'){requestAnimationFrame(draw);return}
+  if(st!=='r'&&st!=='ca'){requestAnimationFrame(draw);return}
   const rect=m.getBoundingClientRect(),w=Math.floor(rect.width),h=Math.floor(rect.height);
   if(w>5&&w!==pw){pw=w;c.width=w*2;c.height=h*2;c.style.width=w+'px';c.style.height=h+'px'}
   const W=c.width,H=c.height;
@@ -94,31 +119,74 @@ function draw(){
 }
 draw();
 
-function go(s,d){
+function go(s){
   st=s;pw=0;
   p.className='p '+s;
-  if(s==='x')document.getElementById('pt').textContent=d&&d.includes('Clean')?'Cleaning':'';
   if(s==='d')setTimeout(()=>{if(st==='d'){st='i';p.className='p i'}},900);
 }
 
-// Click pill to start/stop recording
 function handleClick(){
-  if(st==='i'){
-    fetch('http://127.0.0.1:8528/api/start-recording',{method:'POST'}).catch(()=>{});
+  if(mode==='dictation'){
+    if(st==='i')fetch('http://127.0.0.1:8528/api/start-recording',{method:'POST'}).catch(()=>{});
+  } else {
+    // In conversation mode, click toggles it off
+    if(st==='cl'||st==='ca'||st==='ct'||st==='cs'){
+      fetch('http://127.0.0.1:8528/api/conversation/stop',{method:'POST'}).catch(()=>{});
+      mode='dictation';
+      go('i');
+      tip.textContent='Click or hold ⌥R to dictate';
+    }
+  }
+}
+
+function toggleMode(e){
+  e.preventDefault(); // prevent context menu
+  if(mode==='dictation'){
+    mode='conversation';
+    tip.textContent='Conversation mode — right-click to switch back';
+    go('cl');
+    fetch('http://127.0.0.1:8528/api/conversation/start',{method:'POST'}).catch(()=>{});
+  } else {
+    mode='dictation';
+    tip.textContent='Click or hold ⌥R to dictate';
+    fetch('http://127.0.0.1:8528/api/conversation/stop',{method:'POST'}).catch(()=>{});
+    go('i');
   }
 }
 
 if(window.electronAPI){
   window.electronAPI.onWsMessage(msg=>{
     if(msg.type==='audio_level'){tgt=msg.rms;if(msg.quality)q=msg.quality[0]}
-    if(msg.type==='status'){
+
+    // Dictation mode status
+    if(msg.type==='status'&&mode==='dictation'){
       if(msg.status==='recording')go('r');
-      else if(msg.status==='processing')go('x',msg.detail);
-      else if(msg.status==='idle'){if(st==='x'||st==='r')go('d');else{st='i';p.className='p i'}}
+      else if(msg.status==='processing')go('x');
+      else if(msg.status==='idle'){if(st==='x'||st==='r')go('d');else if(st!=='cl'){st='i';p.className='p i'}}
+    }
+
+    // Conversation mode status
+    if(msg.type==='conversation'){
+      mode='conversation';
+      if(msg.status==='listening')go('cl');
+      else if(msg.status==='transcribing')go('ca');
+      else if(msg.status==='thinking')go('ct');
+      else if(msg.status==='speaking')go('cs');
+      else if(msg.status==='stopped'){mode='dictation';go('i');tip.textContent='Click or hold ⌥R to dictate'}
+      else if(msg.status==='warming_up')go('ct');
     }
   });
 }
-document.getElementById('bx').onclick=e=>{e.stopPropagation();fetch('http://127.0.0.1:8528/api/cancel-recording',{method:'POST'}).catch(()=>{})};
+
+document.getElementById('bx').onclick=e=>{
+  e.stopPropagation();
+  if(mode==='conversation'){
+    fetch('http://127.0.0.1:8528/api/conversation/stop',{method:'POST'}).catch(()=>{});
+    mode='dictation';go('i');
+  } else {
+    fetch('http://127.0.0.1:8528/api/cancel-recording',{method:'POST'}).catch(()=>{});
+  }
+};
 document.getElementById('bs').onclick=e=>{e.stopPropagation();fetch('http://127.0.0.1:8528/api/stop-recording',{method:'POST'}).catch(()=>{})};
 </script>
 </body>
