@@ -46,3 +46,10 @@ DTYPE = "float32"
 # ── Silence detection ────────────────────────────────────────────────────────
 SILENCE_THRESHOLD = 0.002  # very sensitive — captures faint audio
 MIN_AUDIO_DURATION = 0.5
+
+# ── Conversation Mode ─────────────────────────────────────────────────────
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+CONVERSATION_MODEL = "claude-sonnet-4-20250514"
+TTS_VOICE = "af_heart"
+VAD_STOP_SECS = 0.8
+SCREENPIPE_URL = "http://localhost:3030"

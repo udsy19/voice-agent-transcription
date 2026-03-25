@@ -723,6 +723,45 @@ def start_listener():
         listener.join()
 
 
+# ── Conversation Mode ────────────────────────────────────────────────────────
+
+_conversation_agent = None
+_conversation_task = None
+
+
+@api.post("/api/conversation/start")
+async def api_conversation_start():
+    global _conversation_agent, _conversation_task
+    if _conversation_agent and _conversation_agent.active:
+        return {"ok": False, "reason": "already active"}
+    try:
+        from conversation.agent import ConversationAgent
+        _conversation_agent = ConversationAgent(emit_fn=emit)
+        _conversation_task = asyncio.create_task(_conversation_agent.start())
+        return {"ok": True}
+    except Exception as e:
+        log.error("Failed to start conversation: %s", e)
+        return {"ok": False, "reason": str(e)}
+
+
+@api.post("/api/conversation/stop")
+async def api_conversation_stop():
+    global _conversation_agent, _conversation_task
+    if _conversation_agent:
+        await _conversation_agent.stop()
+        _conversation_agent = None
+    if _conversation_task:
+        _conversation_task.cancel()
+        _conversation_task = None
+    return {"ok": True}
+
+
+@api.get("/api/conversation/status")
+async def api_conversation_status():
+    active = _conversation_agent is not None and _conversation_agent.active
+    return {"active": active}
+
+
 if __name__ == "__main__":
     # Check port BEFORE starting anything
     import socket

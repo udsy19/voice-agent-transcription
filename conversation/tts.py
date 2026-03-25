@@ -1,0 +1,142 @@
+"""Streaming TTS using kokoro-onnx.
+
+Speaks sentence-by-sentence for low latency (<300ms to first audio).
+Interruptible: stops playback immediately when user starts speaking.
+Falls back to macOS `say` command if kokoro is not available.
+"""
+
+import asyncio
+import os
+import re
+import subprocess
+import numpy as np
+import sounddevice as sd
+from pathlib import Path
+from logger import get_logger
+from config import DATA_DIR
+
+log = get_logger("tts")
+
+MODELS_DIR = DATA_DIR / "models"
+KOKORO_MODEL = MODELS_DIR / "kokoro-v1.0.onnx"
+KOKORO_VOICES = MODELS_DIR / "voices-v1.0.bin"
+KOKORO_URLS = {
+    "kokoro-v1.0.onnx": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx",
+    "voices-v1.0.bin": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin",
+}
+
+SENTENCE_SPLIT = re.compile(r'(?<=[.!?])\s+|(?<=\n)')
+
+
+def _download_models():
+    """Download kokoro models if not present."""
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    for filename, url in KOKORO_URLS.items():
+        path = MODELS_DIR / filename
+        if path.exists():
+            continue
+        log.info("Downloading %s...", filename)
+        try:
+            import urllib.request
+            urllib.request.urlretrieve(url, path)
+            log.info("Downloaded %s (%.1f MB)", filename, path.stat().st_size / 1e6)
+        except Exception as e:
+            log.error("Failed to download %s: %s", filename, e)
+
+
+class StreamingTTS:
+    def __init__(self, voice: str = "af_heart"):
+        self.voice = voice
+        self.is_playing = False
+        self.interrupted = False
+        self._kokoro = None
+        self._use_fallback = False
+        self._load()
+
+    def _load(self):
+        try:
+            _download_models()
+            if KOKORO_MODEL.exists() and KOKORO_VOICES.exists():
+                from kokoro_onnx import Kokoro
+                self._kokoro = Kokoro(str(KOKORO_MODEL), str(KOKORO_VOICES))
+                log.info("Loaded Kokoro TTS (voice=%s)", self.voice)
+            else:
+                raise FileNotFoundError("Models not downloaded")
+        except Exception as e:
+            log.warning("Kokoro not available (%s), using macOS say", e)
+            self._use_fallback = True
+
+    async def speak(self, text: str):
+        """Speak text sentence-by-sentence. Interruptible."""
+        if not text:
+            return
+        self.interrupted = False
+        self.is_playing = True
+
+        try:
+            sentences = [s.strip() for s in SENTENCE_SPLIT.split(text) if s.strip()]
+            if not sentences:
+                sentences = [text]
+
+            for sentence in sentences:
+                if self.interrupted:
+                    break
+                if self._use_fallback:
+                    await self._speak_macos(sentence)
+                else:
+                    await self._speak_kokoro(sentence)
+        finally:
+            self.is_playing = False
+
+    async def _speak_kokoro(self, text: str):
+        """Generate and play audio for one sentence via kokoro."""
+        try:
+            samples, sample_rate = self._kokoro.create(
+                text, voice=self.voice, speed=1.0
+            )
+            if self.interrupted:
+                return
+
+            # Play audio
+            sd.play(samples, sample_rate)
+
+            # Wait for playback to finish (check for interruption)
+            duration = len(samples) / sample_rate
+            elapsed = 0
+            while elapsed < duration and not self.interrupted:
+                await asyncio.sleep(0.05)
+                elapsed += 0.05
+
+            if self.interrupted:
+                sd.stop()
+        except Exception as e:
+            log.error("Kokoro speak failed: %s", e)
+            await self._speak_macos(text)
+
+    async def _speak_macos(self, text: str):
+        """Fallback: use macOS say command."""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "say", "-r", "200", text,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            while proc.returncode is None and not self.interrupted:
+                await asyncio.sleep(0.05)
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=0.05)
+                except asyncio.TimeoutError:
+                    pass
+            if self.interrupted and proc.returncode is None:
+                proc.kill()
+        except Exception as e:
+            log.error("macOS say failed: %s", e)
+
+    def interrupt(self):
+        """Stop playback immediately."""
+        self.interrupted = True
+        self.is_playing = False
+        try:
+            sd.stop()
+        except Exception:
+            pass
