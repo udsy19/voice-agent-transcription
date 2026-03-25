@@ -258,9 +258,101 @@ select.inp{appearance:none;background:var(--bg) url("data:image/svg+xml,%3Csvg x
 }
 @keyframes spin{to{transform:rotate(360deg)}}
 .connecting p{font-size:14px;color:var(--mut)}
+
+/* ── Setup wizard ────────────────────────── */
+.setup{
+  position:fixed;inset:0;background:var(--bg);z-index:200;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:40px;overflow-y:auto;
+}
+.setup.hidden{display:none}
+.setup-card{
+  max-width:420px;width:100%;text-align:center;
+}
+.setup-card h1{font-family:var(--serif);font-weight:300;font-size:28px;margin-bottom:8px}
+.setup-card .sub{font-size:14px;color:var(--mut);margin-bottom:32px;line-height:1.5}
+.setup-steps{text-align:left;width:100%}
+.step{
+  display:flex;gap:14px;padding:16px 0;border-bottom:1px solid var(--brdf);
+  align-items:flex-start;
+}
+.step:last-child{border-bottom:none}
+.step-num{
+  width:28px;height:28px;border-radius:50%;font-size:13px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  background:var(--acc);color:var(--pri);
+}
+.step-num.done{background:#38A169;color:#fff}
+.step-num.warn{background:#E53E3E;color:#fff}
+.step-body{flex:1}
+.step-title{font-size:14px;font-weight:500;margin-bottom:3px}
+.step-desc{font-size:12px;color:var(--mut);line-height:1.5}
+.step-desc code{
+  background:var(--acc);padding:1px 6px;border-radius:4px;font-size:11px;
+  font-family:'SF Mono',Menlo,monospace;
+}
+.step-action{margin-top:8px}
+.setup-done-btn{
+  margin-top:28px;padding:12px 32px;border:none;border-radius:var(--rp);
+  background:var(--pri);color:#fff;font-family:var(--sans);font-size:14px;
+  font-weight:500;cursor:pointer;transition:opacity .15s;
+}
+.setup-done-btn:hover{opacity:.85}
+.setup-done-btn:disabled{opacity:.4;cursor:not-allowed}
+.recheck-btn{
+  padding:6px 14px;border:none;border-radius:var(--rs);
+  background:var(--acc);color:var(--pri);font-family:var(--sans);font-size:12px;
+  font-weight:500;cursor:pointer;transition:opacity .15s;
+}
+.recheck-btn:hover{opacity:.85}
 </style>
 </head>
 <body>
+
+<!-- Setup wizard (shown when permissions missing) -->
+<div class="setup hidden" id="setup">
+  <div class="setup-card">
+    <h1>Welcome to Voice Agent</h1>
+    <div class="sub">Let's make sure everything is set up so you can start dictating.</div>
+
+    <div class="setup-steps">
+      <!-- Step 1: Mic -->
+      <div class="step">
+        <div class="step-num" id="s1num">1</div>
+        <div class="step-body">
+          <div class="step-title">Microphone Access</div>
+          <div class="step-desc" id="s1desc">Checking...</div>
+          <div class="step-action" id="s1action"></div>
+        </div>
+      </div>
+
+      <!-- Step 2: Input Monitoring -->
+      <div class="step">
+        <div class="step-num" id="s2num">2</div>
+        <div class="step-body">
+          <div class="step-title">Input Monitoring (Hotkey)</div>
+          <div class="step-desc" id="s2desc">Checking...</div>
+          <div class="step-action" id="s2action"></div>
+        </div>
+      </div>
+
+      <!-- Step 3: Groq API Key -->
+      <div class="step">
+        <div class="step-num" id="s3num">3</div>
+        <div class="step-body">
+          <div class="step-title">Groq API Key</div>
+          <div class="step-desc" id="s3desc">Checking...</div>
+          <div class="step-action" id="s3action"></div>
+        </div>
+      </div>
+    </div>
+
+    <button class="setup-done-btn" id="setupDoneBtn" onclick="dismissSetup()" disabled>Continue to Voice Agent</button>
+    <div style="margin-top:12px">
+      <button class="recheck-btn" onclick="checkPermissions()">Re-check permissions</button>
+    </div>
+  </div>
+</div>
 
 <!-- Connecting overlay -->
 <div class="connecting" id="connecting">
@@ -941,6 +1033,124 @@ renderStylePage();
 checkGroqStatus();
 checkBackendStatus();
 setupListeners();
+// Check permissions after backend is ready
+setTimeout(checkPermissions, 3000);
+
+async function checkPermissions() {
+  try {
+    const r = await fetch(`${API}/api/permissions`);
+    const p = await r.json();
+
+    let allGood = true;
+    const setup = document.getElementById('setup');
+
+    // Step 1: Microphone
+    const s1num = document.getElementById('s1num');
+    const s1desc = document.getElementById('s1desc');
+    const s1action = document.getElementById('s1action');
+
+    if (p.mic === 'granted' && p.mic_working) {
+      s1num.className = 'step-num done';
+      s1num.textContent = '✓';
+      s1desc.textContent = 'Microphone access granted and working.';
+      s1action.innerHTML = '';
+    } else if (p.mic === 'granted' && !p.mic_working) {
+      s1num.className = 'step-num warn';
+      s1num.textContent = '!';
+      s1desc.innerHTML = 'Microphone permission granted but not capturing audio.<br>This usually means you need to run from <b>Terminal.app</b> (not other terminals like cmux or iTerm).';
+      s1action.innerHTML = '<div style="margin-top:6px;font-size:12px;color:var(--mut);line-height:1.6">' +
+        '1. Open <b>Terminal.app</b> (from /Applications/Utilities/)<br>' +
+        '2. Run: <code>cd ' + esc(p.python_path ? p.python_path.replace(/\/[^/]+$/, '') : '~') + '</code><br>' +
+        '3. Then: <code>bash start.sh</code></div>';
+      allGood = false;
+    } else {
+      s1num.className = 'step-num warn';
+      s1num.textContent = '!';
+      s1desc.innerHTML = 'Microphone access needed.';
+      s1action.innerHTML = '<div style="margin-top:6px;font-size:12px;color:var(--mut);line-height:1.6">' +
+        '1. Open <b>System Settings</b><br>' +
+        '2. Go to <b>Privacy & Security → Microphone</b><br>' +
+        '3. Find <b>Terminal</b> (or your terminal app) and toggle it <b>ON</b><br>' +
+        '4. Restart Voice Agent</div>';
+      allGood = false;
+    }
+
+    // Step 2: Input Monitoring
+    const s2num = document.getElementById('s2num');
+    const s2desc = document.getElementById('s2desc');
+    const s2action = document.getElementById('s2action');
+
+    if (p.input_monitoring === 'granted') {
+      s2num.className = 'step-num done';
+      s2num.textContent = '✓';
+      s2desc.textContent = 'Hotkey detection is working. Hold Right Option (⌥) to dictate.';
+      s2action.innerHTML = '';
+    } else {
+      s2num.className = 'step-num warn';
+      s2num.textContent = '!';
+      s2desc.innerHTML = 'Input Monitoring needed for the hotkey to work.';
+      s2action.innerHTML = '<div style="margin-top:6px;font-size:12px;color:var(--mut);line-height:1.6">' +
+        '1. Open <b>System Settings</b><br>' +
+        '2. Go to <b>Privacy & Security → Input Monitoring</b><br>' +
+        '3. Click <b>+</b> and press <b>⌘⇧G</b><br>' +
+        '4. Paste: <code>/Library/Frameworks/Python.framework/Versions/3.13/Resources/Python.app</code><br>' +
+        '5. Add it and make sure the toggle is <b>ON</b><br>' +
+        '6. Also add <b>Terminal.app</b> if not already listed<br>' +
+        '7. Restart Voice Agent</div>';
+      allGood = false;
+    }
+
+    // Step 3: Groq API Key
+    const s3num = document.getElementById('s3num');
+    const s3desc = document.getElementById('s3desc');
+    const s3action = document.getElementById('s3action');
+
+    if (p.groq_key) {
+      s3num.className = 'step-num done';
+      s3num.textContent = '✓';
+      s3desc.textContent = 'Groq API key configured. Text cleanup is active.';
+      s3action.innerHTML = '';
+    } else {
+      s3num.className = 'step-num warn';
+      s3num.textContent = '!';
+      s3desc.innerHTML = 'Groq API key needed for text cleanup (filler removal, grammar, punctuation).';
+      s3action.innerHTML = '<div style="margin-top:6px">' +
+        '<div style="font-size:12px;color:var(--mut);margin-bottom:6px">Get a free key at <b>console.groq.com</b></div>' +
+        '<div class="fr"><input class="inp" id="setupGroqKey" type="password" placeholder="gsk_..." style="font-size:12px">' +
+        '<button class="btn btn-d btn-s" onclick="saveSetupKey()">Save</button></div></div>';
+      allGood = false;
+    }
+
+    // Show/hide setup
+    const skipSetup = localStorage.getItem('setup_dismissed');
+    if (!allGood && !skipSetup) {
+      setup.classList.remove('hidden');
+    } else {
+      setup.classList.add('hidden');
+    }
+
+    // Enable done button if at least mic + input monitoring work
+    const canProceed = (p.mic === 'granted') && (p.input_monitoring === 'granted');
+    document.getElementById('setupDoneBtn').disabled = false; // Always allow dismiss
+    document.getElementById('setupDoneBtn').textContent = allGood ? 'Continue to Voice Agent' : 'Continue anyway';
+
+  } catch(e) {
+    // Backend not ready yet, try again
+    setTimeout(checkPermissions, 2000);
+  }
+}
+
+async function saveSetupKey() {
+  const key = document.getElementById('setupGroqKey').value.trim();
+  if (!key) return;
+  await apiPost('set-groq-key', {key});
+  checkPermissions();
+}
+
+function dismissSetup() {
+  localStorage.setItem('setup_dismissed', '1');
+  document.getElementById('setup').classList.add('hidden');
+}
 // Poll refresh every 5s as fallback
 setInterval(() => { if (connected) refresh(); }, 5000);
 </script>

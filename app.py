@@ -264,6 +264,48 @@ async def api_groq_status():
     return {"configured": has_key}
 
 
+@api.get("/api/permissions")
+async def api_permissions():
+    """Check microphone and input monitoring permissions."""
+    import sys
+    result = {"mic": "unknown", "input_monitoring": "unknown", "python_path": sys.executable}
+
+    # Check mic permission
+    try:
+        import AVFoundation
+        status = AVFoundation.AVCaptureDevice.authorizationStatusForMediaType_(
+            AVFoundation.AVMediaTypeAudio
+        )
+        result["mic"] = {0: "not_asked", 1: "restricted", 2: "denied", 3: "granted"}.get(status, "unknown")
+    except Exception:
+        result["mic"] = "unknown"
+
+    # Check input monitoring — try a quick test recording
+    try:
+        import sounddevice as sd
+        import numpy as np
+        audio = sd.rec(int(0.1 * 48000), samplerate=48000, channels=1, dtype='float32')
+        sd.wait()
+        rms = float(np.sqrt(np.mean(audio ** 2)))
+        result["mic_working"] = rms > 0.0001
+    except Exception:
+        result["mic_working"] = False
+
+    # Check if pynput can see key events (we check if the listener printed the warning)
+    # We can't test this directly, so we check if the process is "trusted"
+    try:
+        import Quartz
+        trusted = Quartz.AXIsProcessTrusted()
+        result["input_monitoring"] = "granted" if trusted else "denied"
+    except Exception:
+        result["input_monitoring"] = "unknown"
+
+    # Groq API key
+    result["groq_key"] = bool(S.cleaner and S.cleaner._client)
+
+    return result
+
+
 @api.get("/api/transcription-backend")
 async def api_get_backend():
     backend = S.transcriber.backend if S.transcriber else "loading"
