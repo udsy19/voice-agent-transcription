@@ -6,7 +6,48 @@ from logger import get_logger
 
 log = get_logger("recorder")
 
-MAX_RECORDING_SECONDS = 300  # 5 min cap to prevent OOM
+MAX_RECORDING_SECONDS = 300
+
+
+# ── Voice Isolation (DeepFilterNet) ──────────────────────────────────────────
+
+_df_model = None
+_df_state = None
+_df_available = None  # None = not checked, True/False = checked
+
+
+def _init_voice_isolation():
+    """Lazy-load DeepFilterNet for voice isolation."""
+    global _df_model, _df_state, _df_available
+    if _df_available is not None:
+        return _df_available
+    try:
+        from df.enhance import init_df
+        _df_model, _df_state, _ = init_df()
+        _df_available = True
+        log.info("Voice isolation loaded (DeepFilterNet3, %dHz)", _df_state.sr())
+        return True
+    except Exception as e:
+        _df_available = False
+        log.info("Voice isolation not available: %s", e)
+        return False
+
+
+def _apply_voice_isolation(audio: np.ndarray) -> np.ndarray:
+    """Apply DeepFilterNet noise suppression to 48kHz audio."""
+    if not _df_available or _df_model is None:
+        return audio
+    try:
+        import torch
+        from df.enhance import enhance
+        tensor = torch.from_numpy(audio).unsqueeze(0)  # [1, samples]
+        enhanced = enhance(_df_model, _df_state, tensor)
+        if isinstance(enhanced, torch.Tensor):
+            return enhanced.squeeze().numpy().astype(np.float32)
+        return enhanced.astype(np.float32)
+    except Exception as e:
+        log.debug("Voice isolation failed: %s", e)
+        return audio
 
 
 def _get_native_rate() -> int:
@@ -42,7 +83,8 @@ class Recorder:
         self._recording = False
         self._lock = threading.Lock()
         self._whisper_mode = False
-        self._total_samples = 0  # running counter instead of sum()
+        self._voice_isolation = False
+        self._total_samples = 0
         try:
             self._native_rate = _get_native_rate()
         except Exception:
@@ -61,6 +103,26 @@ class Recorder:
         self._whisper_mode = not self._whisper_mode
         log.info("Whisper mode %s", "ON" if self._whisper_mode else "OFF")
         return self._whisper_mode
+
+    @property
+    def voice_isolation(self):
+        return self._voice_isolation
+
+    def toggle_voice_isolation(self):
+        if not _init_voice_isolation():
+            log.warning("Voice isolation not available")
+            return False
+        self._voice_isolation = not self._voice_isolation
+        log.info("Voice isolation %s", "ON" if self._voice_isolation else "OFF")
+        return self._voice_isolation
+
+    def set_voice_isolation(self, enabled: bool):
+        if enabled and not _init_voice_isolation():
+            log.warning("Voice isolation not available")
+            return False
+        self._voice_isolation = enabled
+        log.info("Voice isolation %s", "ON" if enabled else "OFF")
+        return enabled
 
     def start(self):
         with self._lock:
@@ -137,6 +199,13 @@ class Recorder:
             gain = min(0.05 / max(rms, 1e-6), 20.0)
             audio = np.clip(audio * gain, -1.0, 1.0).astype(np.float32)
             log.info("Whisper mode: amplified %.1fx", gain)
+
+        # Voice isolation: remove background noise at native rate (before resampling)
+        if self._voice_isolation:
+            import time as _t
+            t0 = _t.time()
+            audio = _apply_voice_isolation(audio)
+            log.info("Voice isolation: %.0fms", (_t.time() - t0) * 1000)
 
         audio = _resample(audio, self._native_rate, SAMPLE_RATE)
         log.info("Resampled to %d Hz, %d samples", SAMPLE_RATE, len(audio))

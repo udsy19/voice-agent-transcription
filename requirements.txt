@@ -23,3 +23,5 @@ mss>=9.0.0
 pyautogui>=0.9.0
 onnxruntime>=1.16.0
 Pillow>=10.0.0
+deepfilternet>=0.5.0
+desktop-use>=0.1.0

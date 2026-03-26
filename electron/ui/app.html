@@ -621,6 +621,15 @@ select.inp{appearance:none;background:var(--bg) url("data:image/svg+xml,%3Csvg x
             <button id="togW" class="tog" onclick="apiPost('toggle-whisper')"></button>
           </div>
         </div>
+        <div class="card-row">
+          <div>
+            <div class="card-row-label">Voice Isolation</div>
+            <div class="card-row-sub">Remove background noise (DeepFilterNet AI)</div>
+          </div>
+          <div class="card-row-action">
+            <button id="togVI" class="tog" onclick="apiPost('toggle-voice-isolation')"></button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -971,6 +980,7 @@ async function refresh() {
     updateStatus(d.status, d.detail);
     document.getElementById('togHF').classList.toggle('on', d.hands_free);
     document.getElementById('togW').classList.toggle('on', d.whisper_mode);
+    if (d.voice_isolation !== undefined) document.getElementById('togVI').classList.toggle('on', d.voice_isolation);
 
     if (d.history && d.history.length) {
       history = [...d.history].reverse();

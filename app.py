@@ -163,6 +163,7 @@ async def get_state():
     return {
         "status": S.status, "detail": S.detail,
         "hands_free": S.hands_free, "whisper_mode": S.whisper_mode,
+        "voice_isolation": S.recorder.voice_isolation if S.recorder else False,
         "history": S.history[-20:],
         "terms": S.dictionary.terms if S.dictionary else [],
         "corrections": S.dictionary.corrections if S.dictionary else {},
@@ -356,6 +357,15 @@ async def api_toggle_w():
         S.whisper_mode = S.recorder.toggle_whisper_mode()
         emit({"type": "whisper", "on": S.whisper_mode})
     return {"ok": True}
+
+
+@api.post("/api/toggle-voice-isolation")
+async def api_toggle_vi():
+    if S.recorder:
+        enabled = S.recorder.toggle_voice_isolation()
+        emit({"type": "voice_isolation", "on": enabled})
+        return {"ok": True, "enabled": enabled}
+    return {"ok": False}
 
 
 @api.websocket("/ws")
