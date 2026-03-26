@@ -382,15 +382,23 @@ def on_key_press(key):
     if key != TRIGGER_KEY:
         return
     with _key_lock:
-        if S.key_held or S.processing or S.hands_free:
+        if S.key_held:
             return
         if not S.recorder:
             return
+
+        # Interrupt TTS if conversation agent is speaking
+        if _conversation_agent and _conversation_agent.active and _conversation_agent.tts.is_playing:
+            _conversation_agent.tts.interrupt()
+
+        if S.processing or S.hands_free:
+            return
+
         S.key_held = True
         if not S.recorder.is_recording:
             S.recorder.start()
             if _conversation_agent and _conversation_agent.active:
-                set_status("recording", "Listening — release to get response")
+                set_status("recording", "Listening...")
                 emit({"type": "conversation", "status": "transcribing"})
             else:
                 set_status("recording", "Listening — release to transcribe")

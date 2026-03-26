@@ -26,6 +26,7 @@ KOKORO_URLS = {
 }
 
 SENTENCE_SPLIT = re.compile(r'(?<=[.!?])\s+|(?<=\n)')
+MARKDOWN_STRIP = re.compile(r'[*_`#~\[\]()]')  # remove markdown chars
 
 
 def _download_models():
@@ -81,6 +82,14 @@ class StreamingTTS:
         """Speak text sentence-by-sentence. Interruptible."""
         if not text:
             return
+
+        # Strip markdown formatting
+        text = MARKDOWN_STRIP.sub('', text)
+        text = re.sub(r'\s+', ' ', text).strip()
+
+        if not text:
+            return
+
         self.interrupted = False
         self.is_playing = True
 
@@ -103,7 +112,7 @@ class StreamingTTS:
         """Generate and play audio for one sentence via kokoro."""
         try:
             samples, sample_rate = self._kokoro.create(
-                text, voice=self.voice, speed=1.0
+                text, voice=self.voice, speed=1.3  # faster speech
             )
             if self.interrupted:
                 return
@@ -128,7 +137,7 @@ class StreamingTTS:
         """Fallback: use macOS say command."""
         try:
             proc = await asyncio.create_subprocess_exec(
-                "say", "-r", "200", text,
+                "say", "-r", "250", text,  # faster macOS TTS
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL,
             )

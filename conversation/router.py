@@ -49,16 +49,24 @@ INSTANT_PATTERNS = [
      lambda _: ("lock", {})),
 ]
 
-# ── Tier 2: Groq-level keywords (fast LLM, no vision) ───────────────────────
+# ── Tier 2: Groq-level keywords (fast LLM, NO tools — just conversation) ────
 
 GROQ_KEYWORDS = {
-    "email", "mail", "inbox", "calendar", "schedule", "meeting",
-    "search", "find", "look up", "look for", "what time", "when is",
-    "remind", "reminder", "task", "todo", "slack", "message", "send",
     "weather", "news", "price", "stock", "translate", "define",
-    "set timer", "set alarm", "calculate", "how much", "how many",
-    "who is", "what is", "tell me", "summarize", "read",
+    "calculate", "how much", "how many",
+    "who is", "what is", "tell me", "explain", "describe",
+    "joke", "story", "hello", "hi", "hey", "thanks", "thank you",
+    "how are you", "good morning", "good night",
+}
+
+# Tasks that NEED tools → must go to Claude (not Groq)
+TOOL_KEYWORDS = {
+    "email", "mail", "inbox", "calendar", "schedule", "meeting",
+    "search", "find", "look up", "look for", "when is",
+    "remind", "reminder", "task", "todo", "slack", "message", "send",
     "reply", "respond", "forward", "compose", "draft",
+    "read", "check", "open and", "tell me what", "summarize",
+    "text", "call", "contact",
 }
 
 # ── Tier 3: Vision keywords (need Claude + screenshot) ───────────────────────
@@ -90,23 +98,28 @@ def route(transcript: str) -> tuple[str, dict | None]:
             log.info("Tier 1 (instant): %s → %s", lower[:40], action_type)
             return "instant", {"action": action_type, **args}
 
-    # Tier 3: vision keywords (check before Groq — more specific)
-    if any(kw in lower for kw in VISION_KEYWORDS):
-        log.info("Tier 3 (claude): %s", lower[:40])
+    # Tier 3: needs tools (messages, email, calendar, etc) → Claude
+    if any(kw in lower for kw in TOOL_KEYWORDS):
+        log.info("Tier 3 (claude, needs tools): %s", lower[:40])
         return "claude", None
 
-    # Tier 2: Groq keywords
+    # Tier 3: vision keywords → Claude
+    if any(kw in lower for kw in VISION_KEYWORDS):
+        log.info("Tier 3 (claude, vision): %s", lower[:40])
+        return "claude", None
+
+    # Tier 2: simple conversation → Groq (no tools)
     if any(kw in lower for kw in GROQ_KEYWORDS):
         log.info("Tier 2 (groq): %s", lower[:40])
         return "groq", None
 
-    # Default: short = groq, long/complex = claude
+    # Default: short conversational = groq, anything else = claude
     word_count = len(text.split())
-    if word_count <= 10:
+    if word_count <= 8:
         log.info("Tier 2 (groq, short): %s", lower[:40])
         return "groq", None
     else:
-        log.info("Tier 3 (claude, complex): %s", lower[:40])
+        log.info("Tier 3 (claude): %s", lower[:40])
         return "claude", None
 
 

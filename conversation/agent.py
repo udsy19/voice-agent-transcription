@@ -43,12 +43,15 @@ TOOL PRIORITY (fastest to slowest):
 5. click_at_coordinates — absolute last resort
 
 RULES:
-- Respond in natural spoken language. No markdown, no bullet points.
-- Be concise. 1-3 sentences. This is voice.
+- Respond in natural spoken language. No markdown, no formatting, no asterisks.
+- Be concise. 1-3 sentences. This is voice, not text.
+- NEVER make up data. If you don't know something, use a tool to find out.
+- NEVER hallucinate names, emails, messages, or events. Always use AppleScript or tools.
 - Never ask permission for read operations or reversible actions
 - Always ask before: sending emails/messages, deleting, purchases, calendar changes
 - If a step fails, try the next tool in priority order
-- Maximum 5 tool calls before asking user for guidance"""
+- Maximum 5 tool calls before asking user for guidance
+- While executing tools, briefly tell the user what you're doing"""
 
 MODEL_VISION = "claude-sonnet-4-20250514"
 MODEL_FAST = "llama-3.3-70b-versatile"
@@ -82,6 +85,9 @@ class ConversationAgent:
         self.active = True
         self._emit({"type": "conversation", "status": "warming_up"})
 
+        # Speak while loading
+        asyncio.create_task(self.tts.speak("Setting up. One moment."))
+
         await asyncio.gather(
             self._warmup(),
             self._start_mcp(),
@@ -91,6 +97,9 @@ class ConversationAgent:
         self._app_context = build_app_context()
         self._emit({"type": "conversation", "status": "listening"})
         log.info("Conversation ready. Apps: %s", get_installed_apps())
+
+        # Let user know we're ready
+        await self.tts.speak("Ready. Hold right option and speak.")
 
     async def _warmup(self):
         t0 = time.time()
