@@ -9,7 +9,6 @@ Routing: regex → embedding similarity → keyword fallback
 
 import os
 import re
-import numpy as np
 from logger import get_logger
 
 log = get_logger("router")
@@ -38,33 +37,6 @@ INSTANT_PATTERNS = [
     (r"\block\s*(?:the\s+)?(?:screen|computer)$",
      lambda _: ("lock", {})),
 ]
-
-# ── Semantic intent examples (for embedding-based routing) ───────────────────
-
-INTENT_EXAMPLES = {
-    "tool_needed": [
-        "check my email", "read my messages", "what emails do I have",
-        "schedule a meeting", "what's on my calendar", "send a message",
-        "reply to that email", "forward this to", "compose an email",
-        "find the file", "search for", "look up", "read the document",
-        "text someone", "message them", "call", "contact",
-        "remind me", "set a reminder", "create a task",
-        "open messages and tell me", "check slack", "read notifications",
-    ],
-    "vision_needed": [
-        "what is this on screen", "what am I looking at",
-        "describe what you see", "read this for me",
-        "click on that button", "fill out this form",
-        "what does this say", "rewrite this", "edit this",
-        "look at this", "what's showing", "this page",
-    ],
-    "simple_chat": [
-        "hello", "how are you", "thanks", "goodbye",
-        "what time is it", "tell me a joke", "what's the weather",
-        "define this word", "translate this", "calculate",
-        "who is", "what is", "explain", "how does",
-    ],
-}
 
 # ── App Registry ─────────────────────────────────────────────────────────────
 
@@ -95,89 +67,64 @@ APP_MECHANISMS = {
 }
 
 
-class SemanticRouter:
-    """Routes transcripts using regex → embeddings → keyword fallback."""
+# Tool-requiring keywords → Claude (has tools)
+TOOL_KEYWORDS = frozenset({
+    "email", "mail", "inbox", "calendar", "schedule", "meeting",
+    "message", "send", "reply", "check", "search", "find", "read",
+    "remind", "task", "slack", "text", "contact", "compose",
+    "open and", "tell me what", "summarize",
+})
 
-    def __init__(self):
-        self._encoder = None
-        self._intent_embeddings: dict[str, np.ndarray] = {}
-        self._loaded = False
+# Vision-requiring keywords → Claude + screenshot
+VISION_KEYWORDS = frozenset({
+    "this", "that", "here", "screen", "what's on", "look at",
+    "see", "showing", "button", "click", "fill", "form",
+    "rewrite", "edit this", "what does this",
+})
 
-    def _load_encoder(self):
-        """Skip heavy embedding model — keyword routing is fast and good enough."""
-        self._loaded = True
-
-    def route(self, transcript: str) -> tuple[str, dict | None]:
-        """Route transcript to appropriate tier."""
-        text = transcript.strip()
-        lower = text.lower()
-
-        # Tier 1: instant regex
-        for pattern, handler in INSTANT_PATTERNS:
-            match = re.search(pattern, lower)
-            if match:
-                action_type, args = handler(match)
-                log.info("Tier 1 (instant): %s → %s", lower[:40], action_type)
-                return "instant", {"action": action_type, **args}
-
-        # Tier 2/3: semantic routing
-        self._load_encoder()
-        if self._encoder and self._intent_embeddings:
-            intent, confidence = self._semantic_route(text)
-            if confidence > 0.55:
-                if intent == "tool_needed":
-                    log.info("Tier 3 (claude, semantic %.0f%%): %s", confidence * 100, lower[:40])
-                    return "claude", None
-                elif intent == "vision_needed":
-                    log.info("Tier 3 (claude+vision, semantic %.0f%%): %s", confidence * 100, lower[:40])
-                    return "claude", None
-                elif intent == "simple_chat":
-                    log.info("Tier 2 (groq, semantic %.0f%%): %s", confidence * 100, lower[:40])
-                    return "groq", None
-
-        # Keyword fallback
-        tool_kw = {"email", "mail", "inbox", "calendar", "schedule", "meeting",
-                   "message", "send", "reply", "check", "search", "find", "read",
-                   "remind", "task", "slack", "text", "contact", "compose"}
-        if any(kw in lower for kw in tool_kw):
-            log.info("Tier 3 (claude, keyword): %s", lower[:40])
-            return "claude", None
-
-        vision_kw = {"this", "that", "here", "screen", "what's on", "look at",
-                     "see", "showing", "button", "click", "fill", "form", "rewrite", "edit this"}
-        if any(kw in lower for kw in vision_kw):
-            log.info("Tier 3 (claude+vision, keyword): %s", lower[:40])
-            return "claude", None
-
-        # Default: short = groq, long = claude
-        if len(text.split()) <= 8:
-            log.info("Tier 2 (groq, short): %s", lower[:40])
-            return "groq", None
-        log.info("Tier 3 (claude): %s", lower[:40])
-        return "claude", None
-
-    def _semantic_route(self, text: str) -> tuple[str, float]:
-        """Route via cosine similarity to intent examples."""
-        query = self._encoder.encode(text).reshape(1, -1)
-        best_intent = "simple_chat"
-        best_score = 0.0
-
-        for intent, embeddings in self._intent_embeddings.items():
-            scores = np.dot(query, embeddings.T)[0]
-            max_score = float(np.max(scores))
-            if max_score > best_score:
-                best_score = max_score
-                best_intent = intent
-
-        return best_intent, best_score
-
-
-# Global router instance
-_router = SemanticRouter()
+# Simple conversation → Groq (fast, no tools)
+SIMPLE_KEYWORDS = frozenset({
+    "hello", "hi", "hey", "thanks", "thank you", "goodbye",
+    "how are you", "good morning", "joke", "define", "translate",
+    "calculate", "explain", "what is", "who is",
+})
 
 
 def route(transcript: str) -> tuple[str, dict | None]:
-    return _router.route(transcript)
+    """Route transcript to tier 1 (instant), tier 2 (groq), or tier 3 (claude)."""
+    text = transcript.strip()
+    lower = text.lower()
+
+    # Tier 1: instant regex patterns
+    for pattern, handler in INSTANT_PATTERNS:
+        match = re.search(pattern, lower)
+        if match:
+            action_type, args = handler(match)
+            log.info("Tier 1 (instant): %s → %s", lower[:40], action_type)
+            return "instant", {"action": action_type, **args}
+
+    # Tier 3: needs tools
+    if any(kw in lower for kw in TOOL_KEYWORDS):
+        log.info("Tier 3 (claude): %s", lower[:40])
+        return "claude", None
+
+    # Tier 3: needs vision
+    if any(kw in lower for kw in VISION_KEYWORDS):
+        log.info("Tier 3 (claude+vision): %s", lower[:40])
+        return "claude", None
+
+    # Tier 2: simple conversation
+    if any(kw in lower for kw in SIMPLE_KEYWORDS):
+        log.info("Tier 2 (groq): %s", lower[:40])
+        return "groq", None
+
+    # Default: short = groq, long = claude
+    if len(text.split()) <= 8:
+        log.info("Tier 2 (groq): %s", lower[:40])
+        return "groq", None
+
+    log.info("Tier 3 (claude): %s", lower[:40])
+    return "claude", None
 
 
 def get_installed_apps() -> dict[str, str]:

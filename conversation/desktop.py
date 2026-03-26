@@ -13,6 +13,10 @@ import os
 from logger import get_logger
 from injector import inject_text, undo_last_paste
 
+def _esc(s: str) -> str:
+    """Escape string for AppleScript double-quoted strings."""
+    return s.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
+
 log = get_logger("desktop")
 
 
@@ -130,7 +134,7 @@ class DesktopController:
         """Read the full UI tree of an app via accessibility API."""
         script = f'''
         tell application "System Events"
-            tell process "{app_name}"
+            tell process "{_esc(app_name)}"
                 set output to ""
                 repeat with w in windows
                     set output to output & "WINDOW: " & name of w & return
@@ -166,7 +170,7 @@ class DesktopController:
         """Click a named UI element via accessibility."""
         script = f'''
         tell application "System Events"
-            tell process "{app_name}"
+            tell process "{_esc(app_name)}"
                 try
                     click button "{element_name}" of window 1
                     return "clicked button"
@@ -187,7 +191,7 @@ class DesktopController:
         """Type text into a named UI element."""
         script = f'''
         tell application "System Events"
-            tell process "{app_name}"
+            tell process "{_esc(app_name)}"
                 try
                     set value of text field "{element_name}" of window 1 to "{text}"
                     return "typed"

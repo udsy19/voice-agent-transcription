@@ -8,6 +8,7 @@ Pipeline:
   5. Post-validation: reject if LLM hallucinated
 """
 
+import json
 import re
 import subprocess
 from groq import Groq
@@ -231,7 +232,12 @@ class Cleaner:
                 max_tokens=256,
             )
             content = response.choices[0].message.content.strip()
-            import json
+            # Strip markdown code blocks if present
+            if content.startswith("```"):
+                content = content.split("```")[1]
+                if content.startswith("json"):
+                    content = content[4:]
+                content = content.strip()
             if content.startswith("["):
                 terms = json.loads(content)
                 if isinstance(terms, list):

@@ -113,10 +113,6 @@ class VADStream:
                                 self._result_queue.put(audio), self._loop
                             )
 
-    async def _emit(self, event: str):
-        """Emit an event to the result queue."""
-        pass  # Events are handled by checking is_speech_active
-
     async def start(self):
         """Start continuous listening. Yields complete utterances as numpy arrays."""
         self._load_model()

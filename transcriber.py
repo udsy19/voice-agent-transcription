@@ -18,9 +18,6 @@ from logger import get_logger
 
 log = get_logger("transcriber")
 
-BACKENDS = ["parakeet", "mlx", "groq", "faster-whisper"]
-
-
 def _get_optimal_threads():
     try:
         return max(4, int((os.cpu_count() or 4) * 0.75))
@@ -28,10 +25,21 @@ def _get_optimal_threads():
         return 4
 
 
+_last_wav = None
+
 def _audio_to_wav(audio: np.ndarray, sample_rate: int = 16000) -> str:
     """Write audio array to a temporary WAV file. Returns path."""
-    path = os.path.join(tempfile.gettempdir(), "voiceagent_audio.wav")
+    global _last_wav
+    # Clean up previous temp file
+    if _last_wav and os.path.exists(_last_wav):
+        try:
+            os.remove(_last_wav)
+        except Exception:
+            pass
+    fd, path = tempfile.mkstemp(suffix=".wav", prefix="voiceagent_")
+    os.close(fd)
     sf.write(path, audio, sample_rate)
+    _last_wav = path
     return path
 
 

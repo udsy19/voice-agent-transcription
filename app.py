@@ -11,9 +11,11 @@ Hold Right Option → record → release → transcribe → paste
 import sys
 import os
 import json
+import difflib
 import threading
 import time
 import asyncio
+from pathlib import Path
 import webbrowser
 import subprocess
 
@@ -254,16 +256,16 @@ async def api_set_groq_key(body: dict):
     key = body.get("key", "").strip()
     if not key:
         return {"ok": False, "reason": "empty key"}
-    # Save to .env
-    from pathlib import Path
+    # Update .env without overwriting other keys
     from config import DATA_DIR
-    env_path = DATA_DIR / ".env"
-    env_path.write_text(f"GROQ_API_KEY={key}\n")
-    # Also save to project dir for dev mode
-    try:
-        (Path(__file__).parent / ".env").write_text(f"GROQ_API_KEY={key}\n")
-    except Exception:
-        pass
+    for env_path in [DATA_DIR / ".env", Path(__file__).parent / ".env"]:
+        try:
+            existing = env_path.read_text() if env_path.exists() else ""
+            lines = [l for l in existing.splitlines() if not l.startswith("GROQ_API_KEY=")]
+            lines.append(f"GROQ_API_KEY={key}")
+            env_path.write_text("\n".join(lines) + "\n")
+        except Exception:
+            pass
     # Reinitialize cleaner
     import config
     config.GROQ_API_KEY = key
@@ -540,7 +542,6 @@ def _compute_diff(raw: str, cleaned: str) -> list[dict]:
 
     Returns list of {type: "same"|"removed"|"added", text: str}
     """
-    import difflib
     raw_words = raw.split()
     cleaned_words = cleaned.split()
     diff = []
