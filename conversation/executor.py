@@ -141,14 +141,16 @@ class ToolExecutor:
 
     def _validate(self, tool: str, args: dict, result: str) -> bool:
         """Check if the tool actually did what we asked."""
-        if "Error" in result:
+        # AppleScript errors always start with specific patterns
+        if result.startswith("Error:") or "execution error" in result.lower():
             return False
         if tool == "open_app":
             return _is_app_running(args.get("app_name", ""))
         if tool == "read_app_ui":
-            return len(result) > 10  # got meaningful UI content
+            return len(result) > 5
+        # For run_applescript: empty result is OK (means script ran without output)
         if tool == "run_applescript":
-            return "error" not in result.lower()
+            return "error:" not in result.lower()[:20]
         return True
 
     async def _try_fallback(self, tool: str, args: dict) -> ToolResult | None:

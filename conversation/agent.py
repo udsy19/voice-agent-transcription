@@ -43,16 +43,21 @@ TOOL PRIORITY (fastest to slowest):
 4. query_screen_memory — for retrieving past context
 5. click_at_coordinates — absolute last resort
 
-RULES:
-- Respond in natural spoken language. No markdown, no formatting, no asterisks.
-- Be concise. 1-3 sentences. This is voice, not text.
-- NEVER make up data. If you don't know, use a tool to find out.
-- NEVER hallucinate names, emails, messages, or events.
-- Never ask permission for read operations or reversible actions
-- Always ask before: sending emails/messages, deleting, purchases
-- While executing tools, briefly tell the user what you're doing
-- If a tool fails, try the next method in priority order
-- Maximum 5 tool calls before asking user for guidance"""
+CRITICAL RULES:
+- Respond in natural spoken language. No markdown, no asterisks, no formatting.
+- Be concise. 1-3 sentences. This is voice.
+- NEVER make up data. ALWAYS use tools to get real information.
+- NEVER guess names, emails, messages, contacts, or events.
+- COMPLETE THE FULL TASK. Don't stop halfway. If user asks to check messages and reply, do ALL steps:
+  1. Open the app
+  2. Read the messages
+  3. Tell the user what you found
+  4. Ask what they want to reply
+  5. Type and send the reply
+- NARRATE what you're doing at each step. Say "Opening Messages" then "Reading your recent conversations" then "Your last message is from..."
+- If a tool fails, explain what went wrong and try another approach.
+- Ask for confirmation before: sending messages, deleting, purchases.
+- For reading info (messages, emails, calendar): just do it and report back."""
 
 MODEL_VISION = "claude-sonnet-4-20250514"
 MODEL_FAST = "llama-3.3-70b-versatile"
@@ -84,7 +89,7 @@ class ConversationAgent:
     async def start(self):
         self.active = True
         self._emit({"type": "conversation", "status": "warming_up"})
-        asyncio.create_task(self.tts.speak("Setting up."))
+        await self.tts.speak("Setting up. One moment.")
 
         await asyncio.gather(
             self._warmup(),
@@ -94,8 +99,16 @@ class ConversationAgent:
 
         self._app_context = build_app_context()
         self._emit({"type": "conversation", "status": "listening"})
-        log.info("Ready. Apps: %s", get_installed_apps())
-        await self.tts.speak("Ready. Hold right option and speak.")
+        apps = get_installed_apps()
+        log.info("Ready. Apps: %s", apps)
+
+        # Tell user what's available
+        app_list = ", ".join(apps.values())[:60]
+        await self.tts.speak(
+            f"Ready. I can see {app_list} on your Mac. "
+            "Hold right option and tell me what you need. "
+            "I can open apps, check messages, read emails, manage your calendar, and more."
+        )
 
     async def _warmup(self):
         t0 = time.time()
@@ -237,24 +250,36 @@ class ConversationAgent:
                 return
 
             if response.stop_reason == "tool_use":
+                # Narrate what we're doing BEFORE executing
+                for block in response.content:
+                    if hasattr(block, "text") and block.text:
+                        # Claude often explains what it's about to do
+                        await self.tts.speak(block.text)
+
                 first_tool = next((b for b in response.content if b.type == "tool_use"), None)
-                if first_tool:
+                if first_tool and not any(hasattr(b, "text") and b.text for b in response.content):
+                    # No explanation text — speak a filler
                     fillers = TOOL_FILLERS.get(first_tool.name, ["On it..."])
-                    asyncio.create_task(self.tts.speak(random.choice(fillers)))
+                    await self.tts.speak(random.choice(fillers))
 
                 tool_results = []
                 for block in response.content:
                     if block.type == "tool_use":
-                        log.info("Tool [%d]: %s", iteration, block.name)
+                        log.info("Tool [%d]: %s(%s)", iteration, block.name, str(block.input)[:80])
                         result = await self.executor.execute(block.name, block.input)
+
+                        if not result.ok:
+                            # Tell user the tool failed
+                            await self.tts.speak(f"That didn't work. {result.error[:60]}. Let me try another way.")
+                            log.warning("Tool failed: %s — %s", block.name, result.error)
+
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": block.id,
-                            "content": result.result[:2000] if result.ok else f"Error: {result.error}",
+                            "content": result.result[:2000] if result.ok else f"Error: {result.error}. Try a different approach.",
                         })
-                        # Update dialogue state
                         self.memory.dialogue.update(
-                            block.name, f"{block.name}({list(block.input.keys())})",
+                            block.name, f"{block.name}",
                             entities=[str(v)[:50] for v in block.input.values()],
                         )
 

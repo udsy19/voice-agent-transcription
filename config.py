@@ -11,6 +11,9 @@ try:
 except ImportError:
     pass
 
+# Suppress tokenizers parallelism warning
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
 # ── Paths ────────────────────────────────────────────────────────────────────
 
 # Project source directory (where the .py files live)

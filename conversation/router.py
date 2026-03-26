@@ -104,19 +104,8 @@ class SemanticRouter:
         self._loaded = False
 
     def _load_encoder(self):
-        """Lazy-load sentence transformer for semantic routing."""
-        if self._loaded:
-            return
-        try:
-            from sentence_transformers import SentenceTransformer
-            self._encoder = SentenceTransformer("all-MiniLM-L6-v2")
-            for intent, examples in INTENT_EXAMPLES.items():
-                self._intent_embeddings[intent] = self._encoder.encode(examples)
-            self._loaded = True
-            log.info("Semantic router loaded (%d intents)", len(self._intent_embeddings))
-        except Exception as e:
-            log.warning("Semantic router failed: %s, using keyword fallback", e)
-            self._loaded = True  # don't retry
+        """Skip heavy embedding model — keyword routing is fast and good enough."""
+        self._loaded = True
 
     def route(self, transcript: str) -> tuple[str, dict | None]:
         """Route transcript to appropriate tier."""
