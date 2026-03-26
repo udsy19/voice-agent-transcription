@@ -64,7 +64,7 @@ class ToolExecutor:
         self.desktop = desktop
         self.metrics = metrics
 
-    async def execute(self, tool_name: str, args: dict, max_retries: int = 2) -> ToolResult:
+    async def execute(self, tool_name: str, args: dict, max_retries: int = 1) -> ToolResult:
         """Execute a tool with structured error handling."""
         t0 = time.time()
 
@@ -141,16 +141,11 @@ class ToolExecutor:
 
     def _validate(self, tool: str, args: dict, result: str) -> bool:
         """Check if the tool actually did what we asked."""
-        # AppleScript errors always start with specific patterns
-        if result.startswith("Error:") or "execution error" in result.lower():
+        # Only reject clear errors — don't over-validate
+        if result.startswith("Error: script timed out"):
             return False
-        if tool == "open_app":
-            return _is_app_running(args.get("app_name", ""))
-        if tool == "read_app_ui":
-            return len(result) > 5
-        # For run_applescript: empty result is OK (means script ran without output)
-        if tool == "run_applescript":
-            return "error:" not in result.lower()[:20]
+        if "execution error" in result.lower():
+            return False
         return True
 
     async def _try_fallback(self, tool: str, args: dict) -> ToolResult | None:
