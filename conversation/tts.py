@@ -111,8 +111,10 @@ class StreamingTTS:
     async def _speak_kokoro(self, text: str):
         """Generate and play audio for one sentence via kokoro."""
         try:
+            # Emotional speed: adjust based on content
+            speed = self._detect_speed(text)
             samples, sample_rate = self._kokoro.create(
-                text, voice=self.voice, speed=1.3  # faster speech
+                text, voice=self.voice, speed=speed
             )
             if self.interrupted:
                 return
@@ -151,6 +153,21 @@ class StreamingTTS:
                 proc.kill()
         except Exception as e:
             log.error("macOS say failed: %s", e)
+
+    def _detect_speed(self, text: str) -> float:
+        """Adjust TTS speed based on content emotion."""
+        lower = text.lower()
+        # Excited/positive
+        if any(w in lower for w in ["!", "great", "awesome", "perfect", "done", "got it", "sure"]):
+            return 1.4
+        # Serious/important
+        if any(w in lower for w in ["important", "warning", "careful", "error", "failed", "sorry"]):
+            return 1.1
+        # Informational/reading back data
+        if any(w in lower for w in ["you have", "there are", "showing", "from", "subject"]):
+            return 1.2
+        # Default
+        return 1.3
 
     def interrupt(self):
         """Stop playback immediately."""
