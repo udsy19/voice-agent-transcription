@@ -77,13 +77,17 @@ S = State()
 
 async def broadcast(msg: dict):
     dead = []
-    for ws in S.ws_clients:
+    clients = list(S.ws_clients)  # snapshot to avoid mutation during iteration
+    for ws in clients:
         try:
-            await ws.send_json(msg)
+            await asyncio.wait_for(ws.send_json(msg), timeout=2.0)
         except Exception:
             dead.append(ws)
     for ws in dead:
-        S.ws_clients.remove(ws)
+        try:
+            S.ws_clients.remove(ws)
+        except ValueError:
+            pass
 
 
 def emit(msg: dict):
@@ -437,21 +441,32 @@ def _stop_and_converse():
         set_status("idle", "Too short or silent")
         emit({"type": "conversation", "status": "listening"})
         return
-    S.processing = True
+
+    with _key_lock:
+        S.processing = True
 
     async def _run():
         try:
             await _conversation_agent.process_audio(audio)
         except Exception as e:
             log.error("Conversation error: %s", e, exc_info=True)
+            # Tell user something went wrong
+            try:
+                await _conversation_agent.tts.speak("Sorry, something went wrong.")
+            except Exception:
+                pass
+            emit({"type": "conversation", "status": "listening"})
         finally:
-            S.processing = False
+            with _key_lock:
+                S.processing = False
 
     loop = getattr(emit, '_loop', None)
     if loop:
         asyncio.run_coroutine_threadsafe(_run(), loop)
     else:
-        S.processing = False
+        log.error("No event loop for conversation")
+        with _key_lock:
+            S.processing = False
 
 
 def toggle_hands_free():

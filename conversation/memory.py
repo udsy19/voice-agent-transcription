@@ -243,9 +243,7 @@ class AgentMemory:
         })
         if len(self.session_history) > MAX_SESSION_TURNS:
             self.session_history = self.session_history[-MAX_SESSION_TURNS:]
-        # Auto-save every 5 messages
-        if len(self.session_history) % 5 == 0:
-            self.save_session()
+        self.save_session()  # save every message — no data loss on crash
 
     def get_session_messages(self) -> list[dict]:
         return [{"role": m["role"], "content": m["content"]} for m in self.session_history]

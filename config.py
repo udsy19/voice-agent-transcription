@@ -14,6 +14,12 @@ except ImportError:
 # Suppress tokenizers parallelism warning
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
+# Laminar observability (optional — set LMNR_PROJECT_API_KEY to enable)
+LMNR_API_KEY = os.getenv("LMNR_PROJECT_API_KEY", "")
+
+# Supermemory (optional — set SUPERMEMORY_API_KEY to enable)
+SUPERMEMORY_API_KEY = os.getenv("SUPERMEMORY_API_KEY", "")
+
 # ── Paths ────────────────────────────────────────────────────────────────────
 
 # Project source directory (where the .py files live)

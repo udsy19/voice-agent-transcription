@@ -66,6 +66,12 @@ class StreamingTTS:
         self._load()
 
     def _load(self):
+        # Suppress phonemizer warnings
+        import warnings
+        warnings.filterwarnings("ignore", message=".*phonemize.*")
+        warnings.filterwarnings("ignore", message=".*words count mismatch.*")
+        os.environ.setdefault("PHONEMIZER_ESPEAK_MBROLA", "0")
+
         try:
             _download_models()
             if KOKORO_MODEL.exists() and KOKORO_VOICES.exists():

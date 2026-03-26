@@ -179,16 +179,20 @@ class ConversationAgent:
                 await self._handle_groq(transcript, screen, mem_block, t0)
             else:
                 await self.tts.speak("No API key configured.")
+        except anthropic.RateLimitError:
+            log.warning("Claude rate limited")
+            await self.tts.speak("I'm being rate limited. Try again in a moment.")
         except Exception as e:
             log.error("Processing error: %s", e, exc_info=True)
             await self.tts.speak("Sorry, something went wrong. Try again.")
 
+        # ALWAYS return to listening — never get stuck
         self._emit({"type": "conversation", "status": "listening"})
         METRICS.record("total_turn_ms", (time.time() - t0) * 1000)
 
-        # Memory extraction
+        # Memory extraction (skip first turn)
         self._turn_count += 1
-        if self._turn_count % MEMORY_EXTRACT_INTERVAL == 0 and self.claude:
+        if self._turn_count > 1 and self._turn_count % MEMORY_EXTRACT_INTERVAL == 0 and self.claude:
             asyncio.create_task(
                 self.memory.extract_and_store(
                     self.memory.session_history[-MEMORY_EXTRACT_INTERVAL:], self.claude
@@ -295,13 +299,19 @@ class ConversationAgent:
             reply = " ".join(b.text for b in response.content if hasattr(b, "text")).strip()
             if reply:
                 while self.tts.is_playing:
-                    await asyncio.sleep(0.05)
+                    await asyncio.sleep(0.1)
                 self.memory.add_to_session("assistant", reply)
                 self.memory.dialogue.update(reply, "responded")
                 self._emit({"type": "conversation", "status": "speaking", "agent_text": reply})
                 await self._speak_sentences(reply)
                 METRICS.record("claude_turn_ms", (time.time() - t0) * 1000)
+            else:
+                # No text reply — don't go silent
+                await self.tts.speak("I'm not sure how to help with that. Could you try asking differently?")
             break
+        else:
+            # Exhausted 5 tool iterations — tell user
+            await self.tts.speak("I tried several approaches but couldn't complete that. Could you give me more details?")
 
     async def _stream_and_speak(self, stream, t0) -> str:
         """Stream Groq response, speak sentence by sentence."""
