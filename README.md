@@ -1,54 +1,51 @@
 # Voice Agent
 
-Local voice dictation that works system-wide. Hold a key, speak, release — cleaned text appears wherever your cursor is.
-
-Runs entirely on your machine. No audio leaves your device (except the optional Groq API call for text cleanup).
+Local voice dictation + AI desktop assistant. Hold a key, speak, release — text appears at your cursor. Or switch to conversation mode and control your Mac with voice.
 
 ![Hold to dictate](https://img.shields.io/badge/Hold_⌥R-Dictate-1C0E04?style=for-the-badge)
-![Local Whisper](https://img.shields.io/badge/Whisper-Local_ASR-CC8A24?style=for-the-badge)
-![Groq Cleanup](https://img.shields.io/badge/Groq-LLM_Cleanup-877263?style=for-the-badge)
+![Conversation](https://img.shields.io/badge/Right_Click_Pill-Conversation-4040B4?style=for-the-badge)
+![Local First](https://img.shields.io/badge/Privacy-Local_First-38A169?style=for-the-badge)
 
 ---
 
-## How it works
+## Two Modes
 
-1. **Hold Right Option (⌥)** — recording starts, floating pill shows waveform
-2. **Speak** — Whisper transcribes locally in real-time
-3. **Release** — text gets cleaned by Groq and pasted at your cursor
-4. Text also stays on clipboard for Cmd+V
+### Dictation Mode (default)
+Hold Right Option → speak → release → cleaned text pastes at cursor. Works in any app.
 
-Works in any app — Slack, Notion, VS Code, browser, terminal, anywhere.
+### Conversation Mode (right-click pill to toggle)
+Hold Right Option → speak → release → agent responds via voice. Can see your screen, open apps, read messages, manage calendar, control your Mac.
 
 ---
 
 ## Features
 
-**Core**
+**Dictation**
 - Hold-to-record with global hotkey (Right Option)
-- Local transcription via Whisper (distil-large-v3)
-- AI cleanup: removes fillers (um, uh, like), fixes grammar, adds punctuation
-- Pastes directly at cursor position, also copies to clipboard
+- Multi-backend transcription: Groq API (fastest), MLX Whisper (GPU), Parakeet (local), faster-whisper (CPU)
+- Hybrid AI cleanup: local filler removal + Groq LLM for complex cases
+- Voice isolation (DeepFilterNet3) — removes background noise
+- Smart undo, backtracking, list formatting, command mode
+- Auto-learning dictionary, voice snippets, voice macros
+- Per-app tone adaptation (formal in Docs, casual in Slack, code in VS Code)
+- Diff view showing what was changed
 
-**Smart**
-- Backtracking — "Tuesday... actually Wednesday" → "Wednesday"
-- List formatting — "first X second Y third Z" → numbered list
-- Smart undo — say "undo that" within 10s to revert
-- Command mode — "Hey Flow, make this more professional" transforms selected text
-- Streaming preview — partial text appears in pill as you speak
-
-**Personalization**
-- Auto-learning dictionary — detects names, emails, acronyms and remembers them
-- Manual dictionary with custom corrections
-- Voice snippets — "insert email signature" → pastes full text block
-- Voice macros — "email mode" chains actions (set tone + insert template)
-- Per-app tone — formal in Docs, casual in Slack, code syntax in VS Code
+**Conversation**
+- 3-tier intent routing: instant (<100ms) → Groq (~400ms) → Claude (~800ms)
+- Desktop control: AppleScript + Accessibility API + Terminator
+- Screen awareness: screenshots + active app context sent to Claude
+- Tool execution: open apps, read messages/emails, type text, click elements
+- Persistent memory: session history + LanceDB vector store + knowledge graph
+- User profile that evolves across sessions
+- Kokoro TTS with emotional speed (excited=faster, serious=slower)
+- Spoken narration at every step ("Opening Messages..." → "Found 3 conversations...")
 
 **Desktop App**
-- Electron app with floating pill (always visible, expands on recording)
+- Electron app with floating pill (idle capsule → recording waveform → processing → done)
 - Sidebar UI: Home, Dictionary, Snippets, Style, Macros, Scratchpad, Settings
-- Domain modes: Tech, Medical, Legal, Finance (specialized vocabulary)
-- Style per context: Personal messages, Work messages, Email, Other
-- Tray icon, runs in background
+- Setup wizard with permission checks (mic, input monitoring, API key)
+- Configurable transcription engine from Settings dropdown
+- Persistent data in `~/Library/Application Support/VoiceAgent/`
 
 ---
 
@@ -59,7 +56,8 @@ Works in any app — Slack, Notion, VS Code, browser, terminal, anywhere.
 - **macOS** (Apple Silicon or Intel)
 - **Python 3.11+**
 - **Node.js 18+**
-- **Groq API key** — get one free at [console.groq.com](https://console.groq.com)
+- **Groq API key** — free at [console.groq.com](https://console.groq.com)
+- **Anthropic API key** (for conversation mode) — [console.anthropic.com](https://console.anthropic.com)
 
 ### Install
 
@@ -73,147 +71,177 @@ pip install -r requirements.txt
 # Electron dependencies
 cd electron && npm install && cd ..
 
-# Set your Groq API key
-echo "GROQ_API_KEY=gsk_your_key_here" > .env
+# Set API keys
+cp .env.example .env
+# Edit .env with your keys
 ```
 
 ### Run
 
 ```bash
-# From Terminal.app (needed for mic access)
+# From Terminal.app (required for mic access)
 bash start.sh
 ```
 
 This starts the Python backend + Electron UI. The floating pill appears at the top of your screen.
 
-**First time:** macOS will ask for Microphone and Accessibility permissions. Grant both.
+**First time:** macOS will prompt for Microphone, Input Monitoring, and Accessibility permissions. The app shows a setup wizard to guide you.
 
-You can also set your Groq API key from Settings inside the app (no need to edit `.env`).
+### Permissions
 
-### Alternative: Web-only mode
-
-```bash
-python3 app.py
-```
-
-Opens a browser dashboard at `http://localhost:8528`. Same features, no Electron needed.
+| Permission | Why | Where to grant |
+|---|---|---|
+| Microphone | Record voice | System Settings → Privacy → Microphone |
+| Input Monitoring | Global hotkey | System Settings → Privacy → Input Monitoring → add Python.app |
+| Accessibility | Paste text | System Settings → Privacy → Accessibility |
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────┐
-│  Electron (UI)                          │
-│  ├── Main window (settings, history)    │
-│  ├── Floating pill (waveform, status)   │
-│  └── Tray icon                          │
-│           │                             │
-│     WebSocket + REST                    │
-│           │                             │
-│  Python Backend (localhost:8528)         │
-│  ├── pynput (global hotkey listener)    │
-│  ├── sounddevice (mic capture)          │
-│  ├── faster-whisper (local ASR)         │
-│  ├── Groq API (LLM text cleanup)       │
-│  └── Quartz CGEvent (text injection)    │
-└─────────────────────────────────────────┘
+┌─ Electron ──────────────────────────────────────────────┐
+│  Main window (settings)  │  Floating pill (waveform)    │
+│  Tray icon               │  Tooltip: "Hold ⌥R"         │
+└──────────────────────────┼──────────────────────────────┘
+                           │ WebSocket + REST
+┌─ Python Backend ─────────┼──────────────────────────────┐
+│                          │                              │
+│  DICTATION MODE          │  CONVERSATION MODE           │
+│  recorder → transcriber  │  recorder → transcriber      │
+│  → cleaner → injector    │  → router → Claude/Groq      │
+│  (paste at cursor)       │  → tools → TTS (speak back)  │
+│                          │                              │
+│  Shared: dictionary, snippets, macros, styles, domains  │
+│  Persistent: ~/Library/Application Support/VoiceAgent/  │
+└─────────────────────────────────────────────────────────┘
 ```
-
-**Privacy:** Audio is transcribed locally by Whisper. Only the transcribed text is sent to Groq for cleanup (grammar, punctuation, filler removal). No audio ever leaves your machine.
 
 ---
 
 ## File Structure
 
 ```
-├── app.py              # FastAPI server + voice engine
-├── recorder.py         # Mic capture, silence detection, resampling
-├── transcriber.py      # Whisper wrapper (streaming + batch)
-├── cleaner.py          # Groq LLM cleanup + auto-term extraction
-├── injector.py         # Text injection (paste + character typing)
-├── dictionary.py       # Personal dictionary (terms + corrections)
-├── snippets.py         # Voice-triggered text snippets
-├── macros.py           # Chainable voice workflows
-├── domains.py          # Domain-specific vocabulary modes
-├── styles.py           # Tone profiles and per-app overrides
-├── config.py           # All configuration
-├── logger.py           # Rotating file logger
-├── start.sh            # Launcher script
+├── app.py                  # FastAPI server + voice engine + conversation endpoints
+├── recorder.py             # Mic capture, silence detection, voice isolation
+├── transcriber.py          # Multi-backend: Groq API, MLX, Parakeet, faster-whisper
+├── cleaner.py              # Hybrid cleanup: local regex + Groq LLM
+├── injector.py             # Text injection: clipboard paste + char-by-char typing
+├── dictionary.py           # Personal dictionary (terms + auto-corrections)
+├── snippets.py             # Voice-triggered text snippets
+├── macros.py               # Chainable voice workflows
+├── domains.py              # Domain vocabulary (tech, medical, legal, finance)
+├── styles.py               # Tone profiles and per-app overrides
+├── config.py               # All configuration (env var overrides)
+├── logger.py               # Rotating file logger
+├── start.sh                # Launcher script
+│
+├── conversation/           # Conversation mode
+│   ├── agent.py            # Main loop: route → LLM → tools → TTS
+│   ├── router.py           # 3-tier intent routing
+│   ├── executor.py         # Structured tool execution
+│   ├── desktop.py          # AppleScript + Accessibility + Terminator
+│   ├── tools.py            # Tool definitions for Claude API
+│   ├── context.py          # Screen capture + active app
+│   ├── tts.py              # Kokoro TTS (streaming, emotional)
+│   ├── memory.py           # Session + LanceDB + knowledge graph + user profile
+│   ├── metrics.py          # Latency/error tracking
+│   ├── mcp_client.py       # MCP server connections
+│   └── vad_stream.py       # Silero VAD (continuous listening)
+│
 ├── electron/
-│   ├── main.js         # Electron main process
-│   ├── preload.js      # Context bridge
+│   ├── main.js             # Electron main process
+│   ├── preload.js          # Context bridge
 │   └── ui/
-│       ├── app.html    # Settings window
-│       └── pill.html   # Floating pill overlay
-└── .env                # GROQ_API_KEY (not committed)
+│       ├── app.html        # Settings window (Claura design)
+│       └── pill.html       # Floating pill overlay
+│
+└── .env                    # API keys (not committed)
 ```
 
 ---
 
 ## Voice Commands
 
+### Dictation Mode
+
 | Say this | What happens |
 |---|---|
 | *(hold ⌥R and speak)* | Dictates and pastes text |
-| "undo that" / "go back" | Reverts the last paste (within 10s) |
+| "undo that" / "go back" | Reverts the last paste |
 | "Hey Flow, make this more professional" | Transforms selected text |
-| "email mode" | Sets formal tone + inserts greeting |
-| "code mode" | Sets code tone + activates tech domain |
-| "standup notes" | Inserts standup template |
-| "meeting notes" | Inserts meeting notes template |
-| "insert *(snippet trigger)*" | Pastes the matching snippet |
-| "scratch that" | Deletes the preceding sentence |
-| "new paragraph" | Inserts a line break |
-| "period" / "comma" / "question mark" | Inserts punctuation |
+| "email mode" / "code mode" | Activates voice macro |
+| "insert *(trigger phrase)*" | Pastes matching snippet |
+| "scratch that" | Deletes preceding sentence |
+| "new paragraph" | Inserts line break |
+
+### Conversation Mode
+
+| Say this | What happens |
+|---|---|
+| "open Slack" | Opens the app (~80ms) |
+| "check my messages" | Reads iMessages via AppleScript |
+| "what's on my calendar today" | Reads Calendar events |
+| "reply saying I'll be there at 2" | Types and sends reply |
+| "what is this on screen" | Claude sees your screen and describes it |
+| "play music" / "volume up" | Media control (~80ms) |
 
 ---
 
 ## Configuration
 
-### Groq API Key
-
-Set via the Settings page in the app, or manually:
+All settings configurable via environment variables in `.env`:
 
 ```bash
-echo "GROQ_API_KEY=gsk_your_key_here" > .env
+# Required
+GROQ_API_KEY=gsk_...
+
+# Conversation mode (optional)
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Customization (optional)
+WHISPER_MODEL=distil-large-v3
+GROQ_MODEL=llama-3.1-8b-instant
+CONVERSATION_MODEL=claude-sonnet-4-20250514
+TTS_VOICE=af_heart
+TTS_SPEED=1.3
+VOICE_AGENT_PORT=8528
 ```
 
-### Whisper Model
-
-Edit `config.py`:
-
-```python
-WHISPER_MODEL = "distil-large-v3"  # best accuracy
-# or "distil-small.en"            # faster, slightly less accurate
-```
-
-### Silence Threshold
-
-If recordings are being rejected as "too quiet":
-
-```python
-SILENCE_THRESHOLD = 0.005  # lower = more sensitive (default)
-```
+Or set API keys from the Settings page inside the app.
 
 ---
 
 ## Troubleshooting
 
 **Mic not working (RMS = 0.0000)**
-- Run from **Terminal.app**, not other terminals (cmux, iTerm may lack mic permission)
-- Check System Settings → Privacy & Security → Microphone
+- Run from **Terminal.app** (cmux/iTerm may lack mic permission)
+- System Settings → Privacy & Security → Microphone → enable Terminal
+
+**Hotkey not working**
+- System Settings → Privacy & Security → Input Monitoring
+- Add `/Library/Frameworks/Python.framework/Versions/3.13/Resources/Python.app`
 
 **Text not pasting**
-- Check System Settings → Privacy & Security → Accessibility
-- Text is always on clipboard — you can Cmd+V manually
+- System Settings → Privacy & Security → Accessibility
+- Text stays on clipboard — Cmd+V works as fallback
 
 **Port 8528 in use**
 - `pkill -f 'app.py'` then retry
 
-**Slow transcription**
-- Try `distil-small.en` model in config.py (2-3x faster, slightly less accurate)
-- Or use Groq's cloud Whisper API for near-instant transcription
+**Conversation agent goes idle**
+- Check terminal for error logs
+- Ensure ANTHROPIC_API_KEY is set in .env
+
+---
+
+## Branches
+
+| Branch | Purpose |
+|---|---|
+| `main` | Stable dictation mode |
+| `conversational-control` | Conversation mode + desktop control |
+| `browser-access` | Browser automation + web integration |
 
 ---
 
