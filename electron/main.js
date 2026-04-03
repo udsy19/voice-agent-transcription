@@ -257,7 +257,7 @@ function createMainWindow() {
     minHeight: 500,
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 16 },
-    backgroundColor: '#FAF6F0',
+    backgroundColor: '#0a0a0a',
     show: false,
     webPreferences: {
       contextIsolation: true,

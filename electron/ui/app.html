@@ -6,1270 +6,403 @@
 <title>Muse</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Halant:wght@300;400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
-:root {
-  --bg:#FAF6F0; --bg2:#F2EBE1; --card:#fff;
-  --pri:#1C0E04; --acc:#ECE3D8; --amb:#CC8A24;
-  --mut:#877263; --lt:#B5A494;
-  --brd:rgba(28,14,4,.09); --brdf:rgba(28,14,4,.05);
-  --r:14px; --rs:8px; --rp:999px;
-  --sh:0 1px 8px rgba(28,14,4,.05);
-  --serif:'Halant',Georgia,serif;
-  --sans:'DM Sans',system-ui,sans-serif;
+:root{
+  --bg:#0a0a0a;--bg2:#111;--card:#161616;
+  --pri:#f5f5f5;--sec:#888;--dim:#555;
+  --acc:#3b82f6;--green:#22c55e;--red:#ef4444;--amber:#f59e0b;
+  --brd:rgba(255,255,255,.06);
+  --r:10px;--rs:6px;
+  --font:'Inter',-apple-system,system-ui,sans-serif;
 }
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:var(--sans);background:var(--bg);color:var(--pri);-webkit-font-smoothing:antialiased;overflow:hidden;height:100vh;display:flex;flex-direction:column}
+body{font-family:var(--font);background:var(--bg);color:var(--pri);-webkit-font-smoothing:antialiased;overflow:hidden;height:100vh;display:flex;flex-direction:column;font-size:13px}
 
-/* ── Title bar drag region ───────────────── */
-.titlebar{height:52px;-webkit-app-region:drag;flex-shrink:0;background:var(--bg2);border-bottom:1px solid var(--brd)}
-
-/* ── Layout ──────────────────────────────── */
+.titlebar{height:48px;-webkit-app-region:drag;flex-shrink:0;background:var(--bg)}
 .layout{display:flex;flex:1;overflow:hidden}
 
-/* ── Sidebar ─────────────────────────────── */
-.sidebar{
-  width:170px;flex-shrink:0;background:var(--bg2);
-  padding:12px 10px 16px;display:flex;flex-direction:column;
-  border-right:1px solid var(--brd);
-  -webkit-app-region:no-drag;
-}
-.sidebar-logo{
-  font-family:var(--serif);font-weight:400;font-size:17px;
-  padding:4px 12px 16px;letter-spacing:-.01em;color:var(--pri);
-  display:flex;align-items:center;gap:8px;
-}
-.sidebar-logo .dot{width:7px;height:7px;border-radius:50%;background:#38A169}
-.sidebar-logo .dot.loading{background:var(--lt);animation:blink 1s infinite}
-.sidebar-logo .dot.recording{background:#E53E3E;animation:blink .8s infinite}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+/* Sidebar */
+.sb{width:180px;flex-shrink:0;background:var(--bg);padding:8px;display:flex;flex-direction:column;-webkit-app-region:no-drag}
+.sb-logo{font-weight:600;font-size:15px;padding:8px 12px 20px;color:var(--pri);display:flex;align-items:center;gap:8px;letter-spacing:-.02em}
+.sb-logo .dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.sb-logo .dot.loading{background:var(--dim);animation:pulse 1.5s infinite}
+.sb-logo .dot.recording{background:var(--red);animation:pulse .8s infinite}
+.sb-logo .dot.processing{background:var(--amber);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 
-.nav-item{
-  display:flex;align-items:center;gap:10px;
-  padding:8px 12px;border-radius:var(--rs);
-  font-size:13px;font-weight:400;color:var(--mut);
-  cursor:pointer;transition:all .15s;margin-bottom:2px;
-  border:none;background:none;width:100%;text-align:left;
-  font-family:var(--sans);
-}
-.nav-item:hover{background:rgba(28,14,4,.04);color:var(--pri)}
-.nav-item.active{background:var(--pri);color:#fff}
-.nav-item .icon{width:16px;text-align:center;font-size:14px;flex-shrink:0}
+.nav{display:flex;flex-direction:column;gap:1px}
+.nav a{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--rs);font-size:13px;color:var(--sec);cursor:pointer;transition:all .12s;text-decoration:none;border:none;background:none;width:100%;text-align:left;font-family:var(--font)}
+.nav a:hover{background:rgba(255,255,255,.04);color:var(--pri)}
+.nav a.on{background:rgba(255,255,255,.08);color:var(--pri)}
+.nav a svg{width:16px;height:16px;opacity:.5;flex-shrink:0}
+.nav a.on svg{opacity:.8}
 
-.sidebar-spacer{flex:1}
-.sidebar-footer{padding:8px 12px;font-size:11px;color:var(--lt)}
+.sb-spacer{flex:1}
+.sb-foot{padding:8px 12px;font-size:11px;color:var(--dim)}
 
-/* ── Content ─────────────────────────────── */
-.content{flex:1;overflow-y:auto;padding:28px 24px 40px;-webkit-app-region:no-drag}
-.content::-webkit-scrollbar{width:6px}
-.content::-webkit-scrollbar-thumb{background:var(--acc);border-radius:3px}
+/* Content */
+.main{flex:1;overflow-y:auto;padding:24px 28px 40px;-webkit-app-region:no-drag}
+.main::-webkit-scrollbar{width:5px}
+.main::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:3px}
 
-.page{display:none}
-.page.active{display:block}
+.pg{display:none}.pg.on{display:block}
+.pg h1{font-weight:500;font-size:20px;margin-bottom:4px;letter-spacing:-.02em}
+.pg .sub{font-size:13px;color:var(--sec);margin-bottom:20px;line-height:1.5}
 
-.page-title{font-family:var(--serif);font-weight:300;font-size:24px;margin-bottom:6px}
-.page-sub{font-size:13px;color:var(--mut);margin-bottom:20px;line-height:1.5}
+/* Status bar */
+.stat{flex-shrink:0;display:flex;align-items:center;gap:8px;padding:8px 16px;background:var(--bg2);border-top:1px solid var(--brd);font-size:11px;color:var(--sec);-webkit-app-region:no-drag}
+.stat .d{width:5px;height:5px;border-radius:50%;background:var(--green)}
+.stat .d.recording{background:var(--red);animation:pulse .8s infinite}
+.stat .d.processing{background:var(--amber)}
+.stat .d.loading{background:var(--dim)}
 
-/* ── Status bar (bottom) ─────────────────── */
-.status-bar{
-  flex-shrink:0;display:flex;align-items:center;gap:10px;
-  padding:10px 16px;background:var(--bg2);
-  border-top:1px solid var(--brd);font-size:12px;color:var(--mut);
-  -webkit-app-region:no-drag;
-}
-.status-bar .dot{width:6px;height:6px;border-radius:50%;background:#38A169;flex-shrink:0}
-.status-bar .dot.recording{background:#E53E3E;animation:blink .8s infinite}
-.status-bar .dot.processing{background:var(--amb)}
-.status-bar .dot.loading{background:var(--lt)}
-
-/* ── Cards ────────────────────────────────── */
-.card{
-  background:var(--card);border:1px solid var(--brd);border-radius:var(--r);
-  margin-bottom:14px;box-shadow:var(--sh);overflow:hidden;
-}
-.card-row{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:16px 20px;border-bottom:1px solid var(--brdf);
-}
+/* Cards */
+.card{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);margin-bottom:12px;overflow:hidden}
+.card-row{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--brd)}
 .card-row:last-child{border-bottom:none}
-.card-row-label{font-size:14px;font-weight:500}
-.card-row-sub{font-size:12px;color:var(--mut);margin-top:2px}
-.card-row-action{flex-shrink:0}
+.card-label{font-size:13px;font-weight:500}
+.card-sub{font-size:12px;color:var(--sec);margin-top:2px}
 
-/* ── History entries ─────────────────────── */
-.entry{
-  background:var(--card);border:1px solid var(--brd);border-radius:var(--r);
-  padding:14px 18px;margin-bottom:10px;box-shadow:var(--sh);
-}
-.entry-head{display:flex;justify-content:space-between;margin-bottom:6px}
-.entry-app{font-size:11px;color:var(--lt);font-weight:500;text-transform:uppercase;letter-spacing:.03em}
-.entry-time{font-size:11px;color:var(--lt)}
-.entry-raw{font-size:12px;color:var(--mut);line-height:1.5;margin-bottom:4px}
-.entry-cleaned{font-size:13px;line-height:1.5}
-.entry-meta{font-size:11px;color:var(--lt);margin-top:6px;display:flex;gap:12px}
+/* Forms */
+.fr{display:flex;gap:6px;margin-bottom:8px}
+.inp{flex:1;padding:8px 12px;border:1px solid var(--brd);border-radius:var(--rs);font-family:var(--font);font-size:12px;background:var(--bg2);color:var(--pri);outline:none;transition:border-color .15s}
+.inp:focus{border-color:var(--acc)}
+.inp::placeholder{color:var(--dim)}
+select.inp{appearance:none;background:var(--bg2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23555'/%3E%3C/svg%3E") no-repeat right 10px center;padding-right:26px}
 
-.empty{text-align:center;padding:40px 16px;color:var(--lt)}
-.empty .big{font-size:32px;margin-bottom:10px}
-
-/* ── Forms ────────────────────────────────── */
-.fr{display:flex;gap:6px;margin-bottom:10px}
-.inp{
-  flex:1;padding:10px 14px;border:1px solid var(--brd);border-radius:var(--rs);
-  font-family:var(--sans);font-size:13px;background:var(--bg);color:var(--pri);
-  outline:none;transition:border-color .15s;
-}
-.inp:focus{border-color:var(--amb)}
-.inp::placeholder{color:var(--lt)}
-textarea.inp{resize:vertical;min-height:60px;line-height:1.5}
-
-.btn{
-  padding:10px 18px;border:none;border-radius:var(--rs);font-family:var(--sans);
-  font-size:13px;font-weight:500;cursor:pointer;transition:opacity .15s;
-}
+.btn{padding:8px 16px;border:none;border-radius:var(--rs);font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;transition:opacity .12s}
 .btn:hover{opacity:.85}
-.btn-d{background:var(--pri);color:#fff}
-.btn-l{background:var(--acc);color:var(--pri)}
-.btn-s{padding:7px 14px;font-size:12px}
-.btn-pill{border-radius:var(--rp)}
+.btn-p{background:var(--pri);color:var(--bg)}
+.btn-s{background:rgba(255,255,255,.08);color:var(--pri)}
+.btn-sm{padding:6px 12px;font-size:11px}
 
-/* ── Tags ─────────────────────────────────── */
-.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-.tag{
-  display:inline-flex;align-items:center;gap:5px;background:var(--acc);
-  padding:5px 12px;border-radius:var(--rp);font-size:12px;
-}
-.tag .x{cursor:pointer;opacity:.4;font-size:14px;transition:opacity .15s}
-.tag .x:hover{opacity:1}
+/* Tags */
+.tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+.tag{display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.06);padding:4px 10px;border-radius:999px;font-size:11px;color:var(--sec)}
+.tag .x{cursor:pointer;opacity:.4;font-size:12px}.tag .x:hover{opacity:1}
 
-.item{
-  display:flex;align-items:center;padding:12px 0;
-  border-bottom:1px solid var(--brdf);font-size:13px;gap:8px;
-}
+/* Items */
+.item{display:flex;align-items:center;padding:10px 0;border-bottom:1px solid var(--brd);font-size:12px;gap:8px}
 .item:last-child{border-bottom:none}
-.item-k{font-weight:500;flex-shrink:0}
-.item-arr{color:var(--lt);font-size:11px}
-.item-v{flex:1;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.item .x-btn{
-  cursor:pointer;opacity:0;font-size:12px;color:var(--mut);
-  transition:opacity .15s;background:var(--acc);border:none;
-  width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-  font-family:var(--sans);flex-shrink:0;
-}
-.item:hover .x-btn{opacity:1}
+.item-k{font-weight:500;color:var(--pri);flex-shrink:0}
+.item-v{flex:1;color:var(--sec);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .xb{cursor:pointer;opacity:0;font-size:11px;color:var(--sec);background:rgba(255,255,255,.06);border:none;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.item:hover .xb{opacity:1}
 
-/* ── Toggles ──────────────────────────────── */
-.tog{
-  width:42px;height:24px;border-radius:12px;background:var(--acc);
-  cursor:pointer;position:relative;transition:background .2s;border:none;
-}
-.tog.on{background:var(--pri)}
-.tog::after{
-  content:'';position:absolute;top:2px;left:2px;width:20px;height:20px;
-  border-radius:50%;background:#fff;transition:transform .2s;
-  box-shadow:0 1px 3px rgba(0,0,0,.15);
-}
-.tog.on::after{transform:translateX(18px)}
+/* Toggle */
+.tog{width:36px;height:20px;border-radius:10px;background:rgba(255,255,255,.1);cursor:pointer;position:relative;transition:background .2s;border:none}
+.tog.on{background:var(--acc)}
+.tog::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .2s}
+.tog.on::after{transform:translateX(16px)}
 
-/* ── Role buttons ─────────────────────────── */
-.roles{display:flex;flex-wrap:wrap;gap:6px}
-.rb{
-  padding:7px 16px;border:1px solid var(--brd);border-radius:var(--rp);
-  background:transparent;font-family:var(--sans);font-size:12px;
-  cursor:pointer;transition:all .15s;color:var(--pri);
-}
-.rb:hover{background:var(--acc)}
-.rb.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+/* Entries */
+.entry{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);padding:12px 16px;margin-bottom:8px}
+.entry-head{display:flex;justify-content:space-between;margin-bottom:4px}
+.entry-app{font-size:10px;color:var(--dim);font-weight:500;text-transform:uppercase;letter-spacing:.04em}
+.entry-time{font-size:10px;color:var(--dim)}
+.entry-raw{font-size:11px;color:var(--dim);line-height:1.5;margin-bottom:3px}
+.entry-text{font-size:13px;line-height:1.5}
+.entry-copy{font-size:10px;color:var(--dim);margin-top:4px;cursor:pointer;opacity:.5;transition:opacity .1s}
+.entry-copy:hover{opacity:1;color:var(--acc)}
 
-/* ── Scratchpad ───────────────────────────── */
-.scratch-area{
-  width:100%;min-height:300px;padding:16px;border:1px solid var(--brd);
-  border-radius:var(--r);font-family:var(--sans);font-size:14px;
-  line-height:1.7;background:var(--card);color:var(--pri);
-  outline:none;resize:none;
-}
-.scratch-area:focus{border-color:var(--amb)}
+.empty{text-align:center;padding:48px 16px;color:var(--dim)}
 
-select.inp{appearance:none;background:var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23877263'/%3E%3C/svg%3E") no-repeat right 12px center;padding-right:28px}
+.label{font-size:11px;font-weight:500;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin:20px 0 8px}
 
-/* ── Style page ──────────────────────────── */
-.style-tabs{display:flex;gap:0;border-bottom:1px solid var(--brd);margin:20px 0 16px}
-.style-tab{
-  padding:8px 16px 10px;border:none;background:none;font-family:var(--sans);
-  font-size:13px;color:var(--mut);cursor:pointer;position:relative;transition:color .15s;
-}
-.style-tab:hover{color:var(--pri)}
-.style-tab.active{color:var(--pri);font-weight:500}
-.style-tab.active::after{
-  content:'';position:absolute;bottom:-1px;left:0;right:0;height:2px;
-  background:var(--pri);border-radius:1px 1px 0 0;
-}
-
-.style-banner{
-  border-radius:var(--r);padding:20px 24px;margin-bottom:20px;
-  display:flex;align-items:center;justify-content:space-between;
-  background:linear-gradient(135deg,rgba(60,40,20,0.85),rgba(40,30,15,0.9)),
-    radial-gradient(ellipse at 30% 50%,rgba(180,120,60,.3),transparent 70%);
-  color:#fff;overflow:hidden;position:relative;
-}
-.style-banner::before{
-  content:'';position:absolute;inset:0;
-  background:radial-gradient(ellipse 50% 80% at 70% 50%,rgba(200,140,60,.2),transparent);
-}
-.style-banner-text{position:relative;z-index:1}
-.style-banner-title{font-family:var(--serif);font-weight:300;font-size:18px;margin-bottom:4px}
-.style-banner-sub{font-size:11px;opacity:.6}
-.style-banner-icons{display:flex;gap:6px;position:relative;z-index:1}
-.style-banner-icons .app-icon{
-  width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.15);
-  display:flex;align-items:center;justify-content:center;font-size:16px;
-}
-
-.style-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-.style-card{
-  border:1.5px solid var(--brd);border-radius:var(--r);padding:16px;cursor:pointer;
-  transition:all .2s;background:var(--card);
-}
-.style-card:hover{border-color:var(--lt)}
-.style-card.active{border-color:#8B5CF6;box-shadow:0 0 0 2px rgba(139,92,246,.15)}
-.style-card-name{font-family:var(--serif);font-weight:400;font-size:22px;margin-bottom:2px}
-.style-card-desc{font-size:11px;color:var(--mut);margin-bottom:12px}
-.style-card-preview{
-  background:var(--bg);border-radius:var(--rs);padding:12px;
-  font-size:12px;color:var(--pri);line-height:1.5;
-}
-
-.section-label{
-  font-size:11px;font-weight:500;color:var(--mut);text-transform:uppercase;
-  letter-spacing:.04em;margin-bottom:8px;margin-top:20px;
-}
-.section-label:first-child{margin-top:0}
-
-/* ── Connecting overlay ───────────────────── */
-.connecting{
-  position:fixed;inset:0;background:var(--bg);display:flex;
-  flex-direction:column;align-items:center;justify-content:center;
-  z-index:100;
-}
-.connecting.hidden{display:none}
-.connecting .spinner{
-  width:28px;height:28px;border:3px solid var(--acc);
-  border-top-color:var(--pri);border-radius:50%;
-  animation:spin .7s linear infinite;margin-bottom:16px;
-}
-@keyframes spin{to{transform:rotate(360deg)}}
-.connecting p{font-size:14px;color:var(--mut)}
-
-/* ── Setup wizard ────────────────────────── */
-.setup{
-  position:fixed;inset:0;background:var(--bg);z-index:200;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  padding:40px;overflow-y:auto;
-}
+/* Setup overlay */
+.setup{position:fixed;inset:0;background:var(--bg);z-index:100;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:40px}
 .setup.hidden{display:none}
-.setup-card{
-  max-width:420px;width:100%;text-align:center;
-}
-.setup-card h1{font-family:var(--serif);font-weight:300;font-size:28px;margin-bottom:8px}
-.setup-card .sub{font-size:14px;color:var(--mut);margin-bottom:32px;line-height:1.5}
-.setup-steps{text-align:left;width:100%}
-.step{
-  display:flex;gap:14px;padding:16px 0;border-bottom:1px solid var(--brdf);
-  align-items:flex-start;
-}
-.step:last-child{border-bottom:none}
-.step-num{
-  width:28px;height:28px;border-radius:50%;font-size:13px;font-weight:600;
-  display:flex;align-items:center;justify-content:center;flex-shrink:0;
-  background:var(--acc);color:var(--pri);
-}
-.step-num.done{background:#38A169;color:#fff}
-.step-num.warn{background:#E53E3E;color:#fff}
+.setup h1{font-size:22px;font-weight:500;margin-bottom:8px}
+.setup .sub{color:var(--sec);margin-bottom:24px;text-align:center;line-height:1.6}
+.step{display:flex;gap:12px;margin-bottom:16px;width:100%;max-width:420px}
+.step-n{width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0;color:var(--sec)}
+.step-n.ok{background:var(--green);color:#000}
+.step-n.warn{background:var(--amber);color:#000}
 .step-body{flex:1}
-.step-title{font-size:14px;font-weight:500;margin-bottom:3px}
-.step-desc{font-size:12px;color:var(--mut);line-height:1.5}
-.step-desc code{
-  background:var(--acc);padding:1px 6px;border-radius:4px;font-size:11px;
-  font-family:'SF Mono',Menlo,monospace;
-}
-.step-action{margin-top:8px}
-.setup-done-btn{
-  margin-top:28px;padding:12px 32px;border:none;border-radius:var(--rp);
-  background:var(--pri);color:#fff;font-family:var(--sans);font-size:14px;
-  font-weight:500;cursor:pointer;transition:opacity .15s;
-}
-.setup-done-btn:hover{opacity:.85}
-.setup-done-btn:disabled{opacity:.4;cursor:not-allowed}
-.recheck-btn{
-  padding:6px 14px;border:none;border-radius:var(--rs);
-  background:var(--acc);color:var(--pri);font-family:var(--sans);font-size:12px;
-  font-weight:500;cursor:pointer;transition:opacity .15s;
-}
-.recheck-btn:hover{opacity:.85}
+.step-body b{font-weight:500}
+.setup .btn{margin-top:12px}
 </style>
 </head>
 <body>
 
-<!-- Setup wizard (shown when permissions missing) -->
-<div class="setup hidden" id="setup">
-  <div class="setup-card">
-    <h1>Welcome to Muse</h1>
-    <div class="sub">Let's make sure everything is set up so you can start dictating.</div>
-
-    <div class="setup-steps">
-      <!-- Step 1: Mic -->
-      <div class="step">
-        <div class="step-num" id="s1num">1</div>
-        <div class="step-body">
-          <div class="step-title">Microphone Access</div>
-          <div class="step-desc" id="s1desc">Checking...</div>
-          <div class="step-action" id="s1action"></div>
-        </div>
-      </div>
-
-      <!-- Step 2: Input Monitoring -->
-      <div class="step">
-        <div class="step-num" id="s2num">2</div>
-        <div class="step-body">
-          <div class="step-title">Input Monitoring (Hotkey)</div>
-          <div class="step-desc" id="s2desc">Checking...</div>
-          <div class="step-action" id="s2action"></div>
-        </div>
-      </div>
-
-      <!-- Step 3: Groq API Key -->
-      <div class="step">
-        <div class="step-num" id="s3num">3</div>
-        <div class="step-body">
-          <div class="step-title">Groq API Key</div>
-          <div class="step-desc" id="s3desc">Checking...</div>
-          <div class="step-action" id="s3action"></div>
-        </div>
-      </div>
-    </div>
-
-    <button class="setup-done-btn" id="setupDoneBtn" onclick="dismissSetup()" disabled>Continue to Muse</button>
-    <div style="margin-top:12px">
-      <button class="recheck-btn" onclick="checkPermissions()">Re-check permissions</button>
-    </div>
-  </div>
+<!-- Setup -->
+<div class="setup" id="setup">
+  <h1>Welcome to Muse</h1>
+  <div class="sub">Voice dictation + AI assistant for macOS</div>
+  <div class="step"><div class="step-n" id="s1n">1</div><div class="step-body"><b>Microphone</b><div id="s1d" style="font-size:12px;color:var(--sec);margin-top:2px">Checking...</div><div id="s1a"></div></div></div>
+  <div class="step"><div class="step-n" id="s2n">2</div><div class="step-body"><b>Input Monitoring</b><div id="s2d" style="font-size:12px;color:var(--sec);margin-top:2px">Checking...</div><div id="s2a"></div></div></div>
+  <div class="step"><div class="step-n" id="s3n">3</div><div class="step-body"><b>Groq API Key</b><div id="s3d" style="font-size:12px;color:var(--sec);margin-top:2px">Checking...</div><div id="s3a"></div></div></div>
+  <button class="btn btn-p" id="setupBtn" onclick="dismissSetup()" disabled>Continue</button>
 </div>
 
-<!-- Connecting overlay -->
-<div class="connecting" id="connecting">
-  <div class="spinner"></div>
-  <p>Loading voice engine...</p>
-</div>
-
-<!-- Title bar (drag region) -->
+<!-- Title bar -->
 <div class="titlebar"></div>
 
-<!-- Main layout -->
 <div class="layout">
   <!-- Sidebar -->
-  <div class="sidebar">
-    <div class="sidebar-logo">
-      <span class="dot loading" id="logoDot"></span>
-      Muse
+  <div class="sb">
+    <div class="sb-logo"><span class="dot loading" id="logoDot"></span> Muse</div>
+    <div class="nav">
+      <a class="on" data-pg="home" onclick="go(this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Home
+      </a>
+      <a data-pg="dictionary" onclick="go(this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        Dictionary
+      </a>
+      <a data-pg="integrations" onclick="go(this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Integrations
+      </a>
+      <a data-pg="settings" onclick="go(this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+        Settings
+      </a>
     </div>
-
-    <button class="nav-item active" data-page="home" onclick="showPage('home',this)">
-      <span class="icon">🏠</span> Home
-    </button>
-    <button class="nav-item" data-page="dictionary" onclick="showPage('dictionary',this)">
-      <span class="icon">📖</span> Dictionary
-    </button>
-    <button class="nav-item" data-page="snippets" onclick="showPage('snippets',this)">
-      <span class="icon">✂️</span> Snippets
-    </button>
-    <button class="nav-item" data-page="style" onclick="showPage('style',this)">
-      <span class="icon">🎨</span> Style
-    </button>
-    <button class="nav-item" data-page="macros" onclick="showPage('macros',this)">
-      <span class="icon">⚡</span> Macros
-    </button>
-    <button class="nav-item" data-page="scratchpad" onclick="showPage('scratchpad',this)">
-      <span class="icon">📝</span> Scratchpad
-    </button>
-    <button class="nav-item" data-page="integrations" onclick="showPage('integrations',this)">
-      <span class="icon">🔗</span> Integrations
-    </button>
-    <button class="nav-item" data-page="settings" onclick="showPage('settings',this)">
-      <span class="icon">⚙️</span> Settings
-    </button>
-
-    <div class="sidebar-spacer"></div>
-    <div class="sidebar-footer">v1.0.0</div>
+    <div class="sb-spacer"></div>
+    <div class="sb-foot">v1.0.0</div>
   </div>
 
   <!-- Content -->
-  <div class="content">
+  <div class="main">
+
     <!-- HOME -->
-    <div class="page active" id="pg-home">
-      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px">
-        <div class="page-title">Welcome back</div>
-        <div id="homeStats" style="display:flex;gap:14px;font-size:12px;color:var(--mut)"></div>
-      </div>
-      <div class="page-sub">Hold <b>Left Option (⌥L)</b> to dictate. Hold <b>Right Option (⌥R)</b> to talk to assistant.</div>
-
-      <!-- Stats card -->
-      <div class="card" id="statsCard" style="display:none">
-        <div class="card-body" style="padding:16px 20px">
-          <div style="display:flex;align-items:center;justify-content:space-between">
-            <div>
-              <div style="font-size:14px;font-weight:500" id="statWords">0 words dictated</div>
-              <div style="font-size:12px;color:var(--mut)" id="statSessions">0 dictations this session</div>
-            </div>
-            <div style="font-size:24px">🎙</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="section-label">Recent</div>
-      <div id="homeHistory">
-        <div class="empty">
-          <div class="big">🎙</div>
-          Hold Right Option and speak.<br>Your dictations appear here.
-        </div>
+    <div class="pg on" id="pg-home">
+      <h1>Home</h1>
+      <div class="sub"><b>⌥L</b> dictate &nbsp; <b>⌥R</b> assistant</div>
+      <div class="label">Recent</div>
+      <div id="hist">
+        <div class="empty">Hold Left Option and speak.<br>Your dictations will appear here.</div>
       </div>
     </div>
 
     <!-- DICTIONARY -->
-    <div class="page" id="pg-dictionary">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <div class="page-title">Dictionary</div>
-      </div>
-      <div class="page-sub">Add names, acronyms, and jargon so Muse spells them correctly.</div>
+    <div class="pg" id="pg-dictionary">
+      <h1>Dictionary</h1>
+      <div class="sub">Terms help Whisper spell names and jargon correctly. Snippets paste template text when triggered by voice.</div>
 
-      <div class="section-label">Terms</div>
+      <div class="label">Terms</div>
       <div class="fr">
         <input class="inp" id="dInp" placeholder="Add a term..." onkeydown="if(event.key==='Enter')addTerm()">
-        <button class="btn btn-d btn-s" onclick="addTerm()">Add</button>
+        <button class="btn btn-p btn-sm" onclick="addTerm()">Add</button>
       </div>
       <div class="tags" id="dTags"></div>
 
-      <div class="section-label">Auto-corrections</div>
+      <div class="label">Auto-corrections</div>
       <div class="fr">
         <input class="inp" id="cW" placeholder="Wrong..." style="flex:.4">
         <input class="inp" id="cR" placeholder="Correct..." style="flex:.6" onkeydown="if(event.key==='Enter')addCorr()">
-        <button class="btn btn-l btn-s" onclick="addCorr()">Add</button>
+        <button class="btn btn-s btn-sm" onclick="addCorr()">Add</button>
       </div>
       <div id="cList"></div>
-    </div>
 
-    <!-- SNIPPETS -->
-    <div class="page" id="pg-snippets">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <div class="page-title">Snippets</div>
-      </div>
-      <div class="page-sub">Say the trigger phrase and the full text gets pasted instantly.</div>
-
+      <div class="label">Snippets</div>
       <div class="fr">
         <input class="inp" id="snT" placeholder="Trigger phrase..." style="flex:.35">
         <input class="inp" id="snV" placeholder="Snippet text..." style="flex:.65" onkeydown="if(event.key==='Enter')addSnip()">
-        <button class="btn btn-d btn-s" onclick="addSnip()">Add</button>
+        <button class="btn btn-s btn-sm" onclick="addSnip()">Add</button>
       </div>
       <div id="snList"></div>
     </div>
 
-    <!-- STYLE -->
-    <div class="page" id="pg-style">
-      <div class="page-title">Style</div>
-
-      <!-- Tabs -->
-      <div class="style-tabs">
-        <button class="style-tab active" onclick="showStyleTab('personal',this)">Personal messages</button>
-        <button class="style-tab" onclick="showStyleTab('work',this)">Work messages</button>
-        <button class="style-tab" onclick="showStyleTab('email',this)">Email</button>
-        <button class="style-tab" onclick="showStyleTab('other',this)">Other</button>
-      </div>
-
-      <!-- Banner -->
-      <div class="style-banner" id="styleBanner">
-        <div class="style-banner-text">
-          <div class="style-banner-title" id="bannerTitle">This style applies in personal messengers</div>
-          <div class="style-banner-sub">Style formatting only applies in English.</div>
-        </div>
-        <div class="style-banner-icons" id="bannerIcons"></div>
-      </div>
-
-      <!-- Style cards -->
-      <div class="style-cards" id="styleCards"></div>
-
-      <!-- Domain mode -->
-      <div class="section-label" style="margin-top:28px">Domain Mode</div>
-      <div style="font-size:12px;color:var(--mut);margin-bottom:8px">Specialized vocabulary for better accuracy</div>
-      <div class="roles" id="domainBtns"></div>
-
-      <!-- Role -->
-      <div class="section-label" style="margin-top:20px">Role Preset</div>
-      <div class="roles" id="roles">
-        <button class="rb" onclick="setRole('developer')">Developer</button>
-        <button class="rb" onclick="setRole('writer')">Writer</button>
-        <button class="rb" onclick="setRole('pm')">PM</button>
-        <button class="rb" onclick="setRole('designer')">Designer</button>
-        <button class="rb" onclick="setRole('sales')">Sales</button>
-        <button class="rb" onclick="setRole('support')">Support</button>
-      </div>
-      <div id="overrides" style="font-size:12px;color:var(--mut);line-height:1.5;margin-top:8px"></div>
-    </div>
-
-    <!-- MACROS -->
-    <div class="page" id="pg-macros">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <div class="page-title">Macros</div>
-      </div>
-      <div class="page-sub">Voice-triggered workflows. Say the phrase and it runs a chain of actions — set tone, insert templates, switch domain mode.</div>
-
-      <div class="section-label">Built-in</div>
-      <div id="macroBuiltin"></div>
-
-      <div class="section-label">Custom</div>
-      <div class="fr">
-        <input class="inp" id="macT" placeholder="Trigger phrase..." style="flex:.35">
-        <input class="inp" id="macD" placeholder="Description..." style="flex:.35">
-        <select class="inp" id="macAction" style="flex:.3">
-          <option value="set_tone:formal">Set formal tone</option>
-          <option value="set_tone:casual">Set casual tone</option>
-          <option value="set_tone:code">Set code tone</option>
-          <option value="set_domain:tech">Activate tech domain</option>
-          <option value="set_domain:medical">Activate medical domain</option>
-          <option value="set_domain:legal">Activate legal domain</option>
-          <option value="set_domain:finance">Activate finance domain</option>
-        </select>
-        <button class="btn btn-d btn-s" onclick="addMacro()">Add</button>
-      </div>
-      <div id="macroCustom"></div>
-    </div>
-
-    <!-- SCRATCHPAD -->
-    <div class="page" id="pg-scratchpad">
-      <div class="page-title">Scratchpad</div>
-      <div class="page-sub">A place for notes. Failed pastes also land here.</div>
-      <textarea class="scratch-area" id="scratchArea" placeholder="Type or paste anything..."
-        oninput="localStorage.setItem('scratchpad',this.value)"></textarea>
-    </div>
-
     <!-- INTEGRATIONS -->
-    <div class="page" id="pg-integrations">
-      <div class="page-title">Integrations</div>
-      <div class="page-sub">Connect Google for Calendar + Gmail voice commands.</div>
+    <div class="pg" id="pg-integrations">
+      <h1>Integrations</h1>
+      <div class="sub">Connect Google for Calendar and Gmail voice commands via ⌥R.</div>
 
-      <!-- Not connected: show credentials + connect -->
       <div class="card" id="googleSetup">
-        <div class="card-row" style="flex-direction:column;align-items:stretch;gap:8px">
-          <div class="card-row-label">Google</div>
-          <div class="card-row-sub" id="credHint">Enter your OAuth credentials, then click Connect.</div>
+        <div class="card-row" style="flex-direction:column;align-items:stretch;gap:8px;padding:16px">
+          <div class="card-label">Google</div>
+          <div class="card-sub" id="credHint">Enter your OAuth credentials, then click Connect.</div>
           <input class="inp" id="gCid" placeholder="Client ID">
           <input class="inp" id="gCs" placeholder="Client Secret" type="password">
-          <button class="btn btn-d" id="gBtn" onclick="gConnect()">Connect</button>
+          <button class="btn btn-p" id="gBtn" onclick="gConnect()">Connect</button>
         </div>
       </div>
 
-      <!-- Connected -->
       <div class="card" id="gConnected" style="display:none">
         <div class="card-row">
-          <div style="flex:1">
-            <div class="card-row-label">Google</div>
-            <div class="card-row-sub" id="gEmail"></div>
-          </div>
-          <button class="btn btn-l btn-s" onclick="gDisconnect()">Disconnect</button>
-        </div>
-      </div>
-
-      <div style="margin-top:20px;padding:16px;background:var(--acc);border-radius:var(--r)">
-        <div style="font-size:13px;font-weight:500;margin-bottom:6px">How to use</div>
-        <div style="font-size:12px;color:var(--mut);line-height:1.6">
-          <b>⌥L</b> — Hold to dictate<br>
-          <b>⌥R</b> — Hold to talk to assistant<br><br>
-          Try: "Add a meeting tomorrow at 3pm"
+          <div style="flex:1"><div class="card-label">Google</div><div class="card-sub" id="gEmail"></div></div>
+          <button class="btn btn-s btn-sm" onclick="gDisconnect()">Disconnect</button>
         </div>
       </div>
     </div>
 
     <!-- SETTINGS -->
-    <div class="page" id="pg-settings">
-      <div class="page-title">Settings</div>
-      <div class="page-sub">General configuration</div>
+    <div class="pg" id="pg-settings">
+      <h1>Settings</h1>
+      <div class="sub">General configuration</div>
 
       <div class="card">
         <div class="card-row">
-          <div style="flex:1">
-            <div class="card-row-label">Groq API Key</div>
-            <div class="card-row-sub" id="groqStatus">Checking...</div>
-          </div>
-          <div class="card-row-action" style="display:flex;gap:6px">
-            <input class="inp" id="groqKeyInput" type="password" placeholder="gsk_..." style="width:180px;font-size:12px">
-            <button class="btn btn-d btn-s" onclick="setGroqKey()">Save</button>
+          <div style="flex:1"><div class="card-label">Groq API Key</div><div class="card-sub" id="groqStatus">Checking...</div></div>
+          <div style="display:flex;gap:6px">
+            <input class="inp" id="groqKeyInput" type="password" placeholder="gsk_..." style="width:160px;font-size:11px">
+            <button class="btn btn-p btn-sm" onclick="setGroqKey()">Save</button>
           </div>
         </div>
       </div>
 
       <div class="card">
         <div class="card-row">
-          <div>
-            <div class="card-row-label">Transcription Engine</div>
-            <div class="card-row-sub" id="backendStatus">Loading...</div>
-          </div>
-          <div class="card-row-action">
-            <select class="inp" id="backendSelect" onchange="setBackend(this.value)" style="width:200px;font-size:12px">
-              <option value="groq">Groq API — best accuracy</option>
-              <option value="mlx">MLX Whisper — local GPU</option>
-              <option value="parakeet">Parakeet — fastest local</option>
-              <option value="faster-whisper">Faster-Whisper — CPU fallback</option>
-            </select>
-          </div>
+          <div><div class="card-label">Transcription Engine</div><div class="card-sub" id="backendStatus">Loading...</div></div>
+          <select class="inp" id="backendSelect" onchange="setBackend(this.value)" style="width:180px;font-size:11px">
+            <option value="groq">Groq API (cloud)</option>
+            <option value="mlx">MLX Whisper (GPU)</option>
+            <option value="parakeet">Parakeet (fast)</option>
+            <option value="faster-whisper">Faster-Whisper (CPU)</option>
+          </select>
         </div>
       </div>
 
       <div class="card">
         <div class="card-row">
-          <div>
-            <div class="card-row-label">Shortcut</div>
-            <div class="card-row-sub">Hold <b>Right Option (⌥)</b> and speak</div>
-          </div>
+          <div><div class="card-label">Hands-Free Mode</div><div class="card-sub">Continuous listening, auto-processes on silence</div></div>
+          <button id="togHF" class="tog" onclick="apiPost('toggle-hands-free')"></button>
         </div>
         <div class="card-row">
-          <div>
-            <div class="card-row-label">Microphone</div>
-            <div class="card-row-sub">Built-in mic</div>
-          </div>
+          <div><div class="card-label">Whisper Mode</div><div class="card-sub">Extra sensitivity for quiet speech</div></div>
+          <button id="togW" class="tog" onclick="apiPost('toggle-whisper')"></button>
         </div>
         <div class="card-row">
-          <div>
-            <div class="card-row-label">Language</div>
-            <div class="card-row-sub">English</div>
-          </div>
+          <div><div class="card-label">Sound Feedback</div><div class="card-sub">Subtle start/stop/error sounds</div></div>
+          <button id="togS" class="tog on" onclick="apiPost('toggle-sounds')"></button>
         </div>
       </div>
 
-      <div class="card">
-        <div class="card-row">
-          <div>
-            <div class="card-row-label">Hands-Free Mode</div>
-            <div class="card-row-sub">Continuous listening, auto-processes on silence</div>
-          </div>
-          <div class="card-row-action">
-            <button id="togHF" class="tog" onclick="apiPost('toggle-hands-free')"></button>
-          </div>
-        </div>
-        <div class="card-row">
-          <div>
-            <div class="card-row-label">Whisper Mode</div>
-            <div class="card-row-sub">Extra sensitivity for quiet speech</div>
-          </div>
-          <div class="card-row-action">
-            <button id="togW" class="tog" onclick="apiPost('toggle-whisper')"></button>
-          </div>
-        </div>
+      <div class="label">Export</div>
+      <div style="display:flex;gap:6px">
+        <a class="btn btn-s btn-sm" href="http://127.0.0.1:8528/api/export/json" target="_blank">JSON</a>
+        <a class="btn btn-s btn-sm" href="http://127.0.0.1:8528/api/export/txt" target="_blank">TXT</a>
+        <a class="btn btn-s btn-sm" href="http://127.0.0.1:8528/api/export/word" target="_blank">Word</a>
+        <a class="btn btn-s btn-sm" href="http://127.0.0.1:8528/api/export/pdf" target="_blank">PDF</a>
+        <a class="btn btn-s btn-sm" href="http://127.0.0.1:8528/api/export-logs" target="_blank">Logs</a>
       </div>
     </div>
+
   </div>
 </div>
 
 <!-- Status bar -->
-<div class="status-bar">
-  <span class="dot loading" id="statusDot"></span>
-  <span id="statusText">Connecting...</span>
+<div class="stat">
+  <span class="d loading" id="sDot"></span>
+  <span id="sTxt">Connecting...</span>
 </div>
 
 <script>
-const API = 'http://127.0.0.1:8528';
-let history = [];
-let connected = false;
-let ws = null;
+const API='http://127.0.0.1:8528';
+let hist=[],connected=false,ws=null;
 
-// ── Pages ────────────────────────────────────────
-function showPage(id, btn) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById('pg-' + id).classList.add('active');
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  if (btn) btn.classList.add('active');
+function esc(s){return s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):''}
+
+// Nav
+function go(el){
+  document.querySelectorAll('.nav a').forEach(a=>a.classList.remove('on'));
+  el.classList.add('on');
+  document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));
+  document.getElementById('pg-'+el.dataset.pg).classList.add('on');
+  if(el.dataset.pg==='integrations')gLoadAccounts();
 }
 
-// ── Connection (Electron IPC + direct WS fallback) ──
-function setupListeners() {
-  if (window.electronAPI) {
-    // Running inside Electron — use IPC (main process forwards WS messages)
-    console.log('[app] Using Electron IPC');
-    window.electronAPI.onWsMessage(handleMessage);
-    window.electronAPI.onBackendReady(() => {
-      console.log('[app] Backend ready via IPC');
-      document.getElementById('connecting').classList.add('hidden');
-      connected = true;
-      refresh();
-    });
-    // Also poll for readiness in case backend-ready was sent before we loaded
+// Connection
+function setupListeners(){
+  if(window.electronAPI){
+    window.electronAPI.onWsMessage(handleMsg);
+    window.electronAPI.onBackendReady(()=>{document.getElementById('setup').classList.add('hidden');connected=true;refresh()});
     pollBackend();
-  } else {
-    // Running in browser — connect WS directly
-    connectDirectWS();
-  }
+  }else{connectWS()}
+}
+function pollBackend(){fetch(`${API}/api/health`).then(r=>r.json()).then(d=>{if(d.ok){document.getElementById('setup').classList.add('hidden');connected=true;refresh()}else setTimeout(pollBackend,1000)}).catch(()=>setTimeout(pollBackend,1000))}
+function connectWS(){try{ws=new WebSocket('ws://127.0.0.1:8528/ws');ws.onopen=()=>{connected=true;document.getElementById('setup').classList.add('hidden');refresh()};ws.onmessage=e=>{try{handleMsg(JSON.parse(e.data))}catch{}};ws.onclose=()=>{connected=false;setTimeout(connectWS,2000)};ws.onerror=()=>{}}catch{setTimeout(connectWS,2000)}}
+
+function handleMsg(m){
+  if(m.type==='status')updateStatus(m.status,m.detail);
+  if(m.type==='result'){hist.unshift(m);if(hist.length>50)hist.pop();renderHist()}
+  if(m.type==='hands_free')document.getElementById('togHF').classList.toggle('on',m.on);
+  if(m.type==='whisper')document.getElementById('togW').classList.toggle('on',m.on);
+  if(m.type==='oauth_complete')gLoadAccounts();
 }
 
-function pollBackend() {
-  fetch(`${API}/api/health`).then(r => r.json()).then(d => {
-    if (d.ok) {
-      document.getElementById('connecting').classList.add('hidden');
-      connected = true;
-      refresh();
-    } else {
-      setTimeout(pollBackend, 1000);
-    }
-  }).catch(() => setTimeout(pollBackend, 1000));
+function updateStatus(s,detail){
+  const cls={loading:'loading',idle:'',recording:'recording',processing:'processing',hands_free:''};
+  document.getElementById('sDot').className='d '+(cls[s]||'');
+  document.getElementById('logoDot').className='dot '+(cls[s]||'');
+  document.getElementById('sTxt').textContent=detail||s;
 }
 
-function connectDirectWS() {
-  try {
-    ws = new WebSocket(`ws://127.0.0.1:8528/ws`);
-    ws.onopen = () => {
-      connected = true;
-      document.getElementById('connecting').classList.add('hidden');
-      refresh();
-    };
-    ws.onmessage = (e) => {
-      try { handleMessage(JSON.parse(e.data)); } catch {}
-    };
-    ws.onclose = () => {
-      connected = false;
-      setTimeout(connectDirectWS, 2000);
-    };
-    ws.onerror = () => {};
-  } catch {
-    setTimeout(connectDirectWS, 2000);
-  }
+function renderHist(){
+  const el=document.getElementById('hist');
+  if(!hist.length){el.innerHTML='<div class="empty">Hold Left Option and speak.<br>Your dictations will appear here.</div>';return}
+  el.innerHTML=hist.slice(0,15).map(d=>{
+    const text=esc(d.cleaned||d.raw||'');
+    const raw=d.raw&&d.raw!==d.cleaned?`<div class="entry-raw">${esc(d.raw)}</div>`:'';
+    const type=d.type==='assistant'?'<span style="color:var(--acc);font-size:10px;margin-left:6px">ASSISTANT</span>':'';
+    return`<div class="entry"><div class="entry-head"><span class="entry-app">${esc(d.app||'')}${type}</span><span class="entry-time">${esc(d.ts||'')} · ${d.duration||0}s</span></div>${raw}<div class="entry-text">${text}</div><div class="entry-copy" onclick="navigator.clipboard.writeText('${text.replace(/'/g,"\\'")}')">Copy</div></div>`;
+  }).join('');
 }
 
-function handleMessage(msg) {
-  if (msg.type === 'status') updateStatus(msg.status, msg.detail);
-  if (msg.type === 'result') addResult(msg);
-  if (msg.type === 'hands_free') document.getElementById('togHF').classList.toggle('on', msg.on);
-  if (msg.type === 'whisper') document.getElementById('togW').classList.toggle('on', msg.on);
-}
+// API
+async function apiPost(path,body={}){try{await fetch(`${API}/api/${path}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});setTimeout(refresh,300)}catch{}}
+async function addTerm(){const v=document.getElementById('dInp').value.trim();if(!v)return;await apiPost('dictionary/add-term',{term:v});document.getElementById('dInp').value=''}
+async function addCorr(){const w=document.getElementById('cW').value.trim(),c=document.getElementById('cR').value.trim();if(!w||!c)return;await apiPost('dictionary/add-correction',{wrong:w,correct:c});document.getElementById('cW').value='';document.getElementById('cR').value=''}
+async function rmTerm(t){await apiPost('dictionary/remove-term',{term:t})}
+async function addSnip(){const t=document.getElementById('snT').value.trim(),v=document.getElementById('snV').value.trim();if(!t||!v)return;await apiPost('snippets/add',{trigger:t,text:v});document.getElementById('snT').value='';document.getElementById('snV').value=''}
+async function rmSnip(t){await apiPost('snippets/remove',{trigger:t})}
+async function setGroqKey(){const key=document.getElementById('groqKeyInput').value.trim();if(!key)return;const r=await fetch(`${API}/api/set-groq-key`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key})});const d=await r.json();if(d.ok){document.getElementById('groqKeyInput').value='';document.getElementById('groqStatus').textContent='Configured';document.getElementById('groqStatus').style.color='var(--green)'}}
+async function setBackend(b){document.getElementById('backendStatus').textContent='Switching...';await apiPost('transcription-backend',{backend:b});setTimeout(checkBackend,1000)}
+async function checkBackend(){try{const r=await fetch(`${API}/api/transcription-backend`);const d=await r.json();document.getElementById('backendSelect').value=d.backend;document.getElementById('backendStatus').textContent=d.backend;document.getElementById('backendStatus').style.color=d.backend==='groq'?'var(--green)':'var(--sec)'}catch{}}
+async function checkGroq(){try{const r=await fetch(`${API}/api/groq-status`);const d=await r.json();const el=document.getElementById('groqStatus');if(d.configured){el.textContent=d.masked_key?`Configured (${d.masked_key})`:'Configured';el.style.color='var(--green)'}else{el.textContent='Not configured';el.style.color='var(--red)'}}catch{}}
 
-function updateStatus(s, detail) {
-  const dotCls = {loading:'loading',idle:'',recording:'recording',processing:'processing',hands_free:''};
-  document.getElementById('statusDot').className = 'dot ' + (dotCls[s] || '');
-  document.getElementById('logoDot').className = 'dot ' + (dotCls[s] || '');
-  document.getElementById('statusText').textContent = detail || s;
-}
-
-function addResult(d) {
-  history.unshift(d);
-  if (history.length > 50) history.pop();
-  renderHistory();
-}
-
-function renderHistory() {
-  const el = document.getElementById('homeHistory');
-  if (!history.length) {
-    el.innerHTML = '<div class="empty"><div class="big">🎙</div>Hold Right Option and speak.<br>Your dictations appear here.</div>';
-    document.getElementById('statsCard').style.display = 'none';
-    return;
-  }
-  el.innerHTML = history.slice(0, 10).map(renderEntry).join('');
-
-  // Update stats
-  const totalWords = history.reduce((sum, d) => sum + (d.cleaned || d.raw || '').split(' ').length, 0);
-  document.getElementById('statsCard').style.display = '';
-  document.getElementById('statWords').textContent = `${totalWords} words dictated`;
-  document.getElementById('statSessions').textContent = `${history.length} dictation${history.length !== 1 ? 's' : ''} this session`;
-  document.getElementById('homeStats').innerHTML =
-    `<span>📝 ${history.length}</span><span>💬 ${totalWords} words</span>`;
-}
-
-function renderDiff(diff) {
-  if (!diff || !diff.length) return '';
-  return diff.map(d => {
-    if (d.type === 'same') return `<span>${esc(d.text)}</span>`;
-    if (d.type === 'removed') return `<span style="text-decoration:line-through;color:var(--lt);opacity:.5;font-size:12px">${esc(d.text)}</span>`;
-    if (d.type === 'added') return `<span style="color:var(--amb);font-weight:500">${esc(d.text)}</span>`;
-    return '';
-  }).join(' ');
-}
-
-function renderEntry(d) {
-  const hasDiff = d.diff && d.diff.length > 0;
-  const body = hasDiff
-    ? renderDiff(d.diff)
-    : esc(d.cleaned || d.raw || '');
-  const raw = !hasDiff && d.raw && d.raw !== d.cleaned
-    ? `<div class="entry-raw">${esc(d.raw)}</div>` : '';
-
-  return `<div class="entry">
-    <div class="entry-head">
-      <span class="entry-app">${esc(d.app || '')}</span>
-      <span class="entry-time">${esc(d.ts || '')} · ${d.duration||0}s</span>
-    </div>
-    ${raw}
-    <div class="entry-cleaned">${body}</div>
-    <div class="entry-meta">
-      <span style="cursor:pointer" onclick="copyText('${esc(d.cleaned||d.raw||'').replace(/'/g,"\\'")}')">📋 Copy</span>
-    </div>
-  </div>`;
-}
-
-function copyText(text) {
-  navigator.clipboard.writeText(text).catch(() => {});
-}
-
-function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
-
-// ── API calls ────────────────────────────────────
-async function apiPost(path, body = {}) {
-  try {
-    await fetch(`${API}/api/${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    setTimeout(refresh, 300);
-  } catch {}
-}
-
-async function addTerm() {
-  const v = document.getElementById('dInp').value.trim();
-  if (!v) return;
-  await apiPost('dictionary/add-term', { term: v });
-  document.getElementById('dInp').value = '';
-}
-async function addCorr() {
-  const w = document.getElementById('cW').value.trim();
-  const c = document.getElementById('cR').value.trim();
-  if (!w || !c) return;
-  await apiPost('dictionary/add-correction', { wrong: w, correct: c });
-  document.getElementById('cW').value = '';
-  document.getElementById('cR').value = '';
-}
-async function rmTerm(t) { await apiPost('dictionary/remove-term', { term: t }); }
-async function addSnip() {
-  const t = document.getElementById('snT').value.trim();
-  const v = document.getElementById('snV').value.trim();
-  if (!t || !v) return;
-  await apiPost('snippets/add', { trigger: t, text: v });
-  document.getElementById('snT').value = '';
-  document.getElementById('snV').value = '';
-}
-async function rmSnip(t) { await apiPost('snippets/remove', { trigger: t }); }
-async function setRole(r) { await apiPost('styles/set-role', { role: r }); }
-async function setGroqKey() {
-  const key = document.getElementById('groqKeyInput').value.trim();
-  if (!key) return;
-  const r = await fetch(`${API}/api/set-groq-key`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key})});
-  const d = await r.json();
-  if (d.ok) {
-    document.getElementById('groqKeyInput').value = '';
-    document.getElementById('groqStatus').textContent = 'API key configured ✓';
-    document.getElementById('groqStatus').style.color = '#38A169';
-  }
-}
-async function setBackend(b) {
-  document.getElementById('backendStatus').textContent = 'Switching...';
-  await apiPost('transcription-backend', {backend: b});
-  setTimeout(checkBackendStatus, 1000);
-}
-async function checkBackendStatus() {
-  try {
-    const r = await fetch(`${API}/api/transcription-backend`);
-    const d = await r.json();
-    const sel = document.getElementById('backendSelect');
-    sel.value = d.backend;
-    const names = {parakeet:'Parakeet MLX (fast, less accurate)',mlx:'MLX Whisper (GPU, good)',groq:'Groq API (cloud, best accuracy)','faster-whisper':'Faster-Whisper (CPU, slow)'};
-    document.getElementById('backendStatus').textContent = `Active: ${names[d.backend]||d.backend}`;
-    document.getElementById('backendStatus').style.color = d.backend === 'groq' ? '#38A169' : 'var(--mut)';
-  } catch {}
-}
-async function checkGroqStatus() {
-  try {
-    const r = await fetch(`${API}/api/groq-status`);
-    const d = await r.json();
-    const el = document.getElementById('groqStatus');
-    if (d.configured) {
-      el.textContent = d.masked_key ? `Configured ✓ (${d.masked_key})` : 'Configured ✓';
-      el.style.color = '#38A169';
-    } else {
-      el.textContent = 'Not configured — enter your key';
-      el.style.color = '#E53E3E';
-    }
-  } catch {}
-}
-async function setDomain(d) { await apiPost('domains/set', { domain: d }); }
-
-// ── Style page ───────────────────────────────
-const STYLE_DATA = {
-  personal: {
-    banner: 'This style applies in personal messengers',
-    icons: ['💬','📱','💭'],
-    styles: [
-      {id:'formal',name:'Formal.',desc:'Caps + Punctuation',
-       preview:'Hey, are you free for lunch tomorrow? Let\'s do 12 if that works for you.'},
-      {id:'casual',name:'Casual',desc:'Caps + Less punctuation',
-       preview:'Hey are you free for lunch tomorrow? Let\'s do 12 if that works for you'},
-      {id:'very_casual',name:'very casual',desc:'No Caps + Less punctuation',
-       preview:'hey are you free for lunch tomorrow? let\'s do 12 if that works for you'},
-    ]
-  },
-  work: {
-    banner: 'This style applies in workplace messengers',
-    icons: ['💼','📋','🔗'],
-    styles: [
-      {id:'formal',name:'Formal.',desc:'Caps + Punctuation',
-       preview:'Hey, if you\'re free, let\'s chat about the great results.'},
-      {id:'casual',name:'Casual',desc:'Caps + Less punctuation',
-       preview:'Hey, if you\'re free let\'s chat about the great results'},
-      {id:'excited',name:'Excited!',desc:'More exclamations',
-       preview:'Hey, if you\'re free, let\'s chat about the great results!'},
-    ]
-  },
-  email: {
-    banner: 'This style applies in all major email apps',
-    icons: ['📧','✉️','📨'],
-    styles: [
-      {id:'formal',name:'Formal.',desc:'Caps + Punctuation',
-       preview:'Hi Alex,\n\nIt was great talking with you today. Looking forward to our next chat.\n\nBest,\nUdaya'},
-      {id:'casual',name:'Casual',desc:'Caps + Less punctuation',
-       preview:'Hi Alex, it was great talking with you today. Looking forward to our next chat.\n\nBest,\nUdaya'},
-      {id:'excited',name:'Excited!',desc:'More exclamations',
-       preview:'Hi Alex,\n\nIt was great talking with you today. Looking forward to our next chat!\n\nBest,\nUdaya'},
-    ]
-  },
-  other: {
-    banner: 'This style applies in all other apps',
-    icons: ['📝','🖥️','📄'],
-    styles: [
-      {id:'formal',name:'Formal.',desc:'Caps + Punctuation',
-       preview:'So far, I am enjoying the new workout routine.\n\nI am excited for tomorrow\'s workout, especially after a full night of rest.'},
-      {id:'casual',name:'Casual',desc:'Caps + Less punctuation',
-       preview:'So far I am enjoying the new workout routine.\n\nI am excited for tomorrow\'s workout especially after a full night of rest.'},
-      {id:'excited',name:'Excited!',desc:'More exclamations',
-       preview:'So far, I am enjoying the new workout routine.\n\nI am excited for tomorrow\'s workout, especially after a full night of rest!'},
-    ]
-  },
-};
-
-let activeStyleTab = 'personal';
-let activeStyles = {personal:'formal',work:'formal',email:'formal',other:'formal'};
-
-// Load saved styles
-try { const s=localStorage.getItem('activeStyles');if(s)activeStyles=JSON.parse(s); } catch{}
-
-function showStyleTab(tab, btn) {
-  activeStyleTab = tab;
-  document.querySelectorAll('.style-tab').forEach(t=>t.classList.remove('active'));
-  if(btn)btn.classList.add('active');
-  renderStylePage();
-}
-
-function renderStylePage() {
-  const d = STYLE_DATA[activeStyleTab];
-  if(!d) return;
-
-  document.getElementById('bannerTitle').textContent = d.banner;
-  document.getElementById('bannerIcons').innerHTML =
-    d.icons.map(i=>`<div class="app-icon">${i}</div>`).join('')+
-    '<div class="app-icon" style="font-size:14px;opacity:.5">+</div>';
-
-  const active = activeStyles[activeStyleTab] || 'formal';
-  document.getElementById('styleCards').innerHTML = d.styles.map(s=>`
-    <div class="style-card${s.id===active?' active':''}" onclick="setStyleCard('${activeStyleTab}','${s.id}')">
-      <div class="style-card-name">${s.name}</div>
-      <div class="style-card-desc">${s.desc}</div>
-      <div class="style-card-preview">${esc(s.preview).replace(/\n/g,'<br>')}</div>
-    </div>
-  `).join('');
-}
-
-function setStyleCard(tab, styleId) {
-  activeStyles[tab] = styleId;
-  localStorage.setItem('activeStyles', JSON.stringify(activeStyles));
-  // Map to cleaner tone
-  const toneMap = {formal:'formal',casual:'casual',very_casual:'casual',excited:'enthusiastic'};
-  const tone = toneMap[styleId] || 'formal';
-  // Save per-category
-  const appMap = {personal:['Messages','WhatsApp','Telegram','Signal'],work:['Slack','Discord','Teams'],email:['Gmail','Outlook','Mail'],other:[]};
-  // For now just set default tone
-  apiPost('styles/set-role', {role: ''});  // clear role, use direct style
-  renderStylePage();
-}
-async function addMacro() {
-  const t = document.getElementById('macT').value.trim();
-  const d = document.getElementById('macD').value.trim();
-  const av = document.getElementById('macAction').value;
-  if (!t) return;
-  const [atype, aval] = av.split(':');
-  await apiPost('macros/add', { trigger: t, description: d || t, actions: [{ type: atype, value: aval }] });
-  document.getElementById('macT').value = '';
-  document.getElementById('macD').value = '';
-}
-async function rmMacro(t) { await apiPost('macros/remove', { trigger: t }); }
-
-// ── Refresh state ────────────────────────────────
-async function refresh() {
-  try {
-    const r = await fetch(`${API}/api/state`);
-    const d = await r.json();
-
-    updateStatus(d.status, d.detail);
-    document.getElementById('togHF').classList.toggle('on', d.hands_free);
-    document.getElementById('togW').classList.toggle('on', d.whisper_mode);
-
-    if (d.history && d.history.length) {
-      history = [...d.history].reverse();
-      renderHistory();
-    }
-
+async function refresh(){
+  try{
+    const r=await fetch(`${API}/api/state`);const d=await r.json();
+    updateStatus(d.status,d.detail);
+    document.getElementById('togHF').classList.toggle('on',d.hands_free);
+    document.getElementById('togW').classList.toggle('on',d.whisper_mode);
+    if(d.history&&d.history.length){hist=[...d.history].reverse();renderHist()}
     // Dictionary
-    const terms = d.terms || [];
-    document.getElementById('dTags').innerHTML = terms.map(t =>
-      `<span class="tag">${esc(t)}<span class="x" onclick="rmTerm('${t.replace(/'/g, "\\'")}')">&times;</span></span>`
-    ).join('');
-
-    const corrs = Object.entries(d.corrections || {});
-    document.getElementById('cList').innerHTML = corrs.map(([w, c]) =>
-      `<div class="item"><span class="item-k">"${esc(w)}"</span><span class="item-arr">→</span><span class="item-v">${esc(c)}</span></div>`
-    ).join('');
-
+    document.getElementById('dTags').innerHTML=(d.terms||[]).map(t=>`<span class="tag">${esc(t)}<span class="x" onclick="rmTerm('${t.replace(/'/g,"\\'")}')">&times;</span></span>`).join('');
+    document.getElementById('cList').innerHTML=Object.entries(d.corrections||{}).map(([w,c])=>`<div class="item"><span class="item-k">${esc(w)}</span><span style="color:var(--dim);margin:0 4px">&rarr;</span><span class="item-v">${esc(c)}</span></div>`).join('');
     // Snippets
-    const snips = Object.entries(d.snippets || {});
-    document.getElementById('snList').innerHTML = snips.map(([t, txt]) =>
-      `<div class="item">
-        <span class="item-k">"${esc(t)}"</span>
-        <span class="item-arr">→</span>
-        <span class="item-v">${esc(txt.slice(0, 60))}</span>
-        <button class="x-btn" onclick="rmSnip('${t.replace(/'/g, "\\'")}')">&times;</button>
-      </div>`
-    ).join('');
-
-    // Role
-    document.querySelectorAll('.rb').forEach(b =>
-      b.classList.toggle('on', b.textContent.toLowerCase() === d.role)
-    );
-    const ov = Object.entries(d.app_overrides || {});
-    document.getElementById('overrides').innerHTML = ov.length
-      ? ov.map(([a, s]) => `<div>${a} → <b>${s}</b></div>`).join('')
-      : '<div style="color:var(--lt)">No overrides set. Pick a role above to configure defaults.</div>';
-
-    // Domains
-    const domains = Object.entries(d.domains || {});
-    const activeDomain = d.active_domain || '';
-    document.getElementById('domainBtns').innerHTML =
-      `<button class="rb${!activeDomain?' on':''}" onclick="setDomain('')">None</button>` +
-      domains.map(([k, desc]) =>
-        `<button class="rb${k===activeDomain?' on':''}" onclick="setDomain('${k}')" title="${esc(desc)}">${k}</button>`
-      ).join('');
-
-    // Macros
-    const macros = Object.entries(d.macros || {});
-    const builtins = ['email mode','slack mode','code mode','standup notes','meeting notes'];
-    const builtinMacros = macros.filter(([k]) => builtins.includes(k));
-    const customMacros = macros.filter(([k]) => !builtins.includes(k));
-
-    document.getElementById('macroBuiltin').innerHTML = builtinMacros.map(([t, desc]) =>
-      `<div class="item"><span class="item-k">"${esc(t)}"</span><span class="item-arr">→</span><span class="item-v">${esc(desc)}</span></div>`
-    ).join('') || '<div style="color:var(--lt);font-size:13px;padding:8px 0">No built-in macros</div>';
-
-    document.getElementById('macroCustom').innerHTML = customMacros.map(([t, desc]) =>
-      `<div class="item"><span class="item-k">"${esc(t)}"</span><span class="item-arr">→</span><span class="item-v">${esc(desc)}</span>
-       <button class="x-btn" onclick="rmMacro('${t.replace(/'/g,"\\'")}')">&times;</button></div>`
-    ).join('') || '<div style="color:var(--lt);font-size:13px;padding:8px 0">No custom macros yet</div>';
-  } catch {}
+    document.getElementById('snList').innerHTML=Object.entries(d.snippets||{}).map(([t,txt])=>`<div class="item"><span class="item-k">"${esc(t)}"</span><span style="color:var(--dim);margin:0 4px">&rarr;</span><span class="item-v">${esc(txt.slice(0,60))}</span><button class="xb" onclick="rmSnip('${t.replace(/'/g,"\\'")}')">&times;</button></div>`).join('');
+  }catch{}
 }
 
-// ── Init ─────────────────────────────────────────
-document.getElementById('scratchArea').value = localStorage.getItem('scratchpad') || '';
-renderStylePage();
-checkGroqStatus();
-checkBackendStatus();
-setupListeners();
-// Check permissions after backend is ready
-setTimeout(checkPermissions, 3000);
-
-async function checkPermissions() {
-  try {
-    const r = await fetch(`${API}/api/permissions`);
-    const p = await r.json();
-
-    let allGood = true;
-    const setup = document.getElementById('setup');
-
-    // Step 1: Microphone
-    const s1num = document.getElementById('s1num');
-    const s1desc = document.getElementById('s1desc');
-    const s1action = document.getElementById('s1action');
-
-    if (p.mic === 'granted' && p.mic_working) {
-      s1num.className = 'step-num done';
-      s1num.textContent = '✓';
-      s1desc.textContent = 'Microphone access granted and working.';
-      s1action.innerHTML = '';
-    } else if (p.mic === 'granted' && !p.mic_working) {
-      s1num.className = 'step-num warn';
-      s1num.textContent = '!';
-      s1desc.innerHTML = 'Microphone permission granted but not capturing audio.<br>This usually means you need to run from <b>Terminal.app</b> (not other terminals like cmux or iTerm).';
-      s1action.innerHTML = '<div style="margin-top:6px;font-size:12px;color:var(--mut);line-height:1.6">' +
-        '1. Open <b>Terminal.app</b> (from /Applications/Utilities/)<br>' +
-        '2. Run: <code>cd ' + esc(p.python_path ? p.python_path.replace(/\/[^/]+$/, '') : '~') + '</code><br>' +
-        '3. Then: <code>bash start.sh</code></div>';
-      allGood = false;
-    } else {
-      s1num.className = 'step-num warn';
-      s1num.textContent = '!';
-      s1desc.innerHTML = 'Microphone access needed.';
-      s1action.innerHTML = '<div style="margin-top:6px;font-size:12px;color:var(--mut);line-height:1.6">' +
-        '1. Open <b>System Settings</b><br>' +
-        '2. Go to <b>Privacy & Security → Microphone</b><br>' +
-        '3. Find <b>Terminal</b> (or your terminal app) and toggle it <b>ON</b><br>' +
-        '4. Restart Muse</div>';
-      allGood = false;
-    }
-
-    // Step 2: Input Monitoring
-    const s2num = document.getElementById('s2num');
-    const s2desc = document.getElementById('s2desc');
-    const s2action = document.getElementById('s2action');
-
-    if (p.input_monitoring === 'granted') {
-      s2num.className = 'step-num done';
-      s2num.textContent = '✓';
-      s2desc.textContent = 'Hotkey detection is working. Hold Right Option (⌥) to dictate.';
-      s2action.innerHTML = '';
-    } else {
-      s2num.className = 'step-num warn';
-      s2num.textContent = '!';
-      s2desc.innerHTML = 'Input Monitoring needed for the hotkey to work.';
-      s2action.innerHTML = '<div style="margin-top:6px;font-size:12px;color:var(--mut);line-height:1.6">' +
-        '1. Open <b>System Settings</b><br>' +
-        '2. Go to <b>Privacy & Security → Input Monitoring</b><br>' +
-        '3. Click <b>+</b> and press <b>⌘⇧G</b><br>' +
-        '4. Paste: <code>/Library/Frameworks/Python.framework/Versions/3.13/Resources/Python.app</code><br>' +
-        '5. Add it and make sure the toggle is <b>ON</b><br>' +
-        '6. Also add <b>Terminal.app</b> if not already listed<br>' +
-        '7. Restart Muse</div>';
-      allGood = false;
-    }
-
-    // Step 3: Groq API Key
-    const s3num = document.getElementById('s3num');
-    const s3desc = document.getElementById('s3desc');
-    const s3action = document.getElementById('s3action');
-
-    if (p.groq_key) {
-      s3num.className = 'step-num done';
-      s3num.textContent = '✓';
-      s3desc.textContent = 'Groq API key configured. Text cleanup is active.';
-      s3action.innerHTML = '';
-    } else {
-      s3num.className = 'step-num warn';
-      s3num.textContent = '!';
-      s3desc.innerHTML = 'Groq API key needed for text cleanup (filler removal, grammar, punctuation).';
-      s3action.innerHTML = '<div style="margin-top:6px">' +
-        '<div style="font-size:12px;color:var(--mut);margin-bottom:6px">Get a free key at <b>console.groq.com</b></div>' +
-        '<div class="fr"><input class="inp" id="setupGroqKey" type="password" placeholder="gsk_..." style="font-size:12px">' +
-        '<button class="btn btn-d btn-s" onclick="saveSetupKey()">Save</button></div></div>';
-      allGood = false;
-    }
-
-    // Show/hide setup
-    const skipSetup = localStorage.getItem('setup_dismissed');
-    if (!allGood && !skipSetup) {
-      setup.classList.remove('hidden');
-    } else {
-      setup.classList.add('hidden');
-    }
-
-    // Enable done button if at least mic + input monitoring work
-    const canProceed = (p.mic === 'granted') && (p.input_monitoring === 'granted');
-    document.getElementById('setupDoneBtn').disabled = false; // Always allow dismiss
-    document.getElementById('setupDoneBtn').textContent = allGood ? 'Continue to Muse' : 'Continue anyway';
-
-  } catch(e) {
-    // Backend not ready yet, try again
-    setTimeout(checkPermissions, 2000);
-  }
+// Setup
+async function checkPerms(){
+  try{
+    const r=await fetch(`${API}/api/permissions`);const p=await r.json();
+    let ok=true;
+    if(p.mic==='granted'&&p.mic_working){document.getElementById('s1n').className='step-n ok';document.getElementById('s1n').textContent='✓';document.getElementById('s1d').textContent='Working'}
+    else{document.getElementById('s1n').className='step-n warn';document.getElementById('s1n').textContent='!';document.getElementById('s1d').innerHTML='Grant mic access in System Settings > Privacy > Microphone';ok=false}
+    if(p.input_monitoring==='granted'){document.getElementById('s2n').className='step-n ok';document.getElementById('s2n').textContent='✓';document.getElementById('s2d').textContent='Working'}
+    else{document.getElementById('s2n').className='step-n warn';document.getElementById('s2n').textContent='!';document.getElementById('s2d').innerHTML='Grant access in System Settings > Privacy > Input Monitoring';ok=false}
+    if(p.groq_key){document.getElementById('s3n').className='step-n ok';document.getElementById('s3n').textContent='✓';document.getElementById('s3d').textContent='Configured'}
+    else{document.getElementById('s3n').className='step-n warn';document.getElementById('s3n').textContent='!';document.getElementById('s3d').innerHTML='Get a free key at console.groq.com';document.getElementById('s3a').innerHTML='<div class="fr" style="margin-top:6px"><input class="inp" id="setupKey" type="password" placeholder="gsk_..." style="font-size:11px"><button class="btn btn-p btn-sm" onclick="saveSetupKey()">Save</button></div>';ok=false}
+    if(ok||localStorage.getItem('setup_dismissed'))document.getElementById('setup').classList.add('hidden');
+    document.getElementById('setupBtn').disabled=false;document.getElementById('setupBtn').textContent=ok?'Continue':'Continue anyway';
+  }catch{setTimeout(checkPerms,2000)}
 }
+async function saveSetupKey(){const k=document.getElementById('setupKey').value.trim();if(!k)return;await apiPost('set-groq-key',{key:k});checkPerms()}
+function dismissSetup(){localStorage.setItem('setup_dismissed','1');document.getElementById('setup').classList.add('hidden')}
 
-async function saveSetupKey() {
-  const key = document.getElementById('setupGroqKey').value.trim();
-  if (!key) return;
-  await apiPost('set-groq-key', {key});
-  checkPermissions();
+// Google OAuth
+async function gConnect(){
+  const cid=document.getElementById('gCid').value.trim(),cs=document.getElementById('gCs').value.trim();
+  const btn=document.getElementById('gBtn');
+  const body=(cid&&cs)?{client_id:cid,client_secret:cs}:{};
+  btn.disabled=true;btn.textContent='Opening browser...';
+  try{const r=await fetch(`${API}/api/oauth/connect`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(d.ok){document.getElementById('credHint').textContent='Complete login in browser...'}else if(d.needs_credentials){alert('Enter Client ID and Secret first.');btn.disabled=false;btn.textContent='Connect'}else{alert(d.error||'Failed');btn.disabled=false;btn.textContent='Connect'}}catch(e){alert('Error: '+e.message);btn.disabled=false;btn.textContent='Connect'}
 }
+async function gDisconnect(){const e=document.getElementById('gEmail').textContent;await fetch(`${API}/api/accounts/google/${encodeURIComponent(e)}`,{method:'DELETE'});gLoadAccounts()}
+async function gLoadAccounts(){try{const r=await fetch(`${API}/api/accounts`);const d=await r.json();const g=(d.accounts||[]).filter(a=>a.service==='google');if(g.length>0){document.getElementById('googleSetup').style.display='none';document.getElementById('gConnected').style.display='';document.getElementById('gEmail').textContent=g.map(a=>a.email).join(', ')}else{document.getElementById('googleSetup').style.display='';document.getElementById('gConnected').style.display='none';document.getElementById('gBtn').disabled=false;document.getElementById('gBtn').textContent='Connect';document.getElementById('credHint').textContent='Enter your OAuth credentials, then click Connect.'}}catch{}}
 
-function dismissSetup() {
-  localStorage.setItem('setup_dismissed', '1');
-  document.getElementById('setup').classList.add('hidden');
-}
-// Poll refresh every 5s as fallback
-setInterval(() => { if (connected) refresh(); }, 5000);
-
-// ── Integrations ──────────────────────────────────────────────────────────
-async function gConnect() {
-  const cid = document.getElementById('gCid').value.trim();
-  const cs = document.getElementById('gCs').value.trim();
-  const btn = document.getElementById('gBtn');
-  const body = (cid && cs) ? {client_id: cid, client_secret: cs} : {};
-
-  btn.disabled = true; btn.textContent = 'Opening browser...';
-  try {
-    const r = await fetch(`${API}/api/oauth/connect`, {
-      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body),
-    });
-    const d = await r.json();
-    if (d.ok) {
-      document.getElementById('credHint').textContent = 'Complete the login in your browser...';
-    } else if (d.needs_credentials) {
-      alert('Enter your Client ID and Client Secret first.');
-      btn.disabled = false; btn.textContent = 'Connect';
-    } else {
-      alert(d.error || 'Failed');
-      btn.disabled = false; btn.textContent = 'Connect';
-    }
-  } catch (e) {
-    alert('Error: ' + e.message);
-    btn.disabled = false; btn.textContent = 'Connect';
-  }
-}
-
-async function gDisconnect() {
-  const email = document.getElementById('gEmail').textContent;
-  await fetch(`${API}/api/accounts/google/${encodeURIComponent(email)}`, {method:'DELETE'});
-  gLoadAccounts();
-}
-
-async function gLoadAccounts() {
-  try {
-    const r = await fetch(`${API}/api/accounts`);
-    const d = await r.json();
-    const google = (d.accounts||[]).filter(a => a.service === 'google');
-    if (google.length > 0) {
-      document.getElementById('googleSetup').style.display = 'none';
-      document.getElementById('gConnected').style.display = '';
-      document.getElementById('gEmail').textContent = google.map(a=>a.email).join(', ');
-    } else {
-      document.getElementById('googleSetup').style.display = '';
-      document.getElementById('gConnected').style.display = 'none';
-      document.getElementById('gBtn').disabled = false;
-      document.getElementById('gBtn').textContent = 'Connect';
-      document.getElementById('credHint').textContent = 'Enter your OAuth credentials, then click Connect.';
-    }
-  } catch {}
-}
-
-function openExternal(url) {
-  if (window.electronAPI && window.electronAPI.openOAuth) { window.electronAPI.openOAuth(url); }
-  else { window.open(url, '_blank'); }
-}
-
-const origShowPage = showPage;
-showPage = function(page, btn) {
-  origShowPage(page, btn);
-  if (page === 'integrations') gLoadAccounts();
-};
-
-if (window.electronAPI) {
-  window.electronAPI.onWsMessage(m => {
-    if (m.type === 'oauth_complete') gLoadAccounts();
-  });
-}
+// Init
+checkGroq();checkBackend();setupListeners();
+setTimeout(checkPerms,3000);
+setInterval(()=>{if(connected)refresh()},5000);
 </script>
 </body>
 </html>
