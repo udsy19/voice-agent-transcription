@@ -568,6 +568,22 @@ async def api_permissions():
     return result
 
 
+@api.get("/api/debug")
+async def api_debug():
+    """Debug info for troubleshooting."""
+    import sys
+    return {
+        "python": sys.executable,
+        "recording_mode": S.recording_mode,
+        "key_held": S.key_held,
+        "processing": S.processing,
+        "is_recording": S.recorder.is_recording if S.recorder else False,
+        "dictation_key": str(DICTATION_KEY),
+        "assistant_key": str(ASSISTANT_KEY),
+        "source_app": S.source_app,
+    }
+
+
 @api.get("/api/transcription-backend")
 async def api_get_backend():
     backend = S.transcriber.backend if S.transcriber else "loading"
@@ -1161,14 +1177,36 @@ def load_engine():
 
 
 def start_listener():
+    # Check Input Monitoring permission
     try:
-        import Quartz
-        if not Quartz.AXIsProcessTrusted():
-            log.error("Input Monitoring not granted — hotkeys won't work")
-            set_status("error", "Grant Input Monitoring in System Settings > Privacy")
-    except Exception:
-        pass
-    with keyboard.Listener(on_press=on_key_press, on_release=on_key_release) as listener:
+        import subprocess
+        result = subprocess.run(
+            ["/usr/local/bin/python3", "-c",
+             "import ApplicationServices; print(ApplicationServices.AXIsProcessTrusted())"],
+            capture_output=True, text=True, timeout=5
+        )
+        trusted = result.stdout.strip() == "True"
+        if not trusted:
+            log.warning("Input Monitoring may not be granted — hotkeys might not work")
+            log.warning("Add Python and/or Muse.app to System Settings > Privacy > Input Monitoring")
+    except Exception as e:
+        log.debug("Could not check Input Monitoring: %s", e)
+
+    log.info("Starting keyboard listener (dictation=⌥L, assistant=⌥R)")
+
+    def on_press_safe(key):
+        try:
+            on_key_press(key)
+        except Exception as e:
+            log.error("Key press handler error: %s", e, exc_info=True)
+
+    def on_release_safe(key):
+        try:
+            on_key_release(key)
+        except Exception as e:
+            log.error("Key release handler error: %s", e, exc_info=True)
+
+    with keyboard.Listener(on_press=on_press_safe, on_release=on_release_safe) as listener:
         listener.join()
 
 

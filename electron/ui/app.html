@@ -2,230 +2,228 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Muse</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#0a0a0a;--bg2:#111;--card:#161616;
-  --pri:#f5f5f5;--sec:#888;--dim:#555;
-  --acc:#3b82f6;--green:#22c55e;--red:#ef4444;--amber:#f59e0b;
-  --brd:rgba(255,255,255,.06);
-  --r:10px;--rs:6px;
-  --font:'Inter',-apple-system,system-ui,sans-serif;
+  --bg:#191919;--surface:#1e1e1e;--hover:#252525;
+  --text:#e8e8e3;--text2:#9b9a97;--text3:#5a5a56;
+  --border:rgba(255,255,255,.055);
+  --blue:rgba(35,131,226,.85);--green:rgba(68,167,96,.85);--red:rgba(212,76,71,.85);--amber:rgba(203,145,47,.85);
+  --radius:6px;
+  --font:-apple-system,'Segoe UI','Helvetica Neue',sans-serif;
+  --mono:'SFMono-Regular','Menlo',monospace;
 }
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:var(--font);background:var(--bg);color:var(--pri);-webkit-font-smoothing:antialiased;overflow:hidden;height:100vh;display:flex;flex-direction:column;font-size:13px}
+::selection{background:rgba(35,131,226,.3)}
+body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;overflow:hidden;height:100vh;display:flex;flex-direction:column;font-size:14px;line-height:1.5}
 
-.titlebar{height:48px;-webkit-app-region:drag;flex-shrink:0;background:var(--bg)}
+/* Titlebar */
+.tb{height:44px;-webkit-app-region:drag;flex-shrink:0}
+
 .layout{display:flex;flex:1;overflow:hidden}
 
-/* Sidebar */
-.sb{width:180px;flex-shrink:0;background:var(--bg);padding:8px;display:flex;flex-direction:column;-webkit-app-region:no-drag}
-.sb-logo{font-weight:600;font-size:15px;padding:8px 12px 20px;color:var(--pri);display:flex;align-items:center;gap:8px;letter-spacing:-.02em}
-.sb-logo .dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
-.sb-logo .dot.loading{background:var(--dim);animation:pulse 1.5s infinite}
-.sb-logo .dot.recording{background:var(--red);animation:pulse .8s infinite}
-.sb-logo .dot.processing{background:var(--amber);animation:pulse 1s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+/* Sidebar — Notion-style: ultra minimal */
+.sb{
+  width:220px;flex-shrink:0;background:var(--surface);
+  padding:12px 8px;display:flex;flex-direction:column;
+  border-right:1px solid var(--border);
+  -webkit-app-region:no-drag;
+  font-size:13px;
+}
+.sb-head{
+  padding:4px 10px 16px;display:flex;align-items:center;gap:8px;
+  font-size:14px;font-weight:600;letter-spacing:-.01em;
+}
+.sb-head .dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0}
+.sb-head .dot.loading{background:var(--text3);animation:p 1.5s infinite}
+.sb-head .dot.recording{background:var(--red);animation:p .8s infinite}
+.sb-head .dot.processing{background:var(--amber)}
+@keyframes p{0%,100%{opacity:1}50%{opacity:.3}}
 
-.nav{display:flex;flex-direction:column;gap:1px}
-.nav a{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--rs);font-size:13px;color:var(--sec);cursor:pointer;transition:all .12s;text-decoration:none;border:none;background:none;width:100%;text-align:left;font-family:var(--font)}
-.nav a:hover{background:rgba(255,255,255,.04);color:var(--pri)}
-.nav a.on{background:rgba(255,255,255,.08);color:var(--pri)}
-.nav a svg{width:16px;height:16px;opacity:.5;flex-shrink:0}
-.nav a.on svg{opacity:.8}
+.sb a{
+  display:flex;align-items:center;gap:10px;
+  padding:6px 10px;border-radius:4px;
+  color:var(--text2);cursor:pointer;transition:background .08s;
+  text-decoration:none;border:none;background:none;width:100%;text-align:left;font:inherit;
+}
+.sb a:hover{background:var(--hover);color:var(--text)}
+.sb a.on{background:var(--hover);color:var(--text)}
+.sb a svg{width:16px;height:16px;opacity:.45;flex-shrink:0;stroke:currentColor;fill:none;stroke-width:1.5}
+.sb a.on svg{opacity:.7}
 
-.sb-spacer{flex:1}
-.sb-foot{padding:8px 12px;font-size:11px;color:var(--dim)}
+.sb-space{flex:1}
+.sb-foot{padding:6px 10px;font-size:11px;color:var(--text3);font-family:var(--mono)}
 
-/* Content */
-.main{flex:1;overflow-y:auto;padding:24px 28px 40px;-webkit-app-region:no-drag}
-.main::-webkit-scrollbar{width:5px}
-.main::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:3px}
+/* Main content — Notion "page" feel */
+.main{flex:1;overflow-y:auto;-webkit-app-region:no-drag}
+.main::-webkit-scrollbar{width:0}
 
-.pg{display:none}.pg.on{display:block}
-.pg h1{font-weight:500;font-size:20px;margin-bottom:4px;letter-spacing:-.02em}
-.pg .sub{font-size:13px;color:var(--sec);margin-bottom:20px;line-height:1.5}
+.pg{display:none;max-width:720px;margin:0 auto;padding:8px 48px 64px}
+.pg.on{display:block}
+.pg h1{font-size:32px;font-weight:700;letter-spacing:-.03em;margin-bottom:4px}
+.pg .desc{font-size:14px;color:var(--text2);margin-bottom:28px}
 
-/* Status bar */
-.stat{flex-shrink:0;display:flex;align-items:center;gap:8px;padding:8px 16px;background:var(--bg2);border-top:1px solid var(--brd);font-size:11px;color:var(--sec);-webkit-app-region:no-drag}
+.label{font-size:11px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin:28px 0 8px}
+
+/* Cards — very subtle, Notion block feel */
+.block{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  margin-bottom:10px;overflow:hidden;
+}
+.row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 14px;border-bottom:1px solid var(--border);
+}
+.row:last-child{border-bottom:none}
+.row-label{font-size:13px;font-weight:500}
+.row-sub{font-size:12px;color:var(--text3);margin-top:1px}
+
+/* Inputs */
+.fr{display:flex;gap:6px;margin-bottom:6px}
+input.inp,select.inp{
+  flex:1;padding:7px 10px;
+  border:1px solid var(--border);border-radius:4px;
+  font:13px var(--font);background:var(--bg);color:var(--text);
+  outline:none;transition:border-color .15s;
+}
+input.inp:focus{border-color:var(--blue)}
+input.inp::placeholder{color:var(--text3)}
+select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%235a5a56'/%3E%3C/svg%3E") no-repeat right 8px center}
+
+.btn{
+  padding:6px 14px;border:none;border-radius:4px;
+  font:500 12px var(--font);cursor:pointer;transition:background .1s;
+}
+.btn-p{background:var(--blue);color:#fff}
+.btn-p:hover{background:rgba(35,131,226,1)}
+.btn-g{background:var(--hover);color:var(--text)}
+.btn-g:hover{background:rgba(255,255,255,.1)}
+
+/* Tags — muted pills */
+.tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.tag{
+  display:inline-flex;align-items:center;gap:4px;
+  background:var(--hover);padding:3px 10px;border-radius:3px;
+  font-size:12px;color:var(--text2);
+}
+.tag .x{cursor:pointer;opacity:.3;font-size:13px}.tag .x:hover{opacity:.8}
+
+.item{display:flex;align-items:center;padding:8px 0;font-size:13px;gap:6px}
+.item+.item{border-top:1px solid var(--border)}
+.item-k{font-weight:500;color:var(--text)}
+.item-v{flex:1;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .xb{cursor:pointer;opacity:0;color:var(--text3);background:none;border:none;font-size:14px;padding:2px 6px;flex-shrink:0}
+.item:hover .xb{opacity:.6}
+
+/* Toggle — small, Notion-style */
+.tog{width:32px;height:18px;border-radius:9px;background:var(--hover);cursor:pointer;position:relative;transition:background .15s;border:none}
+.tog.on{background:var(--blue)}
+.tog::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform .15s}
+.tog.on::after{transform:translateX(14px)}
+
+/* History entries */
+.entry{padding:12px 0}
+.entry+.entry{border-top:1px solid var(--border)}
+.entry-head{display:flex;justify-content:space-between;margin-bottom:3px}
+.entry-app{font-size:11px;color:var(--text3);font-family:var(--mono)}
+.entry-time{font-size:11px;color:var(--text3)}
+.entry-raw{font-size:12px;color:var(--text3);margin-bottom:2px}
+.entry-text{font-size:14px;line-height:1.6}
+.entry-type{font-size:10px;color:var(--blue);font-family:var(--mono);margin-left:6px}
+.entry-copy{font-size:11px;color:var(--text3);margin-top:3px;cursor:pointer;opacity:.4;transition:opacity .1s}
+.entry-copy:hover{opacity:1;color:var(--blue)}
+
+.empty{text-align:center;padding:64px 16px;color:var(--text3);font-size:14px;line-height:1.8}
+
+/* Status bar — barely there */
+.stat{
+  flex-shrink:0;display:flex;align-items:center;gap:6px;
+  padding:6px 14px;font-size:11px;color:var(--text3);
+  border-top:1px solid var(--border);
+  -webkit-app-region:no-drag;
+}
 .stat .d{width:5px;height:5px;border-radius:50%;background:var(--green)}
-.stat .d.recording{background:var(--red);animation:pulse .8s infinite}
+.stat .d.recording{background:var(--red);animation:p .8s infinite}
 .stat .d.processing{background:var(--amber)}
-.stat .d.loading{background:var(--dim)}
+.stat .d.loading{background:var(--text3)}
 
-/* Cards */
-.card{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);margin-bottom:12px;overflow:hidden}
-.card-row{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--brd)}
-.card-row:last-child{border-bottom:none}
-.card-label{font-size:13px;font-weight:500}
-.card-sub{font-size:12px;color:var(--sec);margin-top:2px}
-
-/* Forms */
-.fr{display:flex;gap:6px;margin-bottom:8px}
-.inp{flex:1;padding:8px 12px;border:1px solid var(--brd);border-radius:var(--rs);font-family:var(--font);font-size:12px;background:var(--bg2);color:var(--pri);outline:none;transition:border-color .15s}
-.inp:focus{border-color:var(--acc)}
-.inp::placeholder{color:var(--dim)}
-select.inp{appearance:none;background:var(--bg2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23555'/%3E%3C/svg%3E") no-repeat right 10px center;padding-right:26px}
-
-.btn{padding:8px 16px;border:none;border-radius:var(--rs);font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;transition:opacity .12s}
-.btn:hover{opacity:.85}
-.btn-p{background:var(--pri);color:var(--bg)}
-.btn-s{background:rgba(255,255,255,.08);color:var(--pri)}
-.btn-sm{padding:6px 12px;font-size:11px}
-
-/* Tags */
-.tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
-.tag{display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.06);padding:4px 10px;border-radius:999px;font-size:11px;color:var(--sec)}
-.tag .x{cursor:pointer;opacity:.4;font-size:12px}.tag .x:hover{opacity:1}
-
-/* Items */
-.item{display:flex;align-items:center;padding:10px 0;border-bottom:1px solid var(--brd);font-size:12px;gap:8px}
-.item:last-child{border-bottom:none}
-.item-k{font-weight:500;color:var(--pri);flex-shrink:0}
-.item-v{flex:1;color:var(--sec);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.item .xb{cursor:pointer;opacity:0;font-size:11px;color:var(--sec);background:rgba(255,255,255,.06);border:none;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.item:hover .xb{opacity:1}
-
-/* Toggle */
-.tog{width:36px;height:20px;border-radius:10px;background:rgba(255,255,255,.1);cursor:pointer;position:relative;transition:background .2s;border:none}
-.tog.on{background:var(--acc)}
-.tog::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .2s}
-.tog.on::after{transform:translateX(16px)}
-
-/* Entries */
-.entry{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);padding:12px 16px;margin-bottom:8px}
-.entry-head{display:flex;justify-content:space-between;margin-bottom:4px}
-.entry-app{font-size:10px;color:var(--dim);font-weight:500;text-transform:uppercase;letter-spacing:.04em}
-.entry-time{font-size:10px;color:var(--dim)}
-.entry-raw{font-size:11px;color:var(--dim);line-height:1.5;margin-bottom:3px}
-.entry-text{font-size:13px;line-height:1.5}
-.entry-copy{font-size:10px;color:var(--dim);margin-top:4px;cursor:pointer;opacity:.5;transition:opacity .1s}
-.entry-copy:hover{opacity:1;color:var(--acc)}
-
-.empty{text-align:center;padding:48px 16px;color:var(--dim)}
-
-.label{font-size:11px;font-weight:500;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin:20px 0 8px}
-
-/* Setup overlay */
+/* Setup */
 .setup{position:fixed;inset:0;background:var(--bg);z-index:100;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:40px}
 .setup.hidden{display:none}
-.setup h1{font-size:22px;font-weight:500;margin-bottom:8px}
-.setup .sub{color:var(--sec);margin-bottom:24px;text-align:center;line-height:1.6}
-.step{display:flex;gap:12px;margin-bottom:16px;width:100%;max-width:420px}
-.step-n{width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0;color:var(--sec)}
-.step-n.ok{background:var(--green);color:#000}
-.step-n.warn{background:var(--amber);color:#000}
-.step-body{flex:1}
-.step-body b{font-weight:500}
-.setup .btn{margin-top:12px}
+.setup h1{font-size:24px;font-weight:600;margin-bottom:6px}
+.setup .desc{color:var(--text2);margin-bottom:28px}
+.step{display:flex;gap:12px;margin-bottom:14px;width:100%;max-width:380px}
+.step-n{width:22px;height:22px;border-radius:50%;background:var(--hover);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0;color:var(--text3)}
+.step-n.ok{background:var(--green);color:#fff}
+.step-n.warn{background:var(--amber);color:#fff}
+.step-body{flex:1;font-size:13px}
+.step-body b{font-weight:500;color:var(--text)}
 </style>
 </head>
 <body>
 
-<!-- Setup -->
 <div class="setup" id="setup">
-  <h1>Welcome to Muse</h1>
-  <div class="sub">Voice dictation + AI assistant for macOS</div>
-  <div class="step"><div class="step-n" id="s1n">1</div><div class="step-body"><b>Microphone</b><div id="s1d" style="font-size:12px;color:var(--sec);margin-top:2px">Checking...</div><div id="s1a"></div></div></div>
-  <div class="step"><div class="step-n" id="s2n">2</div><div class="step-body"><b>Input Monitoring</b><div id="s2d" style="font-size:12px;color:var(--sec);margin-top:2px">Checking...</div><div id="s2a"></div></div></div>
-  <div class="step"><div class="step-n" id="s3n">3</div><div class="step-body"><b>Groq API Key</b><div id="s3d" style="font-size:12px;color:var(--sec);margin-top:2px">Checking...</div><div id="s3a"></div></div></div>
-  <button class="btn btn-p" id="setupBtn" onclick="dismissSetup()" disabled>Continue</button>
+  <h1>Muse</h1>
+  <div class="desc">Voice dictation + AI assistant</div>
+  <div class="step"><div class="step-n" id="s1n">1</div><div class="step-body"><b>Microphone</b><div id="s1d" style="color:var(--text3);margin-top:1px;font-size:12px">Checking...</div><div id="s1a"></div></div></div>
+  <div class="step"><div class="step-n" id="s2n">2</div><div class="step-body"><b>Input Monitoring</b><div id="s2d" style="color:var(--text3);margin-top:1px;font-size:12px">Checking...</div><div id="s2a"></div></div></div>
+  <div class="step"><div class="step-n" id="s3n">3</div><div class="step-body"><b>Groq API Key</b><div id="s3d" style="color:var(--text3);margin-top:1px;font-size:12px">Checking...</div><div id="s3a"></div></div></div>
+  <button class="btn btn-p" id="setupBtn" onclick="dismissSetup()" disabled style="margin-top:16px;padding:8px 24px">Continue</button>
 </div>
 
-<!-- Title bar -->
-<div class="titlebar"></div>
+<div class="tb"></div>
 
 <div class="layout">
-  <!-- Sidebar -->
   <div class="sb">
-    <div class="sb-logo"><span class="dot loading" id="logoDot"></span> Muse</div>
-    <div class="nav">
-      <a class="on" data-pg="home" onclick="go(this)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-        Home
-      </a>
-      <a data-pg="dictionary" onclick="go(this)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-        Dictionary
-      </a>
-      <a data-pg="integrations" onclick="go(this)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        Integrations
-      </a>
-      <a data-pg="settings" onclick="go(this)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
-        Settings
-      </a>
-    </div>
-    <div class="sb-spacer"></div>
+    <div class="sb-head"><span class="dot loading" id="logoDot"></span> Muse</div>
+    <a class="on" data-pg="home" onclick="nav(this)"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Home</a>
+    <a data-pg="dictionary" onclick="nav(this)"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Dictionary</a>
+    <a data-pg="integrations" onclick="nav(this)"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Integrations</a>
+    <a data-pg="settings" onclick="nav(this)"><svg viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>Settings</a>
+    <div class="sb-space"></div>
     <div class="sb-foot">v1.0.0</div>
   </div>
 
-  <!-- Content -->
   <div class="main">
-
     <!-- HOME -->
     <div class="pg on" id="pg-home">
       <h1>Home</h1>
-      <div class="sub"><b>⌥L</b> dictate &nbsp; <b>⌥R</b> assistant</div>
-      <div class="label">Recent</div>
-      <div id="hist">
-        <div class="empty">Hold Left Option and speak.<br>Your dictations will appear here.</div>
-      </div>
+      <div class="desc"><span style="font-family:var(--mono);font-size:12px;background:var(--hover);padding:2px 6px;border-radius:3px">⌥L</span> dictate &nbsp;&nbsp; <span style="font-family:var(--mono);font-size:12px;background:var(--hover);padding:2px 6px;border-radius:3px">⌥R</span> assistant</div>
+      <div id="hist"><div class="empty">Hold Left Option and speak.<br>Your dictations will appear here.</div></div>
     </div>
 
     <!-- DICTIONARY -->
     <div class="pg" id="pg-dictionary">
       <h1>Dictionary</h1>
-      <div class="sub">Terms help Whisper spell names and jargon correctly. Snippets paste template text when triggered by voice.</div>
-
+      <div class="desc">Help Whisper spell names and jargon correctly. Snippets paste template text when triggered.</div>
       <div class="label">Terms</div>
-      <div class="fr">
-        <input class="inp" id="dInp" placeholder="Add a term..." onkeydown="if(event.key==='Enter')addTerm()">
-        <button class="btn btn-p btn-sm" onclick="addTerm()">Add</button>
-      </div>
+      <div class="fr"><input class="inp" id="dInp" placeholder="Add a term..." onkeydown="if(event.key==='Enter')addTerm()"><button class="btn btn-p" onclick="addTerm()">Add</button></div>
       <div class="tags" id="dTags"></div>
-
       <div class="label">Auto-corrections</div>
-      <div class="fr">
-        <input class="inp" id="cW" placeholder="Wrong..." style="flex:.4">
-        <input class="inp" id="cR" placeholder="Correct..." style="flex:.6" onkeydown="if(event.key==='Enter')addCorr()">
-        <button class="btn btn-s btn-sm" onclick="addCorr()">Add</button>
-      </div>
+      <div class="fr"><input class="inp" id="cW" placeholder="Wrong..." style="flex:.4"><input class="inp" id="cR" placeholder="Correct..." style="flex:.6" onkeydown="if(event.key==='Enter')addCorr()"><button class="btn btn-g" onclick="addCorr()">Add</button></div>
       <div id="cList"></div>
-
       <div class="label">Snippets</div>
-      <div class="fr">
-        <input class="inp" id="snT" placeholder="Trigger phrase..." style="flex:.35">
-        <input class="inp" id="snV" placeholder="Snippet text..." style="flex:.65" onkeydown="if(event.key==='Enter')addSnip()">
-        <button class="btn btn-s btn-sm" onclick="addSnip()">Add</button>
-      </div>
+      <div class="fr"><input class="inp" id="snT" placeholder="Trigger phrase..." style="flex:.35"><input class="inp" id="snV" placeholder="Text to paste..." style="flex:.65" onkeydown="if(event.key==='Enter')addSnip()"><button class="btn btn-g" onclick="addSnip()">Add</button></div>
       <div id="snList"></div>
     </div>
 
     <!-- INTEGRATIONS -->
     <div class="pg" id="pg-integrations">
       <h1>Integrations</h1>
-      <div class="sub">Connect Google for Calendar and Gmail voice commands via ⌥R.</div>
-
-      <div class="card" id="googleSetup">
-        <div class="card-row" style="flex-direction:column;align-items:stretch;gap:8px;padding:16px">
-          <div class="card-label">Google</div>
-          <div class="card-sub" id="credHint">Enter your OAuth credentials, then click Connect.</div>
+      <div class="desc">Connect Google for calendar and email voice commands.</div>
+      <div class="block" id="googleSetup">
+        <div class="row" style="flex-direction:column;align-items:stretch;gap:8px;padding:14px">
+          <div class="row-label">Google</div>
+          <div class="row-sub" id="credHint">Enter your OAuth credentials.</div>
           <input class="inp" id="gCid" placeholder="Client ID">
           <input class="inp" id="gCs" placeholder="Client Secret" type="password">
-          <button class="btn btn-p" id="gBtn" onclick="gConnect()">Connect</button>
+          <button class="btn btn-p" id="gBtn" onclick="gConnect()" style="align-self:flex-start">Connect</button>
         </div>
       </div>
-
-      <div class="card" id="gConnected" style="display:none">
-        <div class="card-row">
-          <div style="flex:1"><div class="card-label">Google</div><div class="card-sub" id="gEmail"></div></div>
-          <button class="btn btn-s btn-sm" onclick="gDisconnect()">Disconnect</button>
+      <div class="block" id="gConnected" style="display:none">
+        <div class="row">
+          <div><div class="row-label">Google</div><div class="row-sub" id="gEmail"></div></div>
+          <button class="btn btn-g" onclick="gDisconnect()">Disconnect</button>
         </div>
       </div>
     </div>
@@ -233,176 +231,108 @@ select.inp{appearance:none;background:var(--bg2) url("data:image/svg+xml,%3Csvg 
     <!-- SETTINGS -->
     <div class="pg" id="pg-settings">
       <h1>Settings</h1>
-      <div class="sub">General configuration</div>
-
-      <div class="card">
-        <div class="card-row">
-          <div style="flex:1"><div class="card-label">Groq API Key</div><div class="card-sub" id="groqStatus">Checking...</div></div>
-          <div style="display:flex;gap:6px">
-            <input class="inp" id="groqKeyInput" type="password" placeholder="gsk_..." style="width:160px;font-size:11px">
-            <button class="btn btn-p btn-sm" onclick="setGroqKey()">Save</button>
-          </div>
+      <div class="desc">Configuration</div>
+      <div class="block">
+        <div class="row">
+          <div style="flex:1"><div class="row-label">Groq API Key</div><div class="row-sub" id="groqStatus">Checking...</div></div>
+          <div style="display:flex;gap:6px"><input class="inp" id="groqKeyInput" type="password" placeholder="gsk_..." style="width:140px;font-size:11px"><button class="btn btn-p" onclick="setGroqKey()">Save</button></div>
         </div>
       </div>
-
-      <div class="card">
-        <div class="card-row">
-          <div><div class="card-label">Transcription Engine</div><div class="card-sub" id="backendStatus">Loading...</div></div>
-          <select class="inp" id="backendSelect" onchange="setBackend(this.value)" style="width:180px;font-size:11px">
-            <option value="groq">Groq API (cloud)</option>
-            <option value="mlx">MLX Whisper (GPU)</option>
-            <option value="parakeet">Parakeet (fast)</option>
-            <option value="faster-whisper">Faster-Whisper (CPU)</option>
+      <div class="block">
+        <div class="row">
+          <div><div class="row-label">Transcription</div><div class="row-sub" id="backendStatus">Loading...</div></div>
+          <select class="inp" id="backendSelect" onchange="setBackend(this.value)" style="width:160px;font-size:12px">
+            <option value="groq">Groq API</option>
+            <option value="mlx">MLX Whisper</option>
+            <option value="parakeet">Parakeet</option>
+            <option value="faster-whisper">Faster-Whisper</option>
           </select>
         </div>
       </div>
-
-      <div class="card">
-        <div class="card-row">
-          <div><div class="card-label">Hands-Free Mode</div><div class="card-sub">Continuous listening, auto-processes on silence</div></div>
-          <button id="togHF" class="tog" onclick="apiPost('toggle-hands-free')"></button>
-        </div>
-        <div class="card-row">
-          <div><div class="card-label">Whisper Mode</div><div class="card-sub">Extra sensitivity for quiet speech</div></div>
-          <button id="togW" class="tog" onclick="apiPost('toggle-whisper')"></button>
-        </div>
-        <div class="card-row">
-          <div><div class="card-label">Sound Feedback</div><div class="card-sub">Subtle start/stop/error sounds</div></div>
-          <button id="togS" class="tog on" onclick="apiPost('toggle-sounds')"></button>
-        </div>
+      <div class="block">
+        <div class="row"><div><div class="row-label">Hands-Free</div><div class="row-sub">Continuous listening</div></div><button id="togHF" class="tog" onclick="apiPost('toggle-hands-free')"></button></div>
+        <div class="row"><div><div class="row-label">Whisper Mode</div><div class="row-sub">Extra mic sensitivity</div></div><button id="togW" class="tog" onclick="apiPost('toggle-whisper')"></button></div>
+        <div class="row"><div><div class="row-label">Sounds</div><div class="row-sub">Feedback on start/stop</div></div><button id="togS" class="tog on" onclick="apiPost('toggle-sounds')"></button></div>
       </div>
-
-      <div class="label">Export</div>
-      <div style="display:flex;gap:6px">
-        <a class="btn btn-s btn-sm" href="http://127.0.0.1:8528/api/export/json" target="_blank">JSON</a>
-        <a class="btn btn-s btn-sm" href="http://127.0.0.1:8528/api/export/txt" target="_blank">TXT</a>
-        <a class="btn btn-s btn-sm" href="http://127.0.0.1:8528/api/export/word" target="_blank">Word</a>
-        <a class="btn btn-s btn-sm" href="http://127.0.0.1:8528/api/export/pdf" target="_blank">PDF</a>
-        <a class="btn btn-s btn-sm" href="http://127.0.0.1:8528/api/export-logs" target="_blank">Logs</a>
+      <div class="label">Export history</div>
+      <div style="display:flex;gap:4px">
+        <a class="btn btn-g" href="http://127.0.0.1:8528/api/export/json" target="_blank" style="font-size:11px">JSON</a>
+        <a class="btn btn-g" href="http://127.0.0.1:8528/api/export/txt" target="_blank" style="font-size:11px">TXT</a>
+        <a class="btn btn-g" href="http://127.0.0.1:8528/api/export/word" target="_blank" style="font-size:11px">Word</a>
+        <a class="btn btn-g" href="http://127.0.0.1:8528/api/export/pdf" target="_blank" style="font-size:11px">PDF</a>
       </div>
     </div>
-
   </div>
 </div>
 
-<!-- Status bar -->
-<div class="stat">
-  <span class="d loading" id="sDot"></span>
-  <span id="sTxt">Connecting...</span>
-</div>
+<div class="stat"><span class="d loading" id="sDot"></span><span id="sTxt">Connecting...</span></div>
 
 <script>
-const API='http://127.0.0.1:8528';
-let hist=[],connected=false,ws=null;
-
+const API='http://127.0.0.1:8528';let hist=[],connected=false;
 function esc(s){return s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):''}
 
-// Nav
-function go(el){
-  document.querySelectorAll('.nav a').forEach(a=>a.classList.remove('on'));
-  el.classList.add('on');
-  document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));
-  document.getElementById('pg-'+el.dataset.pg).classList.add('on');
-  if(el.dataset.pg==='integrations')gLoadAccounts();
-}
+function nav(el){document.querySelectorAll('.sb a').forEach(a=>a.classList.remove('on'));el.classList.add('on');document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));document.getElementById('pg-'+el.dataset.pg).classList.add('on');if(el.dataset.pg==='integrations')gLoad()}
 
-// Connection
-function setupListeners(){
-  if(window.electronAPI){
-    window.electronAPI.onWsMessage(handleMsg);
-    window.electronAPI.onBackendReady(()=>{document.getElementById('setup').classList.add('hidden');connected=true;refresh()});
-    pollBackend();
-  }else{connectWS()}
-}
-function pollBackend(){fetch(`${API}/api/health`).then(r=>r.json()).then(d=>{if(d.ok){document.getElementById('setup').classList.add('hidden');connected=true;refresh()}else setTimeout(pollBackend,1000)}).catch(()=>setTimeout(pollBackend,1000))}
-function connectWS(){try{ws=new WebSocket('ws://127.0.0.1:8528/ws');ws.onopen=()=>{connected=true;document.getElementById('setup').classList.add('hidden');refresh()};ws.onmessage=e=>{try{handleMsg(JSON.parse(e.data))}catch{}};ws.onclose=()=>{connected=false;setTimeout(connectWS,2000)};ws.onerror=()=>{}}catch{setTimeout(connectWS,2000)}}
+function setupListeners(){if(window.electronAPI){window.electronAPI.onWsMessage(onMsg);window.electronAPI.onBackendReady(()=>{document.getElementById('setup').classList.add('hidden');connected=true;refresh()});poll()}else{connectWS()}}
+function poll(){fetch(`${API}/api/health`).then(r=>r.json()).then(d=>{if(d.ok){document.getElementById('setup').classList.add('hidden');connected=true;refresh()}else setTimeout(poll,1e3)}).catch(()=>setTimeout(poll,1e3))}
+function connectWS(){try{const ws=new WebSocket('ws://127.0.0.1:8528/ws');ws.onopen=()=>{connected=true;document.getElementById('setup').classList.add('hidden');refresh()};ws.onmessage=e=>{try{onMsg(JSON.parse(e.data))}catch{}};ws.onclose=()=>{connected=false;setTimeout(connectWS,2e3)}}catch{setTimeout(connectWS,2e3)}}
 
-function handleMsg(m){
-  if(m.type==='status')updateStatus(m.status,m.detail);
+function onMsg(m){
+  if(m.type==='status')updStatus(m.status,m.detail);
   if(m.type==='result'){hist.unshift(m);if(hist.length>50)hist.pop();renderHist()}
   if(m.type==='hands_free')document.getElementById('togHF').classList.toggle('on',m.on);
   if(m.type==='whisper')document.getElementById('togW').classList.toggle('on',m.on);
-  if(m.type==='oauth_complete')gLoadAccounts();
+  if(m.type==='oauth_complete')gLoad();
 }
-
-function updateStatus(s,detail){
-  const cls={loading:'loading',idle:'',recording:'recording',processing:'processing',hands_free:''};
-  document.getElementById('sDot').className='d '+(cls[s]||'');
-  document.getElementById('logoDot').className='dot '+(cls[s]||'');
-  document.getElementById('sTxt').textContent=detail||s;
-}
+function updStatus(s,d){const c={loading:'loading',idle:'',recording:'recording',processing:'processing',hands_free:''};document.getElementById('sDot').className='d '+(c[s]||'');document.getElementById('logoDot').className='dot '+(c[s]||'');document.getElementById('sTxt').textContent=d||s}
 
 function renderHist(){
   const el=document.getElementById('hist');
   if(!hist.length){el.innerHTML='<div class="empty">Hold Left Option and speak.<br>Your dictations will appear here.</div>';return}
-  el.innerHTML=hist.slice(0,15).map(d=>{
-    const text=esc(d.cleaned||d.raw||'');
-    const raw=d.raw&&d.raw!==d.cleaned?`<div class="entry-raw">${esc(d.raw)}</div>`:'';
-    const type=d.type==='assistant'?'<span style="color:var(--acc);font-size:10px;margin-left:6px">ASSISTANT</span>':'';
-    return`<div class="entry"><div class="entry-head"><span class="entry-app">${esc(d.app||'')}${type}</span><span class="entry-time">${esc(d.ts||'')} · ${d.duration||0}s</span></div>${raw}<div class="entry-text">${text}</div><div class="entry-copy" onclick="navigator.clipboard.writeText('${text.replace(/'/g,"\\'")}')">Copy</div></div>`;
+  el.innerHTML=hist.slice(0,20).map(d=>{
+    const t=esc(d.cleaned||d.raw||''),raw=d.raw&&d.raw!==d.cleaned?`<div class="entry-raw">${esc(d.raw)}</div>`:'';
+    const badge=d.type==='assistant'?'<span class="entry-type">assistant</span>':'';
+    return`<div class="entry"><div class="entry-head"><span class="entry-app">${esc(d.app||'')}${badge}</span><span class="entry-time">${esc(d.ts||'')} · ${d.duration||0}s</span></div>${raw}<div class="entry-text">${t}</div><div class="entry-copy" onclick="navigator.clipboard.writeText(\`${t.replace(/`/g,'\\`').replace(/\$/g,'\\$')}\`)">Copy</div></div>`;
   }).join('');
 }
 
-// API
-async function apiPost(path,body={}){try{await fetch(`${API}/api/${path}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});setTimeout(refresh,300)}catch{}}
+async function apiPost(p,b={}){try{await fetch(`${API}/api/${p}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});setTimeout(refresh,300)}catch{}}
 async function addTerm(){const v=document.getElementById('dInp').value.trim();if(!v)return;await apiPost('dictionary/add-term',{term:v});document.getElementById('dInp').value=''}
 async function addCorr(){const w=document.getElementById('cW').value.trim(),c=document.getElementById('cR').value.trim();if(!w||!c)return;await apiPost('dictionary/add-correction',{wrong:w,correct:c});document.getElementById('cW').value='';document.getElementById('cR').value=''}
 async function rmTerm(t){await apiPost('dictionary/remove-term',{term:t})}
 async function addSnip(){const t=document.getElementById('snT').value.trim(),v=document.getElementById('snV').value.trim();if(!t||!v)return;await apiPost('snippets/add',{trigger:t,text:v});document.getElementById('snT').value='';document.getElementById('snV').value=''}
 async function rmSnip(t){await apiPost('snippets/remove',{trigger:t})}
-async function setGroqKey(){const key=document.getElementById('groqKeyInput').value.trim();if(!key)return;const r=await fetch(`${API}/api/set-groq-key`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key})});const d=await r.json();if(d.ok){document.getElementById('groqKeyInput').value='';document.getElementById('groqStatus').textContent='Configured';document.getElementById('groqStatus').style.color='var(--green)'}}
-async function setBackend(b){document.getElementById('backendStatus').textContent='Switching...';await apiPost('transcription-backend',{backend:b});setTimeout(checkBackend,1000)}
-async function checkBackend(){try{const r=await fetch(`${API}/api/transcription-backend`);const d=await r.json();document.getElementById('backendSelect').value=d.backend;document.getElementById('backendStatus').textContent=d.backend;document.getElementById('backendStatus').style.color=d.backend==='groq'?'var(--green)':'var(--sec)'}catch{}}
-async function checkGroq(){try{const r=await fetch(`${API}/api/groq-status`);const d=await r.json();const el=document.getElementById('groqStatus');if(d.configured){el.textContent=d.masked_key?`Configured (${d.masked_key})`:'Configured';el.style.color='var(--green)'}else{el.textContent='Not configured';el.style.color='var(--red)'}}catch{}}
+async function setGroqKey(){const k=document.getElementById('groqKeyInput').value.trim();if(!k)return;const r=await fetch(`${API}/api/set-groq-key`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})});const d=await r.json();if(d.ok){document.getElementById('groqKeyInput').value='';document.getElementById('groqStatus').textContent='Configured';document.getElementById('groqStatus').style.color='var(--green)'}}
+async function setBackend(b){document.getElementById('backendStatus').textContent='Switching...';await apiPost('transcription-backend',{backend:b});setTimeout(chkBackend,1e3)}
+async function chkBackend(){try{const r=await fetch(`${API}/api/transcription-backend`);const d=await r.json();document.getElementById('backendSelect').value=d.backend;document.getElementById('backendStatus').textContent=d.backend;document.getElementById('backendStatus').style.color=d.backend==='groq'?'var(--green)':'var(--text3)'}catch{}}
+async function chkGroq(){try{const r=await fetch(`${API}/api/groq-status`);const d=await r.json();const el=document.getElementById('groqStatus');if(d.configured){el.textContent=d.masked_key||'Configured';el.style.color='var(--green)'}else{el.textContent='Not set';el.style.color='var(--red)'}}catch{}}
 
 async function refresh(){
-  try{
-    const r=await fetch(`${API}/api/state`);const d=await r.json();
-    updateStatus(d.status,d.detail);
-    document.getElementById('togHF').classList.toggle('on',d.hands_free);
-    document.getElementById('togW').classList.toggle('on',d.whisper_mode);
-    if(d.history&&d.history.length){hist=[...d.history].reverse();renderHist()}
-    // Dictionary
-    document.getElementById('dTags').innerHTML=(d.terms||[]).map(t=>`<span class="tag">${esc(t)}<span class="x" onclick="rmTerm('${t.replace(/'/g,"\\'")}')">&times;</span></span>`).join('');
-    document.getElementById('cList').innerHTML=Object.entries(d.corrections||{}).map(([w,c])=>`<div class="item"><span class="item-k">${esc(w)}</span><span style="color:var(--dim);margin:0 4px">&rarr;</span><span class="item-v">${esc(c)}</span></div>`).join('');
-    // Snippets
-    document.getElementById('snList').innerHTML=Object.entries(d.snippets||{}).map(([t,txt])=>`<div class="item"><span class="item-k">"${esc(t)}"</span><span style="color:var(--dim);margin:0 4px">&rarr;</span><span class="item-v">${esc(txt.slice(0,60))}</span><button class="xb" onclick="rmSnip('${t.replace(/'/g,"\\'")}')">&times;</button></div>`).join('');
+  try{const r=await fetch(`${API}/api/state`);const d=await r.json();
+  updStatus(d.status,d.detail);
+  document.getElementById('togHF').classList.toggle('on',d.hands_free);
+  document.getElementById('togW').classList.toggle('on',d.whisper_mode);
+  if(d.history&&d.history.length){hist=[...d.history].reverse();renderHist()}
+  document.getElementById('dTags').innerHTML=(d.terms||[]).map(t=>`<span class="tag">${esc(t)}<span class="x" onclick="rmTerm('${t.replace(/'/g,"\\'")}')">&times;</span></span>`).join('');
+  document.getElementById('cList').innerHTML=Object.entries(d.corrections||{}).map(([w,c])=>`<div class="item"><span class="item-k">${esc(w)}</span><span style="color:var(--text3);margin:0 6px">&rarr;</span><span class="item-v">${esc(c)}</span></div>`).join('');
+  document.getElementById('snList').innerHTML=Object.entries(d.snippets||{}).map(([t,x])=>`<div class="item"><span class="item-k">"${esc(t)}"</span><span style="color:var(--text3);margin:0 6px">&rarr;</span><span class="item-v">${esc(x.slice(0,50))}</span><button class="xb" onclick="rmSnip('${t.replace(/'/g,"\\'")}')">&times;</button></div>`).join('');
   }catch{}
 }
 
-// Setup
-async function checkPerms(){
-  try{
-    const r=await fetch(`${API}/api/permissions`);const p=await r.json();
-    let ok=true;
-    if(p.mic==='granted'&&p.mic_working){document.getElementById('s1n').className='step-n ok';document.getElementById('s1n').textContent='✓';document.getElementById('s1d').textContent='Working'}
-    else{document.getElementById('s1n').className='step-n warn';document.getElementById('s1n').textContent='!';document.getElementById('s1d').innerHTML='Grant mic access in System Settings > Privacy > Microphone';ok=false}
-    if(p.input_monitoring==='granted'){document.getElementById('s2n').className='step-n ok';document.getElementById('s2n').textContent='✓';document.getElementById('s2d').textContent='Working'}
-    else{document.getElementById('s2n').className='step-n warn';document.getElementById('s2n').textContent='!';document.getElementById('s2d').innerHTML='Grant access in System Settings > Privacy > Input Monitoring';ok=false}
-    if(p.groq_key){document.getElementById('s3n').className='step-n ok';document.getElementById('s3n').textContent='✓';document.getElementById('s3d').textContent='Configured'}
-    else{document.getElementById('s3n').className='step-n warn';document.getElementById('s3n').textContent='!';document.getElementById('s3d').innerHTML='Get a free key at console.groq.com';document.getElementById('s3a').innerHTML='<div class="fr" style="margin-top:6px"><input class="inp" id="setupKey" type="password" placeholder="gsk_..." style="font-size:11px"><button class="btn btn-p btn-sm" onclick="saveSetupKey()">Save</button></div>';ok=false}
-    if(ok||localStorage.getItem('setup_dismissed'))document.getElementById('setup').classList.add('hidden');
-    document.getElementById('setupBtn').disabled=false;document.getElementById('setupBtn').textContent=ok?'Continue':'Continue anyway';
-  }catch{setTimeout(checkPerms,2000)}
-}
-async function saveSetupKey(){const k=document.getElementById('setupKey').value.trim();if(!k)return;await apiPost('set-groq-key',{key:k});checkPerms()}
-function dismissSetup(){localStorage.setItem('setup_dismissed','1');document.getElementById('setup').classList.add('hidden')}
+async function chkPerms(){try{const r=await fetch(`${API}/api/permissions`);const p=await r.json();let ok=true;
+if(p.mic==='granted'&&p.mic_working){document.getElementById('s1n').className='step-n ok';document.getElementById('s1n').textContent='✓';document.getElementById('s1d').textContent='Working'}else{document.getElementById('s1n').className='step-n warn';document.getElementById('s1n').textContent='!';document.getElementById('s1d').textContent='Grant in System Settings > Privacy > Microphone';ok=false}
+if(p.input_monitoring==='granted'){document.getElementById('s2n').className='step-n ok';document.getElementById('s2n').textContent='✓';document.getElementById('s2d').textContent='Working'}else{document.getElementById('s2n').className='step-n warn';document.getElementById('s2n').textContent='!';document.getElementById('s2d').textContent='Grant in System Settings > Privacy > Input Monitoring';ok=false}
+if(p.groq_key){document.getElementById('s3n').className='step-n ok';document.getElementById('s3n').textContent='✓';document.getElementById('s3d').textContent='Configured'}else{document.getElementById('s3n').className='step-n warn';document.getElementById('s3n').textContent='!';document.getElementById('s3d').textContent='Get a free key at console.groq.com';document.getElementById('s3a').innerHTML='<div class="fr" style="margin-top:4px"><input class="inp" id="setupKey" type="password" placeholder="gsk_..." style="font-size:11px"><button class="btn btn-p" onclick="saveSetupKey()">Save</button></div>';ok=false}
+if(ok||localStorage.getItem('setup_ok'))document.getElementById('setup').classList.add('hidden');
+document.getElementById('setupBtn').disabled=false}catch{setTimeout(chkPerms,2e3)}}
+async function saveSetupKey(){const k=document.getElementById('setupKey').value.trim();if(!k)return;await apiPost('set-groq-key',{key:k});chkPerms()}
+function dismissSetup(){localStorage.setItem('setup_ok','1');document.getElementById('setup').classList.add('hidden')}
 
-// Google OAuth
-async function gConnect(){
-  const cid=document.getElementById('gCid').value.trim(),cs=document.getElementById('gCs').value.trim();
-  const btn=document.getElementById('gBtn');
-  const body=(cid&&cs)?{client_id:cid,client_secret:cs}:{};
-  btn.disabled=true;btn.textContent='Opening browser...';
-  try{const r=await fetch(`${API}/api/oauth/connect`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(d.ok){document.getElementById('credHint').textContent='Complete login in browser...'}else if(d.needs_credentials){alert('Enter Client ID and Secret first.');btn.disabled=false;btn.textContent='Connect'}else{alert(d.error||'Failed');btn.disabled=false;btn.textContent='Connect'}}catch(e){alert('Error: '+e.message);btn.disabled=false;btn.textContent='Connect'}
-}
-async function gDisconnect(){const e=document.getElementById('gEmail').textContent;await fetch(`${API}/api/accounts/google/${encodeURIComponent(e)}`,{method:'DELETE'});gLoadAccounts()}
-async function gLoadAccounts(){try{const r=await fetch(`${API}/api/accounts`);const d=await r.json();const g=(d.accounts||[]).filter(a=>a.service==='google');if(g.length>0){document.getElementById('googleSetup').style.display='none';document.getElementById('gConnected').style.display='';document.getElementById('gEmail').textContent=g.map(a=>a.email).join(', ')}else{document.getElementById('googleSetup').style.display='';document.getElementById('gConnected').style.display='none';document.getElementById('gBtn').disabled=false;document.getElementById('gBtn').textContent='Connect';document.getElementById('credHint').textContent='Enter your OAuth credentials, then click Connect.'}}catch{}}
+async function gConnect(){const cid=document.getElementById('gCid').value.trim(),cs=document.getElementById('gCs').value.trim(),btn=document.getElementById('gBtn'),body=(cid&&cs)?{client_id:cid,client_secret:cs}:{};btn.disabled=true;btn.textContent='Connecting...';try{const r=await fetch(`${API}/api/oauth/connect`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(d.ok){document.getElementById('credHint').textContent='Complete login in browser...'}else if(d.needs_credentials){alert('Enter Client ID and Secret.');btn.disabled=false;btn.textContent='Connect'}else{alert(d.error||'Failed');btn.disabled=false;btn.textContent='Connect'}}catch(e){alert(e.message);btn.disabled=false;btn.textContent='Connect'}}
+async function gDisconnect(){const e=document.getElementById('gEmail').textContent;await fetch(`${API}/api/accounts/google/${encodeURIComponent(e)}`,{method:'DELETE'});gLoad()}
+async function gLoad(){try{const r=await fetch(`${API}/api/accounts`);const d=await r.json();const g=(d.accounts||[]).filter(a=>a.service==='google');if(g.length){document.getElementById('googleSetup').style.display='none';document.getElementById('gConnected').style.display='';document.getElementById('gEmail').textContent=g.map(a=>a.email).join(', ')}else{document.getElementById('googleSetup').style.display='';document.getElementById('gConnected').style.display='none';document.getElementById('gBtn').disabled=false;document.getElementById('gBtn').textContent='Connect';document.getElementById('credHint').textContent='Enter your OAuth credentials.'}}catch{}}
 
-// Init
-checkGroq();checkBackend();setupListeners();
-setTimeout(checkPerms,3000);
-setInterval(()=>{if(connected)refresh()},5000);
+chkGroq();chkBackend();setupListeners();setTimeout(chkPerms,3e3);setInterval(()=>{if(connected)refresh()},5e3);
 </script>
 </body>
 </html>
