@@ -168,7 +168,7 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
   <div class="step"><div class="step-n" id="s1n">1</div><div class="step-body"><b>Microphone</b><div id="s1d" style="color:var(--text3);margin-top:1px;font-size:12px">Checking...</div><div id="s1a"></div></div></div>
   <div class="step"><div class="step-n" id="s2n">2</div><div class="step-body"><b>Input Monitoring</b><div id="s2d" style="color:var(--text3);margin-top:1px;font-size:12px">Checking...</div><div id="s2a"></div></div></div>
   <div class="step"><div class="step-n" id="s3n">3</div><div class="step-body"><b>Groq API Key</b><div id="s3d" style="color:var(--text3);margin-top:1px;font-size:12px">Checking...</div><div id="s3a"></div></div></div>
-  <button class="btn btn-p" id="setupBtn" onclick="dismissSetup()" disabled style="margin-top:16px;padding:8px 24px">Continue</button>
+  <button class="btn btn-p" id="setupBtn" onclick="dismissSetup()" style="margin-top:16px;padding:8px 24px">Continue</button>
 </div>
 
 <div class="tb"></div>
@@ -332,7 +332,16 @@ async function gConnect(){const cid=document.getElementById('gCid').value.trim()
 async function gDisconnect(){const e=document.getElementById('gEmail').textContent;await fetch(`${API}/api/accounts/google/${encodeURIComponent(e)}`,{method:'DELETE'});gLoad()}
 async function gLoad(){try{const r=await fetch(`${API}/api/accounts`);const d=await r.json();const g=(d.accounts||[]).filter(a=>a.service==='google');if(g.length){document.getElementById('googleSetup').style.display='none';document.getElementById('gConnected').style.display='';document.getElementById('gEmail').textContent=g.map(a=>a.email).join(', ')}else{document.getElementById('googleSetup').style.display='';document.getElementById('gConnected').style.display='none';document.getElementById('gBtn').disabled=false;document.getElementById('gBtn').textContent='Connect';document.getElementById('credHint').textContent='Enter your OAuth credentials.'}}catch{}}
 
-chkGroq();chkBackend();setupListeners();setTimeout(chkPerms,3e3);setInterval(()=>{if(connected)refresh()},5e3);
+// Skip setup if already dismissed, otherwise check after backend ready
+if(localStorage.getItem('setup_ok')){document.getElementById('setup').classList.add('hidden')}
+document.getElementById('setupBtn').disabled=false;
+
+chkGroq();chkBackend();setupListeners();
+setInterval(()=>{if(connected)refresh()},5e3);
+
+// Check permissions only after backend is confirmed up
+function waitAndCheckPerms(){if(connected){chkPerms()}else{setTimeout(waitAndCheckPerms,1e3)}}
+setTimeout(waitAndCheckPerms,1e3);
 </script>
 </body>
 </html>
