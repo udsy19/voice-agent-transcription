@@ -94,7 +94,8 @@ class Recorder:
                     self._stream.close()
                 except Exception as e:
                     log.warning("Error stopping stream: %s", e)
-                self._stream = None
+                finally:
+                    self._stream = None
 
             # Grab frames under lock to prevent race with callback
             frames = self._frames.copy()

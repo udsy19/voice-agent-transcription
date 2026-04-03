@@ -55,6 +55,14 @@ def _kc_delete(a):
 class OAuthManager:
     def __init__(self):
         self._last_draft_id = None
+        self._google_available = False
+        # Check if Google libraries are installed
+        try:
+            from google_auth_oauthlib.flow import InstalledAppFlow
+            from google.oauth2.credentials import Credentials
+            self._google_available = True
+        except ImportError:
+            log.warning("google-auth-oauthlib not installed — Google integration disabled")
         # Load from env or keychain
         self.client_id = os.getenv("GOOGLE_CLIENT_ID","") or _kc_get("google_client_id")
         self.client_secret = os.getenv("GOOGLE_CLIENT_SECRET","") or _kc_get("google_client_secret")
@@ -67,6 +75,8 @@ class OAuthManager:
 
     def connect(self, emit_fn):
         """One click. Opens browser. User logs in. Done."""
+        if not self._google_available:
+            return {"ok": False, "error": "Google libraries not installed. Run: pip install google-api-python-client google-auth-oauthlib"}
         if not self.client_id or not self.client_secret:
             return {"ok": False, "needs_credentials": True}
 

@@ -153,7 +153,15 @@ function actuallyStartPython() {
 }
 
 function pollForReady() {
+  let pollAttempts = 0;
+  const MAX_POLL = 60; // 30 seconds max
   const check = () => {
+    pollAttempts++;
+    if (pollAttempts > MAX_POLL) {
+      console.error('[main] Backend failed to start after 30s');
+      sendToMain('backend-error', { message: 'Backend failed to start' });
+      return;
+    }
     http.get(`http://127.0.0.1:${PORT}/api/health`, res => {
       let body = '';
       res.on('data', c => body += c);
@@ -163,9 +171,8 @@ function pollForReady() {
             console.log('[main] Backend ready');
             restartCount = 0;
             connectWS();
-            // Tell renderer backend is up
             sendToMain('backend-ready', {});
-            showPill(); // Show idle capsule immediately
+            showPill();
             return;
           }
         } catch {}

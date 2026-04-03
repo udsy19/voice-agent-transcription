@@ -31,8 +31,17 @@ def _cleanup_temp_files():
             os.remove(path)
         except Exception:
             pass
+    # Also clean any stale temp files from previous crashes
+    import glob
+    for f in glob.glob(os.path.join(tempfile.gettempdir(), "muse_*.wav")):
+        try:
+            os.remove(f)
+        except Exception:
+            pass
 
 atexit.register(_cleanup_temp_files)
+# Clean stale files from previous runs on import
+_cleanup_temp_files()
 
 
 def _get_optimal_threads():

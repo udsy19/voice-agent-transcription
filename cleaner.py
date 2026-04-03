@@ -209,6 +209,7 @@ class Cleaner:
                 ],
                 temperature=0,
                 max_tokens=2048,
+                timeout=15,
             )
             if not response.choices or not response.choices[0].message.content:
                 return cleaned
@@ -239,6 +240,7 @@ class Cleaner:
                 ],
                 temperature=0.3,
                 max_tokens=4096,
+                timeout=15,
             )
             if not response.choices or not response.choices[0].message.content:
                 return selected_text
@@ -271,6 +273,7 @@ class Cleaner:
                 ],
                 temperature=0,
                 max_tokens=128,
+                timeout=10,
             )
             content = response.choices[0].message.content.strip()
             terms = self._parse_terms(content)

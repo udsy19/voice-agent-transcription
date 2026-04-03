@@ -48,8 +48,10 @@ def save(path: str, data, indent: int = 2) -> bool:
         return True
     except Exception as e:
         log.error("Failed to save %s: %s", path, e)
+        return False
+    finally:
         try:
-            os.remove(tmp)
+            if os.path.exists(tmp):
+                os.remove(tmp)
         except Exception:
             pass
-        return False

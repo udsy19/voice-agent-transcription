@@ -150,6 +150,7 @@ class Assistant:
                 tool_choice="auto",
                 temperature=0.3,
                 max_tokens=1024,
+                timeout=20,
             )
 
             choice = response.choices[0]
@@ -196,6 +197,7 @@ class Assistant:
                 messages=messages,
                 temperature=0.3,
                 max_tokens=512,
+                timeout=20,
             )
 
             text = final.choices[0].message.content or "Done."

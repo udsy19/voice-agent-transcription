@@ -1,6 +1,6 @@
 """Google Calendar integration — create and list events."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from logger import get_logger
@@ -91,7 +91,7 @@ def list_events(token_data: dict, days_ahead: int = 1, max_results: int = 10) ->
     """
     service = _get_service(token_data)
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     time_min = now.isoformat() + "Z"
     time_max = (now + timedelta(days=max(1, days_ahead))).isoformat() + "Z"
 

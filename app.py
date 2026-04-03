@@ -737,19 +737,21 @@ def hands_free_loop():
     silence_start = None
     while S.hands_free and S.recorder and S.recorder.is_recording:
         time.sleep(0.3)
-        if not S.recorder._frames:
+        try:
+            with S.recorder._lock:
+                if not S.recorder._frames:
+                    continue
+                recent = S.recorder._frames[-1].copy().flatten()
+                frame_count = len(S.recorder._frames)
+        except Exception:
             continue
-        with S.recorder._lock:
-            if not S.recorder._frames:
-                continue
-            recent = S.recorder._frames[-1].flatten()
         rms = np.sqrt(np.mean(recent ** 2))
         threshold = SILENCE_THRESHOLD * 0.5 if S.whisper_mode else SILENCE_THRESHOLD
         if rms < threshold:
             if silence_start is None:
                 silence_start = time.time()
             elif time.time() - silence_start >= HANDS_FREE_SILENCE_SEC:
-                if len(S.recorder._frames) > 5:
+                if frame_count > 5:
                     audio = S.recorder.stop()
                     if audio is not None:
                         S.processing = True
@@ -1096,7 +1098,7 @@ def request_mic_permission():
             AVFoundation.AVCaptureDevice.requestAccessForMediaType_completionHandler_(
                 AVFoundation.AVMediaTypeAudio, handler
             )
-            event.wait(timeout=30)
+            event.wait(timeout=5)  # don't block startup for long
         elif status == 2:  # denied
             log.warning("Mic permission DENIED — open System Settings > Privacy > Microphone")
         elif status == 3:  # authorized
