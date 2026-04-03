@@ -117,29 +117,76 @@ class MacroEngine:
           - set_tone: callable(tone_name)
           - set_domain: callable(domain_name)
           - inject_text: callable(text)
+          - get_app: callable() -> str  (current app name)
+
+        Supported action types:
+          - set_tone: Set the cleaning tone
+          - set_domain: Activate a domain
+          - insert_text: Paste template text (supports {date}, {time})
+          - delay: Pause for N seconds (max 5)
+          - condition: Only continue if current app matches value
+          - repeat: Repeat the next N actions a given number of times
         """
         import time
         results = []
-        for action in macro.get("actions", []):
+        actions = macro.get("actions", [])
+        i = 0
+        while i < len(actions):
+            action = actions[i]
             atype = action.get("type", "")
             value = action.get("value", "")
 
             # Template substitution
-            if "{date}" in value:
-                value = value.replace("{date}", time.strftime("%Y-%m-%d"))
-            if "{time}" in value:
-                value = value.replace("{time}", time.strftime("%H:%M"))
+            if isinstance(value, str):
+                if "{date}" in value:
+                    value = value.replace("{date}", time.strftime("%Y-%m-%d"))
+                if "{time}" in value:
+                    value = value.replace("{time}", time.strftime("%H:%M"))
 
             if atype == "set_tone" and "set_tone" in context:
                 context["set_tone"](value)
                 results.append({"type": "set_tone", "value": value})
+
             elif atype == "set_domain" and "set_domain" in context:
                 context["set_domain"](value)
                 results.append({"type": "set_domain", "value": value})
+
             elif atype == "insert_text" and "inject_text" in context:
                 context["inject_text"](value)
                 results.append({"type": "insert_text", "chars": len(value)})
+
+            elif atype == "delay":
+                # Pause between actions (capped at 5s to prevent abuse)
+                try:
+                    secs = min(float(value), 5.0)
+                except (ValueError, TypeError):
+                    secs = 0.5
+                time.sleep(secs)
+                results.append({"type": "delay", "seconds": secs})
+
+            elif atype == "condition":
+                # Only continue if current app matches value
+                get_app = context.get("get_app")
+                current_app = get_app() if get_app else ""
+                if value.lower() not in current_app.lower():
+                    log.info("Condition failed: '%s' not in '%s', stopping macro", value, current_app)
+                    results.append({"type": "condition", "matched": False, "app": current_app})
+                    break
+                results.append({"type": "condition", "matched": True, "app": current_app})
+
+            elif atype == "repeat":
+                # Repeat the next N actions a given number of times
+                count = min(int(action.get("count", 2)), 10)  # cap at 10
+                n_actions = min(int(action.get("n", 1)), 5)    # how many following actions to repeat
+                repeat_actions = actions[i + 1: i + 1 + n_actions]
+                if repeat_actions:
+                    for _ in range(count - 1):  # -1 because they'll run once normally
+                        actions = actions[:i + 1 + n_actions] + repeat_actions + actions[i + 1 + n_actions:]
+                results.append({"type": "repeat", "count": count, "actions": n_actions})
+
             # "shell" action type deliberately removed for security
+
+            i += 1
 
         log.info("Executed macro: %d actions", len(results))
         return results

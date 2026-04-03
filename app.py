@@ -24,7 +24,42 @@ if project_dir not in sys.path:
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 import uvicorn
+
+
+# ── Request Models ──────────────────────────────────────────────────────────
+
+class DomainRequest(BaseModel):
+    domain: str = ""
+
+class MacroAddRequest(BaseModel):
+    trigger: str
+    description: str = ""
+    actions: list[dict] = Field(default_factory=list)
+
+class TriggerRequest(BaseModel):
+    trigger: str
+
+class TermRequest(BaseModel):
+    term: str
+
+class CorrectionRequest(BaseModel):
+    wrong: str
+    correct: str
+
+class SnippetAddRequest(BaseModel):
+    trigger: str
+    text: str
+
+class GroqKeyRequest(BaseModel):
+    key: str
+
+class BackendRequest(BaseModel):
+    backend: str
+
+class RoleRequest(BaseModel):
+    role: str
 
 from pynput import keyboard
 from config import SILENCE_THRESHOLD
@@ -37,6 +72,7 @@ from snippets import SnippetStore
 from styles import StyleManager
 from domains import DomainManager
 from macros import MacroEngine
+from conversation import ConversationTracker
 from logger import get_logger
 
 log = get_logger("app")
@@ -51,26 +87,46 @@ UNDO_PHRASES = {"undo that", "go back", "undo", "scratch that", "never mind", "c
 # ── Global State ─────────────────────────────────────────────────────────────
 
 class State:
-    recorder: Recorder = None
-    transcriber: Transcriber = None
-    cleaner: Cleaner = None
-    dictionary: PersonalDictionary = None
-    snippets: SnippetStore = None
-    styles: StyleManager = None
-    domains: DomainManager = None
-    macros: MacroEngine = None
+    """Centralized application state with proper initialization."""
 
-    status = "loading"
-    detail = "Loading model..."
-    processing = False
-    hands_free = False
-    whisper_mode = False
-    history: list = []  # capped at 100 entries
-    ws_clients: list = []
-    key_held = False
-    last_paste_text = ""
-    last_paste_time = 0.0
-    tone_override = None  # set by macros
+    def __init__(self):
+        # Engine components (initialized in load_engine)
+        self.recorder: Recorder | None = None
+        self.transcriber: Transcriber | None = None
+        self.cleaner: Cleaner | None = None
+        self.dictionary: PersonalDictionary | None = None
+        self.snippets: SnippetStore | None = None
+        self.styles: StyleManager | None = None
+        self.domains: DomainManager | None = None
+        self.macros: MacroEngine | None = None
+        self.conversation: ConversationTracker | None = None
+
+        # Runtime state
+        self.status: str = "loading"
+        self.detail: str = "Loading model..."
+        self.processing: bool = False
+        self.hands_free: bool = False
+        self.whisper_mode: bool = False
+        self.key_held: bool = False
+
+        # Text state
+        self.last_paste_text: str = ""
+        self.last_paste_time: float = 0.0
+        self.tone_override: str | None = None  # set by macros
+
+        # Collections
+        self.history: list[dict] = []  # capped at 100 entries
+        self.ws_clients: list[WebSocket] = []
+
+    @property
+    def is_ready(self) -> bool:
+        return self.recorder is not None and self.transcriber is not None
+
+    def reset_after_paste(self, text: str):
+        """Update state after a successful paste."""
+        self.last_paste_text = text
+        self.last_paste_time = time.time()
+        self.tone_override = None
 
 S = State()
 
@@ -178,88 +234,83 @@ async def get_state():
 
 
 @api.post("/api/domains/set")
-async def api_set_domain(body: dict):
-    d = body.get("domain", "").strip()
+async def api_set_domain(body: DomainRequest):
+    d = body.domain.strip()
     if S.domains:
         S.domains.set_active(d)
     return {"ok": True}
 
 
 @api.post("/api/macros/add")
-async def api_add_macro(body: dict):
-    trigger = body.get("trigger", "").strip()
-    desc = body.get("description", "").strip()
-    actions = body.get("actions", [])
-    if trigger and actions and S.macros:
-        S.macros.add(trigger, desc, actions)
+async def api_add_macro(body: MacroAddRequest):
+    trigger = body.trigger.strip()
+    if trigger and body.actions and S.macros:
+        S.macros.add(trigger, body.description.strip(), body.actions)
     return {"ok": True}
 
 
 @api.post("/api/macros/remove")
-async def api_remove_macro(body: dict):
-    trigger = body.get("trigger", "").strip()
+async def api_remove_macro(body: TriggerRequest):
+    trigger = body.trigger.strip()
     if trigger and S.macros:
         S.macros.remove(trigger)
     return {"ok": True}
 
 
 @api.post("/api/dictionary/add-term")
-async def api_add_term(body: dict):
-    t = body.get("term", "").strip()
+async def api_add_term(body: TermRequest):
+    t = body.term.strip()
     if t and S.dictionary:
         S.dictionary.add_term(t)
     return {"ok": True}
 
 
 @api.post("/api/dictionary/add-correction")
-async def api_add_correction(body: dict):
-    w, c = body.get("wrong", "").strip(), body.get("correct", "").strip()
+async def api_add_correction(body: CorrectionRequest):
+    w, c = body.wrong.strip(), body.correct.strip()
     if w and c and S.dictionary:
         S.dictionary.add_correction(w, c)
     return {"ok": True}
 
 
 @api.post("/api/dictionary/remove-term")
-async def api_remove_term(body: dict):
-    t = body.get("term", "").strip()
+async def api_remove_term(body: TermRequest):
+    t = body.term.strip()
     if t and S.dictionary:
         S.dictionary.remove_term(t)
     return {"ok": True}
 
 
 @api.post("/api/snippets/add")
-async def api_add_snippet(body: dict):
-    t, txt = body.get("trigger", "").strip(), body.get("text", "").strip()
+async def api_add_snippet(body: SnippetAddRequest):
+    t, txt = body.trigger.strip(), body.text.strip()
     if t and txt and S.snippets:
         S.snippets.add(t, txt)
     return {"ok": True}
 
 
 @api.post("/api/snippets/remove")
-async def api_remove_snippet(body: dict):
-    t = body.get("trigger", "").strip()
+async def api_remove_snippet(body: TriggerRequest):
+    t = body.trigger.strip()
     if t and S.snippets:
         S.snippets.remove(t)
     return {"ok": True}
 
 
 @api.post("/api/set-groq-key")
-async def api_set_groq_key(body: dict):
+async def api_set_groq_key(body: GroqKeyRequest):
     """Set Groq API key from the settings UI. Saves to .env and reinitializes cleaner."""
-    key = body.get("key", "").strip()
+    key = body.key.strip()
     if not key:
         return {"ok": False, "reason": "empty key"}
-    # Save to .env
     from pathlib import Path
     from config import DATA_DIR
     env_path = DATA_DIR / ".env"
     env_path.write_text(f"GROQ_API_KEY={key}\n")
-    # Also save to project dir for dev mode
     try:
         (Path(__file__).parent / ".env").write_text(f"GROQ_API_KEY={key}\n")
     except Exception:
         pass
-    # Reinitialize cleaner
     import config
     config.GROQ_API_KEY = key
     from groq import Groq
@@ -328,8 +379,8 @@ async def api_get_backend():
 
 
 @api.post("/api/transcription-backend")
-async def api_set_backend(body: dict):
-    backend = body.get("backend", "").strip()
+async def api_set_backend(body: BackendRequest):
+    backend = body.backend.strip()
     if backend and S.transcriber:
         S.transcriber.set_backend(backend)
         return {"ok": True, "backend": S.transcriber.backend}
@@ -337,8 +388,8 @@ async def api_set_backend(body: dict):
 
 
 @api.post("/api/styles/set-role")
-async def api_set_role(body: dict):
-    r = body.get("role", "").strip()
+async def api_set_role(body: RoleRequest):
+    r = body.role.strip()
     if r and S.styles:
         S.styles.setup_role(r)
     return {"ok": True}
@@ -389,6 +440,7 @@ def on_key_press(key):
         S.key_held = True
         if not S.recorder.is_recording:
             S.recorder.start()
+            emit({"type": "trigger_mode", "mode": "hold"})
             set_status("recording", "Listening — release to transcribe")
 
 
@@ -548,6 +600,7 @@ def process_audio(audio):
                     "set_tone": lambda t: setattr(S, "tone_override", t),
                     "set_domain": lambda d: S.domains.set_active(d) if S.domains else None,
                     "inject_text": lambda t: inject_text(t),
+                    "get_app": lambda: app_name,
                 }
                 results = S.macros.execute(macro, context)
                 entry = {"raw": raw_text, "cleaned": f"[macro: {len(results)} actions]", "app": app_name,
@@ -562,8 +615,7 @@ def process_audio(audio):
             snippet_text = S.snippets.match(raw_text)
             if snippet_text:
                 inject_text(snippet_text)
-                S.last_paste_text = snippet_text
-                S.last_paste_time = time.time()
+                S.reset_after_paste(snippet_text)
                 dur = time.time() - t0
                 entry = {"raw": raw_text, "cleaned": "[snippet]", "app": app_name,
                          "duration": round(dur, 2), "ts": time.strftime("%H:%M:%S")}
@@ -584,12 +636,20 @@ def process_audio(audio):
         # === Get domain hint ===
         domain_hint = S.domains.get_cleaner_hint() if S.domains else None
 
+        # === Get conversation context ===
+        conv_context = S.conversation.get_context(app_name) if S.conversation else None
+
         # === Build extra context for cleaner ===
         extra_context = ""
         if clipboard_context:
             extra_context += clipboard_context
         if domain_hint:
             extra_context += f"\n{domain_hint}" if extra_context else domain_hint
+        if conv_context:
+            extra_context += f"\n{conv_context}" if extra_context else conv_context
+
+        # === Get style prompt from StyleManager ===
+        style_prompt = S.styles.get_style_prompt(app_name) if S.styles else None
 
         if is_command:
             selected = get_selected_text()
@@ -599,20 +659,21 @@ def process_audio(audio):
                 cleaned = S.cleaner.clean(raw_text, app_name=app_name,
                                           context=extra_context,
                                           tone_override=S.tone_override,
-                                          dictionary_terms=S.dictionary.terms if S.dictionary else [])
+                                          dictionary_terms=S.dictionary.terms if S.dictionary else [],
+                                          style_prompt=style_prompt)
         else:
             cleaned = S.cleaner.clean(raw_text, app_name=app_name,
                                       context=extra_context,
                                       tone_override=S.tone_override,
-                                      dictionary_terms=S.dictionary.terms if S.dictionary else [])
-
-        # Reset tone override after use (macros set it temporarily)
-        S.tone_override = None
+                                      dictionary_terms=S.dictionary.terms if S.dictionary else [],
+                                      style_prompt=style_prompt)
 
         if cleaned:
             inject_text(cleaned)
-            S.last_paste_text = cleaned
-            S.last_paste_time = time.time()
+            S.reset_after_paste(cleaned)
+            # Record turn for conversation context
+            if S.conversation:
+                S.conversation.add_turn(app_name, cleaned)
 
         # === Compute diff ===
         diff = _compute_diff(raw_text, cleaned) if cleaned and cleaned != raw_text else []
@@ -630,10 +691,34 @@ def process_audio(audio):
             threading.Thread(target=_auto_learn_terms, args=(cleaned,), daemon=True).start()
 
     except Exception as e:
-        log.error("Error: %s", e, exc_info=True)
-        set_status("idle", f"Error: {e}")
+        log.error("Processing error: %s", e, exc_info=True)
+        msg = _friendly_error(e)
+        emit({"type": "error", "error": msg, "detail": str(e)})
+        set_status("idle", msg)
     finally:
         S.processing = False
+
+
+def _friendly_error(e: Exception) -> str:
+    """Convert exceptions to user-friendly error messages."""
+    err = str(e).lower()
+    if "api_key" in err or "authentication" in err or "401" in err:
+        return "Groq API key invalid or missing — check Settings"
+    if "rate_limit" in err or "429" in err:
+        return "Rate limited — wait a moment and try again"
+    if "timeout" in err or "timed out" in err:
+        return "Request timed out — check your connection"
+    if "connection" in err or "network" in err or "unreachable" in err:
+        return "Network error — check your internet connection"
+    if "permission" in err or "not permitted" in err:
+        return "Permission denied — check System Settings > Privacy"
+    if "microphone" in err or "audio" in err or "sounddevice" in err:
+        return "Microphone error — check mic access in System Settings"
+    if "model" in err and ("not found" in err or "load" in err):
+        return "Transcription model failed to load — try a different backend"
+    if "out of memory" in err or "oom" in err:
+        return "Out of memory — recording may be too long"
+    return f"Unexpected error: {type(e).__name__}: {str(e)[:80]}"
 
 
 def _auto_learn_terms(text: str):
@@ -659,21 +744,25 @@ def _auto_learn_terms(text: str):
 def audio_level_monitor():
     """Broadcast audio RMS levels for the pill waveform animation."""
     import numpy as np
+    smooth_rms = 0.0
     while True:
         if not (S.recorder and S.recorder.is_recording):
-            time.sleep(0.5)
+            smooth_rms = 0.0
+            time.sleep(0.3)
             continue
-        time.sleep(0.15)
-        if S.recorder._frames:
-            try:
-                with S.recorder._lock:
-                    if S.recorder._frames:
-                        recent = S.recorder._frames[-1].flatten()
-                        rms = float(np.sqrt(np.mean(recent ** 2)))
-                        quality = "good" if rms > 0.03 else "fair" if rms > 0.01 else "low"
-                        emit({"type": "audio_level", "rms": rms, "quality": quality})
-            except Exception:
-                pass
+        time.sleep(0.08)  # ~12fps for smooth animation
+        try:
+            with S.recorder._lock:
+                if not S.recorder._frames:
+                    continue
+                # Average last 2-3 frames for smoother signal
+                n = min(3, len(S.recorder._frames))
+                recent = np.concatenate([S.recorder._frames[-i].flatten() for i in range(1, n + 1)])
+            rms = float(np.sqrt(np.mean(recent ** 2)))
+            smooth_rms = smooth_rms * 0.6 + rms * 0.4  # EMA smoothing
+            emit({"type": "audio_level", "rms": round(smooth_rms, 4)})
+        except Exception:
+            pass
 
 
 def request_mic_permission():
@@ -715,6 +804,7 @@ def load_engine():
     S.styles = StyleManager()
     S.domains = DomainManager()
     S.macros = MacroEngine()
+    S.conversation = ConversationTracker()
     set_status("idle", "Ready — hold ⌥R to dictate")
 
 

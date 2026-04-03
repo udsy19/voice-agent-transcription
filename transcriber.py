@@ -10,6 +10,7 @@ Backend is selectable at runtime via set_backend().
 """
 
 import os
+import io
 import time
 import tempfile
 import numpy as np
@@ -33,6 +34,25 @@ def _audio_to_wav(audio: np.ndarray, sample_rate: int = 16000) -> str:
     path = os.path.join(tempfile.gettempdir(), "voiceagent_audio.wav")
     sf.write(path, audio, sample_rate)
     return path
+
+
+def _audio_to_wav_bytes(audio: np.ndarray, sample_rate: int = 16000) -> io.BytesIO:
+    """Write audio to in-memory WAV buffer."""
+    buf = io.BytesIO()
+    sf.write(buf, audio, sample_rate, format='WAV')
+    buf.seek(0)
+    return buf
+
+
+def _clean_audio(audio: np.ndarray) -> np.ndarray:
+    """Sanitize audio: fix NaN/Inf, normalize if clipping."""
+    if not np.isfinite(audio).all():
+        audio = np.nan_to_num(audio, nan=0.0, posinf=1.0, neginf=-1.0)
+    # Normalize if audio is clipping (peak > 0.95)
+    peak = np.max(np.abs(audio))
+    if peak > 0.95:
+        audio = audio * (0.9 / peak)
+    return audio
 
 
 class Transcriber:
@@ -112,9 +132,7 @@ class Transcriber:
                    initial_prompt: str | None = None) -> str:
         if audio is None or len(audio) == 0:
             return ""
-        if not np.isfinite(audio).all():
-            audio = np.nan_to_num(audio, nan=0.0, posinf=1.0, neginf=-1.0)
-
+        audio = _clean_audio(audio)
         t0 = time.time()
 
         if self._backend_name == "parakeet":
@@ -122,7 +140,7 @@ class Transcriber:
         elif self._backend_name == "mlx":
             text = self._transcribe_mlx(audio, language, initial_prompt)
         elif self._backend_name == "groq":
-            text = self._transcribe_groq(audio, language)
+            text = self._transcribe_groq(audio, language, initial_prompt)
         else:
             text = self._transcribe_faster_whisper(audio, language, initial_prompt)
 
@@ -147,7 +165,6 @@ class Transcriber:
         try:
             wav_path = _audio_to_wav(audio)
             result = self._model.transcribe(wav_path)
-            # AlignedResult has .text property
             if hasattr(result, 'text'):
                 return result.text.strip()
             return str(result).strip()
@@ -169,43 +186,55 @@ class Transcriber:
             log.error("MLX failed: %s, falling back", e)
             return self._transcribe_fallback(audio)
 
-    def _transcribe_groq(self, audio: np.ndarray, language=None) -> str:
+    def _transcribe_groq(self, audio: np.ndarray, language=None, prompt=None) -> str:
         try:
-            wav_path = _audio_to_wav(audio)
-            with open(wav_path, "rb") as f:
-                response = self._groq_client.audio.transcriptions.create(
-                    model="whisper-large-v3",
-                    file=("audio.wav", f, "audio/wav"),
-                    language=language or "en",
-                    response_format="text",
-                )
-            return response.strip() if isinstance(response, str) else str(response).strip()
+            buf = _audio_to_wav_bytes(audio)
+            kwargs = {
+                "model": "whisper-large-v3",
+                "file": ("audio.wav", buf, "audio/wav"),
+                "language": language or "en",
+                "response_format": "verbose_json",
+                "temperature": 0.0,
+            }
+            if prompt:
+                kwargs["prompt"] = prompt
+            response = self._groq_client.audio.transcriptions.create(**kwargs)
+            if hasattr(response, 'text'):
+                return response.text.strip()
+            return str(response).strip()
         except Exception as e:
             log.error("Groq transcription failed: %s, falling back", e)
             return self._transcribe_fallback(audio)
 
     def _transcribe_faster_whisper(self, audio, language=None, prompt=None) -> str:
         segments, info = self._model.transcribe(
-            audio, beam_size=1, best_of=1,
+            audio, beam_size=3, best_of=1,
             language=language or "en",
             condition_on_previous_text=False,
             initial_prompt=prompt,
             vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=300, speech_pad_ms=150),
+            vad_parameters=dict(
+                min_silence_duration_ms=500,
+                speech_pad_ms=200,
+                threshold=0.35,
+            ),
             without_timestamps=True,
         )
         return " ".join(seg.text.strip() for seg in segments).strip()
 
     def _transcribe_faster_whisper_streaming(self, audio, on_segment, language=None, prompt=None) -> str:
-        if not np.isfinite(audio).all():
-            audio = np.nan_to_num(audio, nan=0.0, posinf=1.0, neginf=-1.0)
+        audio = _clean_audio(audio)
         segments, info = self._model.transcribe(
-            audio, beam_size=1, best_of=1,
+            audio, beam_size=3, best_of=1,
             language=language or "en",
             condition_on_previous_text=False,
             initial_prompt=prompt,
             vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=300, speech_pad_ms=150),
+            vad_parameters=dict(
+                min_silence_duration_ms=500,
+                speech_pad_ms=200,
+                threshold=0.35,
+            ),
             without_timestamps=True,
         )
         parts = []
@@ -223,7 +252,7 @@ class Transcriber:
             model = WhisperModel(WHISPER_MODEL, device=WHISPER_DEVICE,
                                  compute_type=WHISPER_COMPUTE_TYPE,
                                  cpu_threads=_get_optimal_threads())
-            segments, _ = model.transcribe(audio, beam_size=1, best_of=1,
+            segments, _ = model.transcribe(audio, beam_size=3, best_of=1,
                                            language="en", vad_filter=True, without_timestamps=True)
             return " ".join(seg.text.strip() for seg in segments).strip()
         except Exception as e:

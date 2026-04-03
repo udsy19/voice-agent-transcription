@@ -10,9 +10,13 @@ Pipeline:
 
 import re
 import subprocess
+import hashlib
+from collections import OrderedDict
 from groq import Groq
 from config import GROQ_API_KEY, GROQ_MODEL
 from logger import get_logger
+
+LLM_CACHE_SIZE = 128
 
 log = get_logger("cleaner")
 
@@ -55,8 +59,8 @@ def _needs_llm(raw: str, cleaned: str) -> bool:
     """Decide if text needs LLM processing beyond local cleanup."""
     lower = cleaned.lower()
     # Backtracking patterns
-    if any(p in lower for p in ['actually', 'wait', 'no i meant', 'scratch that',
-                                 'delete that', 'go back', 'i mean not']):
+    if any(p in lower for p in ['wait no', 'wait actually', 'no i meant', 'scratch that',
+                                 'delete that', 'go back', 'i mean not', 'actually no']):
         return True
     # List patterns
     if any(p in lower for p in ['first', 'second', 'third', 'number one',
@@ -133,9 +137,27 @@ class Cleaner:
             self._client = None
         else:
             self._client = Groq(api_key=GROQ_API_KEY)
+        self._cache: OrderedDict[str, str] = OrderedDict()
+
+    def _cache_key(self, text: str, tone: str | None, style: str | None) -> str:
+        """Create a cache key from the input parameters that affect output."""
+        raw = f"{text}|{tone or ''}|{style or ''}"
+        return hashlib.md5(raw.encode()).hexdigest()
+
+    def _cache_get(self, key: str) -> str | None:
+        if key in self._cache:
+            self._cache.move_to_end(key)
+            return self._cache[key]
+        return None
+
+    def _cache_put(self, key: str, value: str):
+        self._cache[key] = value
+        if len(self._cache) > LLM_CACHE_SIZE:
+            self._cache.popitem(last=False)
 
     def clean(self, raw_text: str, context: str = "", app_name: str = "",
-              tone_override: str | None = None, dictionary_terms: list[str] | None = None) -> str:
+              tone_override: str | None = None, dictionary_terms: list[str] | None = None,
+              style_prompt: str | None = None) -> str:
         if not raw_text:
             return ""
 
@@ -153,14 +175,24 @@ class Cleaner:
         if len(cleaned) > 8000:
             cleaned = cleaned[:8000]
 
+        tone = tone_override or _get_tone_for_app(app_name)
+
+        # Check cache (ignores context since context is supplementary)
+        ck = self._cache_key(cleaned, tone, style_prompt)
+        cached = self._cache_get(ck)
+        if cached:
+            log.info("(cache) '%s' -> '%s'", raw_text[:60], cached[:60])
+            return cached
+
         # Build prompt — keep it short for caching
         system = LLM_SYSTEM_PROMPT
-        tone = tone_override or _get_tone_for_app(app_name)
         if tone and tone in TONE_MODIFIERS:
             system += TONE_MODIFIERS[tone]
         if dictionary_terms:
             safe = [t.replace('"', '').replace("'", "")[:50] for t in dictionary_terms[:20]]
             system += f"\nDictionary: {', '.join(safe)}"
+        if style_prompt:
+            system += f"\n{style_prompt}"
         if context:
             system += f"\nContext: {context[:300]}"
 
@@ -184,6 +216,7 @@ class Cleaner:
                 return cleaned
 
             log.info("(llm/%s) '%s' -> '%s'", tone or "default", raw_text[:50], result[:50])
+            self._cache_put(ck, result)
             return result
         except Exception as e:
             log.error("LLM error: %s, returning local cleanup", e)
@@ -231,12 +264,32 @@ class Cleaner:
                 max_tokens=256,
             )
             content = response.choices[0].message.content.strip()
-            import json
-            if content.startswith("["):
-                terms = json.loads(content)
-                if isinstance(terms, list):
-                    return [t for t in terms if isinstance(t, str) and len(t) > 1]
-            return []
+            return self._parse_terms(content)
         except Exception as e:
             log.debug("Term extraction failed: %s", e)
             return []
+
+    @staticmethod
+    def _parse_terms(content: str) -> list[str]:
+        """Parse terms from LLM response with multiple fallback strategies."""
+        import json
+        # Strategy 1: Direct JSON parse
+        try:
+            # Find the JSON array in the response (may have surrounding text)
+            start = content.find("[")
+            end = content.rfind("]")
+            if start != -1 and end != -1:
+                terms = json.loads(content[start:end + 1])
+                if isinstance(terms, list):
+                    return [t for t in terms if isinstance(t, str) and 1 < len(t) < 100]
+        except (json.JSONDecodeError, ValueError):
+            pass
+        # Strategy 2: Extract quoted strings via regex
+        quoted = re.findall(r'"([^"]{2,50})"', content)
+        if quoted:
+            return quoted
+        # Strategy 3: Comma-separated fallback
+        if "," in content:
+            return [t.strip().strip('"\'') for t in content.split(",")
+                    if 1 < len(t.strip().strip('"\'')) < 100]
+        return []

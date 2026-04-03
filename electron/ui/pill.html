@@ -4,122 +4,152 @@
 <meta charset="UTF-8">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{background:transparent;overflow:hidden;width:260px;height:70px}
-.p{
-  position:absolute;bottom:6px;left:50%;
-  transform:translateX(-50%);
+html,body{background:transparent;overflow:hidden;width:200px;height:40px}
+
+.pill{
+  position:absolute;top:4px;left:50%;transform:translateX(-50%);
   display:flex;align-items:center;justify-content:center;
-  background:rgba(22,18,14,0.92);
-  border-radius:50px;
-  box-shadow:0 1px 6px rgba(0,0,0,0.2);
-  -webkit-app-region:no-drag;
-  cursor:pointer;
-  transition:width .2s cubic-bezier(.2,1,.3,1),height .2s cubic-bezier(.2,1,.3,1),opacity .3s;
+  background:#000;
+  border-radius:15px;
+  overflow:hidden;
+  box-shadow:0 0 0 0.5px rgba(0,0,0,0.6),0 2px 12px rgba(0,0,0,0.35);
+  width:0;height:0;opacity:0;
+  pointer-events:none;
+  transition:width .18s ease-in-out,height .18s ease-in-out,opacity .15s ease,border-radius .18s;
 }
-/* idle: just a small dark capsule, no line */
-.p.i{width:48px;height:16px;opacity:.45}
-.p.i:hover{opacity:.6}
-/* recording */
-.p.r{width:168px;height:28px;opacity:1;padding:0 3px;gap:3px;cursor:default}
+/* recording — hold mode (just waveform, compact) */
+.pill.rec{
+  width:72px;height:30px;opacity:1;pointer-events:auto;
+}
+/* recording — toggle mode (waveform + stop) */
+.pill.rec.wide{
+  width:136px;height:30px;
+}
 /* processing */
-.p.x{width:120px;height:28px;opacity:1;padding:0 3px;gap:3px;cursor:default}
-/* done */
-.p.d{width:48px;height:16px;opacity:0}
-
-/* hover tooltip */
-.tip{
-  position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%) scale(.95);
-  background:rgba(22,18,14,0.95);color:rgba(255,255,255,.85);
-  font:500 12px/1 -apple-system,system-ui,sans-serif;
-  padding:8px 14px;border-radius:10px;white-space:nowrap;
-  box-shadow:0 2px 12px rgba(0,0,0,0.3);
-  opacity:0;pointer-events:none;
-  transition:opacity .15s,transform .15s cubic-bezier(.2,1,.3,1);
+.pill.proc{
+  width:40px;height:20px;opacity:1;pointer-events:auto;border-radius:10px;
 }
-.tip b{color:rgba(200,160,220,0.9);font-weight:600}
-.p.i:hover .tip{opacity:1;transform:translateX(-50%) scale(1)}
-.p.r .tip,.p.x .tip,.p.d .tip{display:none}
+/* done — fade out */
+.pill.done{
+  width:40px;height:20px;opacity:0;pointer-events:none;border-radius:10px;
+  transition:opacity .2s linear;
+}
 
-.b{
-  width:20px;height:20px;border-radius:50%;border:none;
+/* ── Recording content ── */
+.rec-ui{
+  display:none;align-items:center;justify-content:center;
+  height:100%;width:100%;
+}
+.pill.rec .rec-ui{display:flex}
+
+/* waveform — centered, no extra padding */
+.wv{
   display:flex;align-items:center;justify-content:center;
-  cursor:pointer;flex-shrink:0;opacity:0;pointer-events:none;transition:opacity .12s;
+  gap:2.5px;
+  height:100%;
+  flex:1;
 }
-.p.r .b,.p.x .b{opacity:1;pointer-events:auto}
-.b:hover{opacity:.65!important}
-.b:active{transform:scale(.85)}
-.bx{background:rgba(255,255,255,.08)}
-.bx svg{width:6px;height:6px}
-.bs{background:rgba(200,50,60,.8)}
-.bs .sq{width:6px;height:6px;background:#fff;border-radius:1px}
-.m{flex:1;height:20px;overflow:hidden;display:flex;align-items:center}
-.pv{display:none;align-items:center;justify-content:center;gap:4px;width:100%;height:100%}
-.p.x .pv{display:flex}
-.p.x canvas{display:none}
-.sp{width:9px;height:9px;border:1.5px solid rgba(255,255,255,.08);border-top-color:rgba(255,255,255,.4);border-radius:50%;animation:s .5s linear infinite}
-@keyframes s{to{transform:rotate(360deg)}}
-.pv span{font:500 8px/1 -apple-system,sans-serif;color:rgba(255,255,255,.25)}
+.wv .bar{
+  width:3px;min-height:2px;max-height:16px;height:2px;
+  background:#fff;border-radius:1.5px;
+  transition:height 0.06s ease-out;
+}
+
+/* stop button (toggle mode only) */
+.stop{
+  display:none;align-items:center;gap:4px;
+  background:rgba(220,50,47,0.92);
+  border:none;border-radius:999px;
+  padding:4px 8px;margin-right:5px;
+  cursor:pointer;flex-shrink:0;
+  transition:opacity .1s,transform .08s;
+}
+.pill.rec.wide .stop{display:flex}
+.stop:hover{opacity:.8}
+.stop:active{transform:scale(.92)}
+.stop svg{width:8px;height:8px;fill:#fff}
+.stop span{font:600 10px/1 -apple-system,'SF Pro Rounded',system-ui,sans-serif;color:#fff}
+
+/* ── Processing dots ── */
+.dots{display:none;align-items:center;justify-content:center;gap:3.5px}
+.pill.proc .dots{display:flex}
+.dots span{
+  width:4px;height:4px;border-radius:50%;
+  background:rgba(255,255,255,0.25);
+  transition:opacity .4s ease-in-out;
+}
+.dots span.on{background:rgba(255,255,255,0.9)}
 </style>
 </head>
 <body>
-<div class="p i" id="p" onclick="handleClick()">
-  <div class="tip">Click or hold <b>⌥R</b> to dictate</div>
-  <button class="b bx" id="bx"><svg viewBox="0 0 6 6" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="1.2" stroke-linecap="round"><line x1=".5" y1=".5" x2="5.5" y2="5.5"/><line x1="5.5" y1=".5" x2=".5" y2="5.5"/></svg></button>
-  <div class="m" id="m"><canvas id="c"></canvas><div class="pv"><div class="sp"></div><span id="pt"></span></div></div>
-  <button class="b bs" id="bs"><div class="sq"></div></button>
+<div class="pill" id="pill">
+  <div class="rec-ui">
+    <div class="wv" id="wv"></div>
+    <button class="stop" id="bst">
+      <svg viewBox="0 0 9 9"><rect width="9" height="9" rx="1.5"/></svg>
+      <span>Stop</span>
+    </button>
+  </div>
+  <div class="dots" id="dots"><span></span><span></span><span></span></div>
 </div>
+
 <script>
-const p=document.getElementById('p'),c=document.getElementById('c'),m=document.getElementById('m');
-const ctx=c.getContext('2d');
-let tgt=0,cur=0,st='i',q='g',pw=0;
+const pill=document.getElementById('pill');
+const wvEl=document.getElementById('wv');
+const dotSpans=document.querySelectorAll('.dots span');
 
-function draw(){
-  if(st!=='r'){requestAnimationFrame(draw);return}
-  const rect=m.getBoundingClientRect(),w=Math.floor(rect.width),h=Math.floor(rect.height);
-  if(w>5&&w!==pw){pw=w;c.width=w*2;c.height=h*2;c.style.width=w+'px';c.style.height=h+'px'}
-  const W=c.width,H=c.height;
-  if(W<10){requestAnimationFrame(draw);return}
-  ctx.clearRect(0,0,W,H);
-  cur+=(tgt-cur)*.25;
-  const N=30,bw=2,gap=Math.max(1.5,(W-N*bw)/(N-1));
-  const cl={g:'rgba(255,255,255,.65)',f:'rgba(255,200,100,.55)',l:'rgba(255,120,120,.45)'};
-  ctx.fillStyle=cl[q]||cl.g;
-  const t=performance.now()/80;
-  for(let i=0;i<N;i++){
-    const v=Math.sin(t+i*.6)*.2+Math.sin(t*1.5+i*.9)*.15+.65;
-    const h=Math.max(2,Math.min(H*.85,cur*400*v));
-    ctx.beginPath();ctx.roundRect(i*(bw+gap),(H-h)/2,bw,h,1);ctx.fill();
+const MULTS=[0.35,0.55,0.75,0.9,1.0,0.9,0.75,0.55,0.35];
+const MIN_H=2,MAX_H=16;
+const bars=[];
+for(let i=0;i<9;i++){const b=document.createElement('div');b.className='bar';wvEl.appendChild(b);bars.push(b)}
+
+let audioLevel=0,smoothLevel=0,st='hidden',triggerMode='hold';
+let dotIdx=0,dotTimer=null;
+
+function updateWaveform(){
+  if(st==='rec'){
+    if(audioLevel>smoothLevel)smoothLevel=smoothLevel*.3+audioLevel*.7;
+    else smoothLevel=smoothLevel*.6+audioLevel*.4;
+    for(let i=0;i<9;i++){
+      const h=MIN_H+(MAX_H-MIN_H)*smoothLevel*MULTS[i];
+      bars[i].style.height=Math.max(MIN_H,Math.min(MAX_H,h))+'px';
+    }
   }
-  requestAnimationFrame(draw);
+  requestAnimationFrame(updateWaveform);
 }
-draw();
+requestAnimationFrame(updateWaveform);
 
-function go(s,d){
-  st=s;pw=0;
-  p.className='p '+s;
-  if(s==='x')document.getElementById('pt').textContent=d&&d.includes('Clean')?'Cleaning':'';
-  if(s==='d')setTimeout(()=>{if(st==='d'){st='i';p.className='p i'}},900);
-}
+function startDots(){dotIdx=0;updDots();dotTimer=setInterval(()=>{dotIdx=(dotIdx+1)%3;updDots()},500)}
+function stopDots(){if(dotTimer){clearInterval(dotTimer);dotTimer=null}}
+function updDots(){dotSpans.forEach((s,i)=>{s.className=i===dotIdx?'on':''})}
 
-// Click pill to start/stop recording
-function handleClick(){
-  if(st==='i'){
-    fetch('http://127.0.0.1:8528/api/start-recording',{method:'POST'}).catch(()=>{});
-  }
+function go(s){
+  st=s;
+  pill.className='pill'+(s==='hidden'?'':' '+s);
+  if(s==='rec'&&triggerMode==='toggle')pill.classList.add('wide');
+  if(s==='proc')startDots();else stopDots();
+  if(s==='done')setTimeout(()=>{if(st==='done'){st='hidden';pill.className='pill'}},700);
 }
 
 if(window.electronAPI){
-  window.electronAPI.onWsMessage(msg=>{
-    if(msg.type==='audio_level'){tgt=msg.rms;if(msg.quality)q=msg.quality[0]}
-    if(msg.type==='status'){
-      if(msg.status==='recording')go('r');
-      else if(msg.status==='processing')go('x',msg.detail);
-      else if(msg.status==='idle'){if(st==='x'||st==='r')go('d');else{st='i';p.className='p i'}}
+  window.electronAPI.onWsMessage(m=>{
+    if(m.type==='audio_level'){audioLevel=m.rms*10;if(audioLevel>1)audioLevel=1}
+    if(m.type==='trigger_mode'){triggerMode=m.mode}
+    if(m.type==='status'){
+      if(m.status==='recording')go('rec');
+      else if(m.status==='processing')go('proc');
+      else if(m.status==='idle'){
+        if(st==='proc'||st==='rec')go('done');
+        else{st='hidden';pill.className='pill'}
+      }
     }
   });
 }
-document.getElementById('bx').onclick=e=>{e.stopPropagation();fetch('http://127.0.0.1:8528/api/cancel-recording',{method:'POST'}).catch(()=>{})};
-document.getElementById('bs').onclick=e=>{e.stopPropagation();fetch('http://127.0.0.1:8528/api/stop-recording',{method:'POST'}).catch(()=>{})};
+
+document.getElementById('bst').onclick=e=>{
+  e.stopPropagation();
+  fetch('http://127.0.0.1:8528/api/stop-recording',{method:'POST'}).catch(()=>{});
+};
 </script>
 </body>
 </html>

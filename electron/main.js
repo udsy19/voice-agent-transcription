@@ -33,41 +33,28 @@ let ws = null;
 let restartCount = 0;
 let currentStatus = 'loading';
 
-// ── Tray Icon (must be a real image, not empty) ─────────────────────────────
+// ── Tray Icon (loaded from pre-generated assets) ────────────────────────────
 
-function createTrayIcon(label) {
-  // Create a 32x32 canvas-drawn icon since we can't use emoji as tray icon
-  // Use a simple colored circle: green=ready, red=recording, amber=processing
-  const size = 32;
-  const canvas = Buffer.alloc(size * size * 4); // RGBA
+const ICON_SIZE = 32;
+const ICON_ASSETS = {};
 
-  const colors = {
-    '🎙': [56, 161, 105, 255],   // green
-    '🔴': [229, 62, 62, 255],    // red
-    '⏳': [204, 138, 36, 255],   // amber
-    '🟢': [56, 161, 105, 255],   // green
-    '⏳loading': [181, 164, 148, 255], // light gray
-  };
-  const c = colors[label] || colors['🎙'];
-
-  // Draw a filled circle
-  const cx = size / 2, cy = size / 2, r = 6;
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const dx = x - cx, dy = y - cy;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const idx = (y * size + x) * 4;
-      if (dist <= r) {
-        canvas[idx] = c[0]; canvas[idx+1] = c[1]; canvas[idx+2] = c[2]; canvas[idx+3] = c[3];
-      } else if (dist <= r + 1) {
-        // Anti-alias edge
-        const alpha = Math.max(0, 1 - (dist - r));
-        canvas[idx] = c[0]; canvas[idx+1] = c[1]; canvas[idx+2] = c[2]; canvas[idx+3] = Math.round(alpha * c[3]);
-      }
+function loadTrayIcons() {
+  const assetsDir = path.join(__dirname, 'assets');
+  const names = ['idle', 'recording', 'processing', 'handsfree', 'loading'];
+  for (const name of names) {
+    const file = path.join(assetsDir, `tray-${name}.rgba`);
+    if (fs.existsSync(file)) {
+      ICON_ASSETS[name] = nativeImage.createFromBuffer(
+        fs.readFileSync(file),
+        { width: ICON_SIZE, height: ICON_SIZE, scaleFactor: 2 }
+      );
     }
   }
+}
 
-  return nativeImage.createFromBuffer(canvas, { width: size, height: size, scaleFactor: 2 });
+function getTrayIcon(status) {
+  const map = { idle: 'idle', recording: 'recording', processing: 'processing', hands_free: 'handsfree', loading: 'loading' };
+  return ICON_ASSETS[map[status] || 'idle'] || ICON_ASSETS['idle'];
 }
 
 // ── Python Process ──────────────────────────────────────────────────────────
@@ -249,20 +236,32 @@ function createMainWindow() {
   });
 }
 
+const PILL_W = 200, PILL_H = 40;
+
+function getPillPosition() {
+  const display = screen.getPrimaryDisplay();
+  const { width: screenW } = display.size;
+  const workArea = display.workArea;
+  const x = Math.round((screenW - PILL_W) / 2);
+  // Top of work area (just below menu bar / notch)
+  const y = workArea.y;
+  return { x, y };
+}
+
 function createPillWindow() {
-  const { width } = screen.getPrimaryDisplay().workAreaSize;
+  const { x, y } = getPillPosition();
 
   pillWindow = new BrowserWindow({
-    width: 260,
-    height: 70,
-    x: Math.round((width - 260) / 2),
-    y: 0,
+    width: PILL_W,
+    height: PILL_H,
+    x, y,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
     hasShadow: false,
     skipTaskbar: true,
     resizable: false,
+    movable: false,
     focusable: false,
     show: false,
     webPreferences: {
@@ -274,6 +273,15 @@ function createPillWindow() {
 
   pillWindow.loadFile(path.join(__dirname, 'ui', 'pill.html'));
   pillWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+  // Reposition when display changes (dock resize, external monitor, fullscreen toggle)
+  screen.on('display-metrics-changed', repositionPill);
+}
+
+function repositionPill() {
+  if (!pillWindow || pillWindow.isDestroyed()) return;
+  const { x, y } = getPillPosition();
+  pillWindow.setPosition(x, y, false);
 }
 
 function showPill() {
@@ -291,7 +299,8 @@ function hidePill() {
 // ── Tray ────────────────────────────────────────────────────────────────────
 
 function createTray() {
-  tray = new Tray(createTrayIcon('⏳loading'));
+  loadTrayIcons();
+  tray = new Tray(getTrayIcon('loading'));
   updateTrayMenu();
 
   tray.on('click', () => {
@@ -307,8 +316,8 @@ function createTray() {
 
 function updateTrayIcon(status) {
   if (!tray) return;
-  const map = { idle: '🎙', recording: '🔴', processing: '⏳', hands_free: '🟢', loading: '⏳loading' };
-  tray.setImage(createTrayIcon(map[status] || '🎙'));
+  const icon = getTrayIcon(status);
+  if (icon) tray.setImage(icon);
   updateTrayMenu();
 }
 

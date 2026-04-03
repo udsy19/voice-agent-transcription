@@ -138,6 +138,13 @@ class Recorder:
             audio = np.clip(audio * gain, -1.0, 1.0).astype(np.float32)
             log.info("Whisper mode: amplified %.1fx", gain)
 
+        # Normalize audio level for better transcription accuracy
+        # Target RMS ~0.1 — whisper models work best with consistent levels
+        if rms > 0 and rms < 0.08:
+            gain = min(0.1 / rms, 10.0)
+            audio = np.clip(audio * gain, -1.0, 1.0).astype(np.float32)
+            log.info("Normalized: %.4f -> %.4f (%.1fx gain)", rms, rms * gain, gain)
+
         audio = _resample(audio, self._native_rate, SAMPLE_RATE)
         log.info("Resampled to %d Hz, %d samples", SAMPLE_RATE, len(audio))
         return audio
