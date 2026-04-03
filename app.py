@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Voice Agent — web dashboard + voice backend.
+"""Muse — web dashboard + voice backend.
 
 Single command: python3 app.py
 Opens http://localhost:8528 in your browser.
@@ -73,15 +73,67 @@ from styles import StyleManager
 from domains import DomainManager
 from macros import MacroEngine
 from conversation import ConversationTracker
+from exporter import export_json, export_txt, export_word, export_pdf, export_logs
 from logger import get_logger
 
 log = get_logger("app")
 PORT = 8528
-TRIGGER_KEY = keyboard.Key.alt_r
 HANDS_FREE_SILENCE_SEC = 2.0
+
+# ── Hotkey config ───────────────────────────────────────────────────────────
+_HOTKEY_MAP = {
+    "alt_r": keyboard.Key.alt_r,
+    "alt_l": keyboard.Key.alt_l,
+    "ctrl_r": keyboard.Key.ctrl_r,
+    "ctrl_l": keyboard.Key.ctrl_l,
+    "cmd_r": keyboard.Key.cmd_r,
+    "fn": keyboard.Key.f20,  # Fn key sends F20 on some Macs
+}
+
+def _load_hotkey():
+    """Load saved hotkey from config, default to Right Option."""
+    try:
+        import json
+        hk_path = os.path.join(str(__import__('config').DATA_DIR), "hotkey.json")
+        if os.path.exists(hk_path):
+            with open(hk_path) as f:
+                data = json.load(f)
+            key_name = data.get("key", "alt_r")
+            return _HOTKEY_MAP.get(key_name, keyboard.Key.alt_r), key_name
+    except Exception:
+        pass
+    return keyboard.Key.alt_r, "alt_r"
+
+TRIGGER_KEY, TRIGGER_KEY_NAME = _load_hotkey()
 
 # Undo keywords
 UNDO_PHRASES = {"undo that", "go back", "undo", "scratch that", "never mind", "cancel that"}
+
+# Apps where we should NOT inject text (system UIs, voice assistants)
+BLOCKED_APPS = {"Siri", "Spotlight", "Alfred", "Raycast", "Launcher"}
+
+# ── Sound feedback (barely noticeable system sounds) ────────────────────────
+_SOUNDS = {
+    "start": "/System/Library/Sounds/Tink.aiff",
+    "done":  "/System/Library/Sounds/Pop.aiff",
+    "error": "/System/Library/Sounds/Funk.aiff",
+}
+_sound_enabled = True
+_clipboard_context_enabled = True
+
+def _play_sound(name: str):
+    """Play a subtle system sound in background. Non-blocking."""
+    if not _sound_enabled:
+        return
+    path = _SOUNDS.get(name)
+    if path:
+        try:
+            subprocess.Popen(
+                ["afplay", "-v", "0.3", path],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass
 
 
 # ── Global State ─────────────────────────────────────────────────────────────
@@ -113,6 +165,7 @@ class State:
         self.last_paste_text: str = ""
         self.last_paste_time: float = 0.0
         self.tone_override: str | None = None  # set by macros
+        self.source_app: str = ""  # app that had focus when recording started
 
         # Collections
         self.history: list[dict] = []  # capped at 100 entries
@@ -136,10 +189,12 @@ async def broadcast(msg: dict):
     for ws in S.ws_clients:
         try:
             await ws.send_json(msg)
-        except Exception:
+        except Exception as e:
+            log.debug("WebSocket send failed: %s", e)
             dead.append(ws)
     for ws in dead:
-        S.ws_clients.remove(ws)
+        if ws in S.ws_clients:
+            S.ws_clients.remove(ws)
 
 
 def emit(msg: dict):
@@ -148,10 +203,13 @@ def emit(msg: dict):
         asyncio.run_coroutine_threadsafe(broadcast(msg), loop)
 
 
+_history_lock = threading.Lock()
+
 def add_history(entry):
-    S.history.append(entry)
-    if len(S.history) > 100:
-        S.history = S.history[-100:]
+    with _history_lock:
+        S.history.append(entry)
+        if len(S.history) > 100:
+            S.history = S.history[-100:]
 
 
 def set_status(status, detail=""):
@@ -188,6 +246,7 @@ async def health():
 async def api_start_recording():
     """Start recording — for pill click."""
     if S.recorder and not S.recorder.is_recording and not S.processing:
+        S.source_app = _get_active_app()  # capture BEFORE recording starts
         S.recorder.start()
         set_status("recording", "Listening — click stop or release ⌥R")
         return {"ok": True}
@@ -300,18 +359,29 @@ async def api_remove_snippet(body: TriggerRequest):
 @api.post("/api/set-groq-key")
 async def api_set_groq_key(body: GroqKeyRequest):
     """Set Groq API key from the settings UI. Saves to .env and reinitializes cleaner."""
+    import re as _re
     key = body.key.strip()
     if not key:
         return {"ok": False, "reason": "empty key"}
+    # Validate key format (Groq keys are gsk_ followed by alphanumeric)
+    if not _re.match(r'^gsk_[A-Za-z0-9_]{20,}$', key):
+        return {"ok": False, "reason": "invalid key format — expected gsk_..."}
+    import config
+    # Store in Keychain (secure) + .env fallback
+    config._keychain_set("Muse", "groq_api_key", key)
+    # Also write .env for backward compat / dev mode
     from pathlib import Path
     from config import DATA_DIR
+    from dotenv import set_key as _set_key
     env_path = DATA_DIR / ".env"
-    env_path.write_text(f"GROQ_API_KEY={key}\n")
+    env_path.touch(exist_ok=True)
+    _set_key(str(env_path), "GROQ_API_KEY", key)
     try:
-        (Path(__file__).parent / ".env").write_text(f"GROQ_API_KEY={key}\n")
+        dev_env = Path(__file__).parent / ".env"
+        dev_env.touch(exist_ok=True)
+        _set_key(str(dev_env), "GROQ_API_KEY", key)
     except Exception:
         pass
-    import config
     config.GROQ_API_KEY = key
     from groq import Groq
     S.cleaner._client = Groq(api_key=key)
@@ -325,8 +395,78 @@ async def api_groq_status():
     has_key = bool(GROQ_API_KEY)
     has_client = bool(S.cleaner and S.cleaner._client)
     # Mask key for display (show first 8 chars)
-    masked = GROQ_API_KEY[:8] + "..." if GROQ_API_KEY and len(GROQ_API_KEY) > 8 else ""
+    masked = GROQ_API_KEY[:4] + "***" + GROQ_API_KEY[-4:] if GROQ_API_KEY and len(GROQ_API_KEY) > 12 else "***" if GROQ_API_KEY else ""
     return {"configured": has_key or has_client, "masked_key": masked}
+
+
+@api.get("/api/export/{fmt}")
+async def api_export(fmt: str):
+    """Export history as JSON, TXT, Word (docx), or PDF."""
+    import tempfile
+    if not S.history:
+        return {"ok": False, "reason": "no history to export"}
+    ext_map = {"json": ".json", "txt": ".txt", "word": ".docx", "pdf": ".pdf"}
+    if fmt not in ext_map:
+        return {"ok": False, "reason": f"unknown format: {fmt}. Use: json, txt, word, pdf"}
+    path = os.path.join(tempfile.gettempdir(), f"muse_export{ext_map[fmt]}")
+    try:
+        if fmt == "json":
+            export_json(S.history, path)
+        elif fmt == "txt":
+            export_txt(S.history, path)
+        elif fmt == "word":
+            export_word(S.history, path)
+        elif fmt == "pdf":
+            export_pdf(S.history, path)
+        return FileResponse(path, filename=f"muse-history{ext_map[fmt]}",
+                           media_type="application/octet-stream")
+    except ImportError as e:
+        return {"ok": False, "reason": str(e)}
+    except Exception as e:
+        log.error("Export failed: %s", e)
+        return {"ok": False, "reason": f"export failed: {e}"}
+
+
+@api.post("/api/clear-history")
+async def api_clear_history():
+    """Clear all dictation history."""
+    with _history_lock:
+        S.history.clear()
+    if S.conversation:
+        S.conversation.clear()
+    return {"ok": True}
+
+
+@api.post("/api/privacy/clipboard-context")
+async def api_toggle_clipboard_context(body: dict):
+    """Enable/disable clipboard context reading for Groq."""
+    global _clipboard_context_enabled
+    _clipboard_context_enabled = body.get("enabled", True)
+    return {"ok": True, "clipboard_context": _clipboard_context_enabled}
+
+
+@api.get("/api/privacy")
+async def api_privacy():
+    """Get privacy settings."""
+    return {
+        "clipboard_context": _clipboard_context_enabled,
+        "history_count": len(S.history),
+        "sounds": _sound_enabled,
+    }
+
+
+@api.get("/api/export-logs")
+async def api_export_logs():
+    """Export log files as ZIP for bug reporting."""
+    import tempfile
+    log_dir = os.path.expanduser("~/Library/Logs/Muse")
+    path = os.path.join(tempfile.gettempdir(), "muse_logs.zip")
+    try:
+        export_logs(log_dir, path)
+        return FileResponse(path, filename="muse-logs.zip",
+                           media_type="application/zip")
+    except Exception as e:
+        return {"ok": False, "reason": str(e)}
 
 
 @api.get("/api/permissions")
@@ -401,6 +541,39 @@ async def api_toggle_hf():
     return {"ok": True}
 
 
+@api.get("/api/hotkey")
+async def api_get_hotkey():
+    return {"key": TRIGGER_KEY_NAME, "available": list(_HOTKEY_MAP.keys())}
+
+
+@api.post("/api/hotkey")
+async def api_set_hotkey(body: dict):
+    global TRIGGER_KEY, TRIGGER_KEY_NAME
+    key_name = body.get("key", "").strip()
+    if key_name not in _HOTKEY_MAP:
+        return {"ok": False, "reason": f"unknown key: {key_name}"}
+    TRIGGER_KEY = _HOTKEY_MAP[key_name]
+    TRIGGER_KEY_NAME = key_name
+    # Save to config
+    import json
+    from config import DATA_DIR
+    hk_path = os.path.join(str(DATA_DIR), "hotkey.json")
+    try:
+        with open(hk_path, "w") as f:
+            json.dump({"key": key_name}, f)
+    except Exception as e:
+        log.error("Failed to save hotkey: %s", e)
+    log.info("Hotkey changed to: %s", key_name)
+    return {"ok": True, "key": key_name}
+
+
+@api.post("/api/toggle-sounds")
+async def api_toggle_sounds():
+    global _sound_enabled
+    _sound_enabled = not _sound_enabled
+    return {"ok": True, "sounds": _sound_enabled}
+
+
 @api.post("/api/toggle-whisper")
 async def api_toggle_w():
     if S.recorder:
@@ -439,7 +612,9 @@ def on_key_press(key):
             return
         S.key_held = True
         if not S.recorder.is_recording:
+            S.source_app = _get_active_app()
             S.recorder.start()
+            _play_sound("start")
             emit({"type": "trigger_mode", "mode": "hold"})
             set_status("recording", "Listening — release to transcribe")
 
@@ -515,9 +690,11 @@ def _get_clipboard_context() -> str:
     try:
         result = subprocess.run(["pbpaste"], capture_output=True, text=True, timeout=2)
         text = result.stdout.strip()
-        # Only use if it looks like real text (not binary/huge)
-        if text and len(text) < 2000 and text.isprintable():
-            return text[:500]
+        if not text or len(text) > 2000:
+            return ""
+        # Strip control characters, keep only printable + whitespace
+        text = ''.join(c for c in text if c.isprintable() or c in '\n\t')
+        return text[:500]
     except Exception:
         pass
     return ""
@@ -548,7 +725,13 @@ def _compute_diff(raw: str, cleaned: str) -> list[dict]:
 def process_audio(audio):
     try:
         t0 = time.time()
-        app_name = _get_active_app()
+        # Use the app that was active when recording STARTED, not now
+        app_name = S.source_app or _get_active_app()
+
+        # Skip injection for blocked apps (Siri, Spotlight, etc.)
+        if app_name in BLOCKED_APPS:
+            log.info("Blocked app '%s' — skipping injection, saving to history only", app_name)
+
         set_status("processing", "Transcribing...")
 
         # Build whisper prompt from dictionary + domain
@@ -614,7 +797,7 @@ def process_audio(audio):
         if S.snippets:
             snippet_text = S.snippets.match(raw_text)
             if snippet_text:
-                inject_text(snippet_text)
+                inject_text(snippet_text, target_app=app_name)
                 S.reset_after_paste(snippet_text)
                 dur = time.time() - t0
                 entry = {"raw": raw_text, "cleaned": "[snippet]", "app": app_name,
@@ -631,7 +814,7 @@ def process_audio(audio):
         set_status("processing", "Cleaning...")
 
         # === Get clipboard context for better Groq accuracy ===
-        clipboard_context = _get_clipboard_context()
+        clipboard_context = _get_clipboard_context() if _clipboard_context_enabled else ""
 
         # === Get domain hint ===
         domain_hint = S.domains.get_cleaner_hint() if S.domains else None
@@ -669,9 +852,11 @@ def process_audio(audio):
                                       style_prompt=style_prompt)
 
         if cleaned:
-            inject_text(cleaned)
+            if app_name not in BLOCKED_APPS:
+                inject_text(cleaned, target_app=app_name)
+            else:
+                log.info("Skipped injection into '%s' — text saved to history", app_name)
             S.reset_after_paste(cleaned)
-            # Record turn for conversation context
             if S.conversation:
                 S.conversation.add_turn(app_name, cleaned)
 
@@ -684,16 +869,18 @@ def process_audio(audio):
                  "diff": diff}
         add_history(entry)
         emit({"type": "result", **entry})
+        _play_sound("done")
         set_status("idle", f"Done ({dur:.1f}s)")
 
-        # Auto-learn: extract notable terms in background
-        if cleaned and S.dictionary and S.cleaner:
+        # Auto-learn: extract notable terms in background (only for substantial text)
+        if cleaned and len(cleaned.split()) >= 8 and S.dictionary and S.cleaner:
             threading.Thread(target=_auto_learn_terms, args=(cleaned,), daemon=True).start()
 
     except Exception as e:
         log.error("Processing error: %s", e, exc_info=True)
         msg = _friendly_error(e)
-        emit({"type": "error", "error": msg, "detail": str(e)})
+        _play_sound("error")
+        emit({"type": "error", "error": msg})
         set_status("idle", msg)
     finally:
         S.processing = False
@@ -844,5 +1031,5 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
 
-    print(f"\n  Voice Agent → http://localhost:{PORT}\n", flush=True)
+    print(f"\n  Muse → http://localhost:{PORT}\n", flush=True)
     uvicorn.run(api, host="127.0.0.1", port=PORT, log_level="warning")

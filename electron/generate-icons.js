@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Generate tray icon PNGs for Voice Agent.
+ * Generate tray icon PNGs for Muse.
  * Run once: node generate-icons.js
  * Creates 32x32 RGBA PNGs in assets/
  */

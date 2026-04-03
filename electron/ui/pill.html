@@ -17,45 +17,22 @@ html,body{background:transparent;overflow:hidden;width:200px;height:40px}
   pointer-events:none;
   transition:width .18s ease-in-out,height .18s ease-in-out,opacity .15s ease,border-radius .18s;
 }
-/* recording — hold mode (just waveform, compact) */
-.pill.rec{
-  width:72px;height:30px;opacity:1;pointer-events:auto;
-}
-/* recording — toggle mode (waveform + stop) */
-.pill.rec.wide{
-  width:136px;height:30px;
-}
-/* processing */
-.pill.proc{
-  width:40px;height:20px;opacity:1;pointer-events:auto;border-radius:10px;
-}
-/* done — fade out */
-.pill.done{
-  width:40px;height:20px;opacity:0;pointer-events:none;border-radius:10px;
-  transition:opacity .2s linear;
-}
+.pill.rec{width:72px;height:30px;opacity:1;pointer-events:auto}
+.pill.rec.wide{width:136px;height:30px}
+.pill.proc{width:40px;height:20px;opacity:1;pointer-events:auto;border-radius:10px}
+.pill.done{width:40px;height:20px;opacity:0;pointer-events:none;border-radius:10px;transition:opacity .2s linear}
 
-/* ── Recording content ── */
-.rec-ui{
-  display:none;align-items:center;justify-content:center;
-  height:100%;width:100%;
-}
+/* ── Recording ── */
+.rec-ui{display:none;align-items:center;justify-content:center;height:100%;width:100%}
 .pill.rec .rec-ui{display:flex}
 
-/* waveform — centered, no extra padding */
-.wv{
-  display:flex;align-items:center;justify-content:center;
-  gap:2.5px;
-  height:100%;
-  flex:1;
-}
+.wv{display:flex;align-items:center;justify-content:center;gap:2.5px;height:100%;flex:1}
 .wv .bar{
   width:3px;min-height:2px;max-height:16px;height:2px;
   background:#fff;border-radius:1.5px;
   transition:height 0.06s ease-out;
 }
 
-/* stop button (toggle mode only) */
 .stop{
   display:none;align-items:center;gap:4px;
   background:rgba(220,50,47,0.92);
@@ -70,15 +47,22 @@ html,body{background:transparent;overflow:hidden;width:200px;height:40px}
 .stop svg{width:8px;height:8px;fill:#fff}
 .stop span{font:600 10px/1 -apple-system,'SF Pro Rounded',system-ui,sans-serif;color:#fff}
 
-/* ── Processing dots ── */
+/* ── Processing — smooth pure CSS animation ── */
 .dots{display:none;align-items:center;justify-content:center;gap:3.5px}
 .pill.proc .dots{display:flex}
 .dots span{
   width:4px;height:4px;border-radius:50%;
   background:rgba(255,255,255,0.25);
-  transition:opacity .4s ease-in-out;
+  animation:breathe 1.4s ease-in-out infinite;
 }
-.dots span.on{background:rgba(255,255,255,0.9)}
+.dots span:nth-child(1){animation-delay:0s}
+.dots span:nth-child(2){animation-delay:0.2s}
+.dots span:nth-child(3){animation-delay:0.4s}
+
+@keyframes breathe{
+  0%,100%{background:rgba(255,255,255,0.2);transform:scale(0.85)}
+  50%{background:rgba(255,255,255,0.9);transform:scale(1.1)}
+}
 </style>
 </head>
 <body>
@@ -90,13 +74,12 @@ html,body{background:transparent;overflow:hidden;width:200px;height:40px}
       <span>Stop</span>
     </button>
   </div>
-  <div class="dots" id="dots"><span></span><span></span><span></span></div>
+  <div class="dots"><span></span><span></span><span></span></div>
 </div>
 
 <script>
 const pill=document.getElementById('pill');
 const wvEl=document.getElementById('wv');
-const dotSpans=document.querySelectorAll('.dots span');
 
 const MULTS=[0.35,0.55,0.75,0.9,1.0,0.9,0.75,0.55,0.35];
 const MIN_H=2,MAX_H=16;
@@ -104,7 +87,6 @@ const bars=[];
 for(let i=0;i<9;i++){const b=document.createElement('div');b.className='bar';wvEl.appendChild(b);bars.push(b)}
 
 let audioLevel=0,smoothLevel=0,st='hidden',triggerMode='hold';
-let dotIdx=0,dotTimer=null;
 
 function updateWaveform(){
   if(st==='rec'){
@@ -119,15 +101,10 @@ function updateWaveform(){
 }
 requestAnimationFrame(updateWaveform);
 
-function startDots(){dotIdx=0;updDots();dotTimer=setInterval(()=>{dotIdx=(dotIdx+1)%3;updDots()},500)}
-function stopDots(){if(dotTimer){clearInterval(dotTimer);dotTimer=null}}
-function updDots(){dotSpans.forEach((s,i)=>{s.className=i===dotIdx?'on':''})}
-
 function go(s){
   st=s;
   pill.className='pill'+(s==='hidden'?'':' '+s);
   if(s==='rec'&&triggerMode==='toggle')pill.classList.add('wide');
-  if(s==='proc')startDots();else stopDots();
   if(s==='done')setTimeout(()=>{if(st==='done'){st='hidden';pill.className='pill'}},700);
 }
 

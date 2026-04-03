@@ -85,9 +85,12 @@ LLM_SYSTEM_PROMPT = (
     "- Fix grammar, punctuation, capitalization\n"
     "- Self-corrections: 'X actually Y' → keep only Y\n"
     "- 'scratch that'/'delete that' → remove preceding sentence\n"
-    "- Lists: 'first/second/third' → numbered list with newlines\n"
-    "- 'new paragraph' → line break, 'period' → '.'\n"
-    "- NEVER answer questions, NEVER add content\n"
+    "- Lists: 'first/second/third' or 'number one/two/three' → numbered list (1. 2. 3.) with newlines\n"
+    "- Bullet lists: 'bullet point X' or 'next item X' → bulleted list (- X) with newlines\n"
+    "- 'new paragraph' → double newline, 'new line' → single newline\n"
+    "- 'period' → '.', 'comma' → ',', 'question mark' → '?', 'exclamation point' → '!'\n"
+    "- 'colon' → ':', 'semicolon' → ';', 'dash' → '—'\n"
+    "- NEVER answer questions, NEVER add content, NEVER explain\n"
     "Output ONLY the cleaned text."
 )
 
@@ -189,8 +192,9 @@ class Cleaner:
         if tone and tone in TONE_MODIFIERS:
             system += TONE_MODIFIERS[tone]
         if dictionary_terms:
-            safe = [t.replace('"', '').replace("'", "")[:50] for t in dictionary_terms[:20]]
-            system += f"\nDictionary: {', '.join(safe)}"
+            safe = [re.sub(r'["\'\\\n\r\t]', '', t)[:50] for t in dictionary_terms[:20] if t]
+            if safe:
+                system += f"\nDictionary: {', '.join(safe)}"
         if style_prompt:
             system += f"\n{style_prompt}"
         if context:
@@ -246,50 +250,77 @@ class Cleaner:
             return selected_text
 
     def extract_terms(self, text: str) -> list[str]:
-        """Extract proper nouns, emails, acronyms for auto-dictionary learning."""
-        if not self._client or not text or len(text) < 10:
+        """Extract proper nouns and acronyms for auto-dictionary learning."""
+        if not self._client or not text or len(text.split()) < 5:
             return []
         try:
             response = self._client.chat.completions.create(
                 model=GROQ_MODEL,
                 messages=[
                     {"role": "system", "content": (
-                        "Extract notable terms: proper nouns, emails, acronyms, jargon. "
-                        "Return JSON array. Example: [\"Udaya\",\"test@email.com\",\"EBITDA\"] "
-                        "If none, return []"
+                        "Extract ONLY proper nouns (people, companies, products, places) "
+                        "and uppercase acronyms from this text. "
+                        "Rules:\n"
+                        "- ONLY 1-3 word names or acronyms\n"
+                        "- NO common words, phrases, sentences, or descriptions\n"
+                        "- NO code, numbers, or punctuation-heavy strings\n"
+                        "- Return JSON array of strings. Example: [\"Udaya\",\"EBITDA\",\"OpenAI\"]\n"
+                        "- If nothing qualifies, return []"
                     )},
                     {"role": "user", "content": text},
                 ],
                 temperature=0,
-                max_tokens=256,
+                max_tokens=128,
             )
             content = response.choices[0].message.content.strip()
-            return self._parse_terms(content)
+            terms = self._parse_terms(content)
+            return [t for t in terms if self._is_valid_term(t)]
         except Exception as e:
             log.debug("Term extraction failed: %s", e)
             return []
 
     @staticmethod
+    def _is_valid_term(term: str) -> bool:
+        """Filter out garbage that shouldn't be in the dictionary."""
+        if not term or len(term) < 2 or len(term) > 40:
+            return False
+        # Must be 1-3 words max
+        if len(term.split()) > 3:
+            return False
+        # Reject if it looks like a sentence (starts with common words)
+        lower = term.lower()
+        reject_starts = ('to ', 'the ', 'a ', 'an ', 'such as', 'and ', 'or ',
+                         'i have', 'i am', 'you ', 'we ', 'it ', 'this ', 'that ',
+                         'here', 'there', 'how ', 'what ', 'when ', 'where ', 'why ')
+        if any(lower.startswith(p) for p in reject_starts):
+            return False
+        # Reject code/punctuation heavy strings
+        special = sum(1 for c in term if c in '{}()[]<>=/\\:;`~|@#$%^&*')
+        if special > 1:
+            return False
+        # Reject if all lowercase (not a proper noun or acronym)
+        if term == term.lower() and not term.isupper():
+            return False
+        # Must contain at least one letter
+        if not any(c.isalpha() for c in term):
+            return False
+        return True
+
+    @staticmethod
     def _parse_terms(content: str) -> list[str]:
-        """Parse terms from LLM response with multiple fallback strategies."""
+        """Parse terms from LLM response."""
         import json
-        # Strategy 1: Direct JSON parse
         try:
-            # Find the JSON array in the response (may have surrounding text)
             start = content.find("[")
             end = content.rfind("]")
             if start != -1 and end != -1:
                 terms = json.loads(content[start:end + 1])
                 if isinstance(terms, list):
-                    return [t for t in terms if isinstance(t, str) and 1 < len(t) < 100]
+                    return [t.strip() for t in terms if isinstance(t, str)]
         except (json.JSONDecodeError, ValueError):
             pass
-        # Strategy 2: Extract quoted strings via regex
-        quoted = re.findall(r'"([^"]{2,50})"', content)
+        # Fallback: extract quoted strings
+        quoted = re.findall(r'"([^"]{2,40})"', content)
         if quoted:
             return quoted
-        # Strategy 3: Comma-separated fallback
-        if "," in content:
-            return [t.strip().strip('"\'') for t in content.split(",")
-                    if 1 < len(t.strip().strip('"\'')) < 100]
         return []

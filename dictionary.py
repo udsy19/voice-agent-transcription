@@ -1,7 +1,7 @@
-import json
 import os
 import re
 import threading
+import safe_json
 from logger import get_logger
 
 log = get_logger("dictionary")
@@ -18,32 +18,19 @@ class PersonalDictionary:
         self._load()
 
     def _load(self):
-        if not os.path.exists(DICT_PATH):
-            return
-        try:
-            with open(DICT_PATH) as f:
-                data = json.load(f)
-            if isinstance(data, dict):
-                self._corrections = data.get("corrections") or {}
-                self._terms = data.get("terms") or []
-                # Validate types
-                if not isinstance(self._corrections, dict):
-                    self._corrections = {}
-                if not isinstance(self._terms, list):
-                    self._terms = []
-            log.info("Loaded %d corrections, %d terms", len(self._corrections), len(self._terms))
-        except (json.JSONDecodeError, IOError) as e:
-            log.error("Failed to load dictionary: %s, starting fresh", e)
-            self._corrections = {}
-            self._terms = []
+        data = safe_json.load(DICT_PATH, {"corrections": {}, "terms": []})
+        if isinstance(data, dict):
+            self._corrections = data.get("corrections") or {}
+            self._terms = data.get("terms") or []
+            if not isinstance(self._corrections, dict):
+                self._corrections = {}
+            if not isinstance(self._terms, list):
+                self._terms = []
+        log.info("Loaded %d corrections, %d terms", len(self._corrections), len(self._terms))
 
     def _save(self):
         with _file_lock:
-            try:
-                with open(DICT_PATH, "w") as f:
-                    json.dump({"corrections": self._corrections, "terms": self._terms}, f, indent=2)
-            except IOError as e:
-                log.error("Failed to save dictionary: %s", e)
+            safe_json.save(DICT_PATH, {"corrections": self._corrections, "terms": self._terms})
 
     def add_correction(self, wrong: str, correct: str):
         self._corrections[wrong.lower()] = correct
@@ -67,7 +54,8 @@ class PersonalDictionary:
     def apply(self, text: str) -> str:
         for wrong, correct in list(self._corrections.items()):
             try:
-                text = re.sub(re.escape(wrong), correct, text, flags=re.IGNORECASE)
+                # Use lambda to prevent backreference interpretation in replacement
+                text = re.sub(re.escape(wrong), lambda m: correct, text, flags=re.IGNORECASE)
             except re.error:
                 pass
         return text

@@ -9,8 +9,8 @@ A macro can:
 Triggered by a spoken phrase like "email mode" or "standup notes".
 """
 
-import json
 import os
+import safe_json
 from logger import get_logger
 
 log = get_logger("macros")
@@ -61,24 +61,14 @@ class MacroEngine:
 
     def _load(self):
         self._macros = BUILTIN_MACROS.copy()
-        if os.path.exists(MACROS_PATH):
-            try:
-                with open(MACROS_PATH) as f:
-                    data = json.load(f)
-                if isinstance(data, dict):
-                    self._macros.update(data)
-                log.info("Loaded %d macros", len(self._macros))
-            except (json.JSONDecodeError, IOError) as e:
-                log.error("Failed to load macros: %s", e)
+        data = safe_json.load(MACROS_PATH, {})
+        if isinstance(data, dict):
+            self._macros.update(data)
+        log.info("Loaded %d macros", len(self._macros))
 
     def _save(self):
-        # Only save custom macros (not builtins)
         custom = {k: v for k, v in self._macros.items() if k not in BUILTIN_MACROS}
-        try:
-            with open(MACROS_PATH, "w") as f:
-                json.dump(custom, f, indent=2)
-        except IOError as e:
-            log.error("Failed to save macros: %s", e)
+        safe_json.save(MACROS_PATH, custom)
 
     def match(self, spoken_text: str) -> dict | None:
         """Check if spoken text triggers a macro. Returns macro dict or None."""
@@ -176,8 +166,11 @@ class MacroEngine:
 
             elif atype == "repeat":
                 # Repeat the next N actions a given number of times
-                count = min(int(action.get("count", 2)), 10)  # cap at 10
-                n_actions = min(int(action.get("n", 1)), 5)    # how many following actions to repeat
+                try:
+                    count = max(1, min(int(action.get("count", 2)), 10))
+                    n_actions = max(1, min(int(action.get("n", 1)), 5))
+                except (ValueError, TypeError):
+                    count, n_actions = 2, 1
                 repeat_actions = actions[i + 1: i + 1 + n_actions]
                 if repeat_actions:
                     for _ in range(count - 1):  # -1 because they'll run once normally

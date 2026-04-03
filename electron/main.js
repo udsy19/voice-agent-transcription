@@ -155,11 +155,17 @@ function pollForReady() {
 
 // ── WebSocket (main process → controls pill + forwards to renderers) ────────
 
+let wsRetryDelay = 1000;
+
 function connectWS() {
   if (ws) try { ws.close(); } catch {}
 
   ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`);
-  ws.on('open', () => console.log('[ws] connected'));
+
+  ws.on('open', () => {
+    console.log('[ws] connected');
+    wsRetryDelay = 1000; // Reset backoff on success
+  });
 
   ws.on('message', (data) => {
     try {
@@ -168,21 +174,22 @@ function connectWS() {
       if (msg.type === 'status') {
         currentStatus = msg.status;
         updateTrayIcon(msg.status);
-        // Pill is always visible — just changes state (idle=small capsule, recording=expanded)
         showPill();
       }
 
-      // Forward ALL messages to main window and pill
       sendToMain('ws-message', msg);
       sendToPill('ws-message', msg);
 
     } catch (e) {
-      console.log('[ws] parse error:', e.message);
+      console.warn('[ws] parse error:', e.message);
     }
   });
 
   ws.on('close', () => {
-    if (!app.isQuitting) setTimeout(connectWS, 2000);
+    if (!app.isQuitting) {
+      wsRetryDelay = Math.min(wsRetryDelay * 1.5, 15000); // Exponential backoff, cap 15s
+      setTimeout(connectWS, wsRetryDelay);
+    }
   });
   ws.on('error', () => {});
 }
@@ -325,11 +332,11 @@ function updateTrayMenu() {
   if (!tray) return;
   const labels = { idle: 'Ready', recording: 'Recording...', processing: 'Processing...', hands_free: 'Hands-Free', loading: 'Loading...' };
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: `Voice Agent — ${labels[currentStatus] || currentStatus}`, enabled: false },
+    { label: `Muse — ${labels[currentStatus] || currentStatus}`, enabled: false },
     { type: 'separator' },
     { label: 'Show Window', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
     { type: 'separator' },
-    { label: 'Quit Voice Agent', click: () => { app.isQuitting = true; app.quit(); } },
+    { label: 'Quit Muse', click: () => { app.isQuitting = true; app.quit(); } },
   ]));
 }
 
@@ -352,6 +359,8 @@ app.on('activate', () => {
 
 app.on('before-quit', () => {
   app.isQuitting = true;
+  if (ws) try { ws.close(); } catch {}
+  screen.removeListener('display-metrics-changed', repositionPill);
   killPython();
 });
 

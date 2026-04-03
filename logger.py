@@ -1,7 +1,7 @@
-"""Centralized logging for the voice agent.
+"""Centralized logging for Muse.
 
 Logs to both stderr (when running in terminal) and a rotating file at:
-  ~/Library/Logs/VoiceAgent/voice-agent.log
+  ~/Library/Logs/Muse/muse.log
 """
 
 import logging
@@ -9,8 +9,8 @@ import os
 import sys
 from logging.handlers import RotatingFileHandler
 
-LOG_DIR = os.path.expanduser("~/Library/Logs/VoiceAgent")
-LOG_FILE = os.path.join(LOG_DIR, "voice-agent.log")
+LOG_DIR = os.path.expanduser("~/Library/Logs/Muse")
+LOG_FILE = os.path.join(LOG_DIR, "muse.log")
 MAX_BYTES = 5 * 1024 * 1024  # 5 MB
 BACKUP_COUNT = 3
 

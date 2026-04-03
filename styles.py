@@ -1,5 +1,5 @@
-import json
 import os
+import safe_json
 from logger import get_logger
 
 log = get_logger("styles")
@@ -34,35 +34,24 @@ class StyleManager:
         self._load()
 
     def _load(self):
-        if not os.path.exists(STYLES_PATH):
-            self._styles = DEFAULT_STYLES.copy()
-            return
-        try:
-            with open(STYLES_PATH) as f:
-                data = json.load(f)
-            if not isinstance(data, dict):
-                raise ValueError("Not a dict")
+        data = safe_json.load(STYLES_PATH, {})
+        if isinstance(data, dict) and data:
             self._styles = data.get("styles") or DEFAULT_STYLES
             self._default_style = data.get("default_style") or ""
             self._app_overrides = data.get("app_overrides") or {}
             self._user_role = data.get("user_role") or ""
             log.info("Loaded: default=%s, role=%s, %d app overrides",
                      self._default_style, self._user_role, len(self._app_overrides))
-        except (json.JSONDecodeError, IOError, ValueError) as e:
-            log.error("Failed to load styles: %s, using defaults", e)
+        else:
             self._styles = DEFAULT_STYLES.copy()
 
     def _save(self):
-        try:
-            with open(STYLES_PATH, "w") as f:
-                json.dump({
-                    "styles": self._styles,
-                    "default_style": self._default_style,
-                    "app_overrides": self._app_overrides,
-                    "user_role": self._user_role,
-                }, f, indent=2)
-        except IOError as e:
-            log.error("Failed to save styles: %s", e)
+        safe_json.save(STYLES_PATH, {
+            "styles": self._styles,
+            "default_style": self._default_style,
+            "app_overrides": self._app_overrides,
+            "user_role": self._user_role,
+        })
 
     def setup_role(self, role: str):
         role = role.lower()

@@ -1,7 +1,7 @@
-import json
 import os
 import threading
 from difflib import SequenceMatcher
+import safe_json
 from logger import get_logger
 
 log = get_logger("snippets")
@@ -21,26 +21,14 @@ class SnippetStore:
 
     def _load(self):
         for path, attr in [(SNIPPETS_PATH, "_snippets"), (SHARED_SNIPPETS_PATH, "_shared")]:
-            if not os.path.exists(path):
-                continue
-            try:
-                with open(path) as f:
-                    data = json.load(f)
-                if isinstance(data, dict):
-                    setattr(self, attr, data)
-                    log.info("Loaded %d %ssnippets", len(data), "shared " if attr == "_shared" else "")
-                else:
-                    log.warning("Snippets file %s is not a dict, ignoring", path)
-            except (json.JSONDecodeError, IOError) as e:
-                log.error("Failed to load %s: %s", path, e)
+            data = safe_json.load(path, {})
+            if isinstance(data, dict):
+                setattr(self, attr, data)
+                log.info("Loaded %d %ssnippets", len(data), "shared " if attr == "_shared" else "")
 
     def _save(self):
         with _file_lock:
-            try:
-                with open(SNIPPETS_PATH, "w") as f:
-                    json.dump(self._snippets, f, indent=2)
-            except IOError as e:
-                log.error("Failed to save snippets: %s", e)
+            safe_json.save(SNIPPETS_PATH, self._snippets)
 
     def add(self, trigger: str, text: str, description: str = ""):
         self._snippets[trigger.lower()] = {"text": text, "description": description}

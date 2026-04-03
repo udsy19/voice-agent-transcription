@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Voice Agent</title>
+<title>Muse</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Halant:wght@300;400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300;1,400&display=swap" rel="stylesheet">
@@ -312,7 +312,7 @@ select.inp{appearance:none;background:var(--bg) url("data:image/svg+xml,%3Csvg x
 <!-- Setup wizard (shown when permissions missing) -->
 <div class="setup hidden" id="setup">
   <div class="setup-card">
-    <h1>Welcome to Voice Agent</h1>
+    <h1>Welcome to Muse</h1>
     <div class="sub">Let's make sure everything is set up so you can start dictating.</div>
 
     <div class="setup-steps">
@@ -347,7 +347,7 @@ select.inp{appearance:none;background:var(--bg) url("data:image/svg+xml,%3Csvg x
       </div>
     </div>
 
-    <button class="setup-done-btn" id="setupDoneBtn" onclick="dismissSetup()" disabled>Continue to Voice Agent</button>
+    <button class="setup-done-btn" id="setupDoneBtn" onclick="dismissSetup()" disabled>Continue to Muse</button>
     <div style="margin-top:12px">
       <button class="recheck-btn" onclick="checkPermissions()">Re-check permissions</button>
     </div>
@@ -369,7 +369,7 @@ select.inp{appearance:none;background:var(--bg) url("data:image/svg+xml,%3Csvg x
   <div class="sidebar">
     <div class="sidebar-logo">
       <span class="dot loading" id="logoDot"></span>
-      Voice Agent
+      Muse
     </div>
 
     <button class="nav-item active" data-page="home" onclick="showPage('home',this)">
@@ -435,7 +435,7 @@ select.inp{appearance:none;background:var(--bg) url("data:image/svg+xml,%3Csvg x
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
         <div class="page-title">Dictionary</div>
       </div>
-      <div class="page-sub">Add names, acronyms, and jargon so Voice Agent spells them correctly.</div>
+      <div class="page-sub">Add names, acronyms, and jargon so Muse spells them correctly.</div>
 
       <div class="section-label">Terms</div>
       <div class="fr">
@@ -1078,7 +1078,7 @@ async function checkPermissions() {
         '1. Open <b>System Settings</b><br>' +
         '2. Go to <b>Privacy & Security → Microphone</b><br>' +
         '3. Find <b>Terminal</b> (or your terminal app) and toggle it <b>ON</b><br>' +
-        '4. Restart Voice Agent</div>';
+        '4. Restart Muse</div>';
       allGood = false;
     }
 
@@ -1103,7 +1103,7 @@ async function checkPermissions() {
         '4. Paste: <code>/Library/Frameworks/Python.framework/Versions/3.13/Resources/Python.app</code><br>' +
         '5. Add it and make sure the toggle is <b>ON</b><br>' +
         '6. Also add <b>Terminal.app</b> if not already listed<br>' +
-        '7. Restart Voice Agent</div>';
+        '7. Restart Muse</div>';
       allGood = false;
     }
 
@@ -1139,7 +1139,7 @@ async function checkPermissions() {
     // Enable done button if at least mic + input monitoring work
     const canProceed = (p.mic === 'granted') && (p.input_monitoring === 'granted');
     document.getElementById('setupDoneBtn').disabled = false; // Always allow dismiss
-    document.getElementById('setupDoneBtn').textContent = allGood ? 'Continue to Voice Agent' : 'Continue anyway';
+    document.getElementById('setupDoneBtn').textContent = allGood ? 'Continue to Muse' : 'Continue anyway';
 
   } catch(e) {
     // Backend not ready yet, try again

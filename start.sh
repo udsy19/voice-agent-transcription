@@ -1,5 +1,5 @@
 #!/bin/bash
-# Voice Agent launcher — starts Python backend + Electron UI
+# Muse launcher — starts Python backend + Electron UI
 # Run from Terminal.app for mic access
 set -e
 
@@ -27,10 +27,10 @@ fi
 [ -f "$DIR/.env" ] && { set -a; source "$DIR/.env"; set +a; }
 export PYTHONPATH="$DIR"
 
-# Kill ALL existing instances (app, electron, packaged app)
+# Kill ALL existing instances
 pkill -f "app.py.*--no-browser" 2>/dev/null || true
-pkill -f "Voice Agent" 2>/dev/null || true
-pkill -f "Electron.*voice-agent" 2>/dev/null || true
+pkill -f "Muse" 2>/dev/null || true
+pkill -f "Electron.*muse" 2>/dev/null || true
 sleep 0.5
 
 # Check if port is free
@@ -40,7 +40,7 @@ if lsof -i :8528 -sTCP:LISTEN &>/dev/null; then
     sleep 1
 fi
 
-echo "Starting Voice Agent..."
+echo "Starting Muse..."
 
 # Start Python backend from /tmp (numpy cwd fix)
 cd /tmp
@@ -79,7 +79,7 @@ cd "$DIR/electron"
 VOICE_AGENT_EXTERNAL_BACKEND=1 npx electron . &
 
 echo ""
-echo "Voice Agent is running."
+echo "Muse is running."
 echo "  Hold Right Option (⌥) to dictate."
 echo "  Press Ctrl+C to stop."
 echo ""
@@ -88,7 +88,7 @@ echo ""
 cleanup() {
     echo "Stopping..."
     kill $PY_PID 2>/dev/null
-    pkill -f "Electron.*voice-agent" 2>/dev/null
+    pkill -f "Electron.*muse" 2>/dev/null
     exit 0
 }
 trap cleanup SIGINT SIGTERM

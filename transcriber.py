@@ -13,6 +13,7 @@ import os
 import io
 import time
 import tempfile
+import atexit
 import numpy as np
 import soundfile as sf
 from logger import get_logger
@@ -20,6 +21,18 @@ from logger import get_logger
 log = get_logger("transcriber")
 
 BACKENDS = ["parakeet", "mlx", "groq", "faster-whisper"]
+
+# Track temp files for cleanup
+_temp_files: list[str] = []
+
+def _cleanup_temp_files():
+    for path in _temp_files:
+        try:
+            os.remove(path)
+        except Exception:
+            pass
+
+atexit.register(_cleanup_temp_files)
 
 
 def _get_optimal_threads():
@@ -31,8 +44,10 @@ def _get_optimal_threads():
 
 def _audio_to_wav(audio: np.ndarray, sample_rate: int = 16000) -> str:
     """Write audio array to a temporary WAV file. Returns path."""
-    path = os.path.join(tempfile.gettempdir(), "voiceagent_audio.wav")
+    fd, path = tempfile.mkstemp(suffix='.wav', prefix='muse_')
+    os.close(fd)
     sf.write(path, audio, sample_rate)
+    _temp_files.append(path)
     return path
 
 
@@ -199,11 +214,17 @@ class Transcriber:
             if prompt:
                 kwargs["prompt"] = prompt
             response = self._groq_client.audio.transcriptions.create(**kwargs)
+            self._consecutive_failures = 0
             if hasattr(response, 'text'):
                 return response.text.strip()
             return str(response).strip()
         except Exception as e:
-            log.error("Groq transcription failed: %s, falling back", e)
+            self._consecutive_failures = getattr(self, '_consecutive_failures', 0) + 1
+            log.error("Groq failed (%d consecutive): %s", self._consecutive_failures, e)
+            if self._consecutive_failures >= 3:
+                log.warning("Groq failed 3x — auto-switching to local faster-whisper")
+                self._load_backend("faster-whisper")
+                self._consecutive_failures = 0
             return self._transcribe_fallback(audio)
 
     def _transcribe_faster_whisper(self, audio, language=None, prompt=None) -> str:

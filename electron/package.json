@@ -1,5 +1,5 @@
 {
-  "name": "voice-agent",
+  "name": "muse",
   "version": "1.0.0",
   "description": "Voice dictation desktop app",
   "main": "main.js",
@@ -10,16 +10,16 @@
   },
   "type": "commonjs",
   "build": {
-    "appId": "com.voiceagent.app",
-    "productName": "Voice Agent",
+    "appId": "com.muse.app",
+    "productName": "Muse",
     "mac": {
       "category": "public.app-category.utilities",
       "target": ["dmg"],
-      "icon": null,
+      "icon": "assets/muse.icns",
       "darkModeSupport": true,
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Voice Agent needs microphone access to transcribe your speech.",
-        "NSAppleEventsUsageDescription": "Voice Agent needs this to detect the active app and paste text."
+        "NSMicrophoneUsageDescription": "Muse needs microphone access to transcribe your speech.",
+        "NSAppleEventsUsageDescription": "Muse needs this to detect the active app and paste text."
       }
     },
     "extraResources": [
@@ -32,7 +32,8 @@
     "files": [
       "main.js",
       "preload.js",
-      "ui/**/*"
+      "ui/**/*",
+      "assets/**/*"
     ],
     "asar": false
   },

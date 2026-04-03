@@ -4,9 +4,70 @@ from logger import get_logger
 
 log = get_logger("injector")
 
-# Typing mode: "paste" (clipboard + Cmd+V) or "type" (character-by-character)
 TYPING_MODE = "paste"
 
+
+def _set_clipboard(text: str) -> bool:
+    """Write text to clipboard via pbcopy."""
+    try:
+        result = subprocess.run(
+            ["pbcopy"], input=text, text=True, timeout=3, capture_output=True
+        )
+        return result.returncode == 0
+    except Exception as e:
+        log.error("pbcopy failed: %s", e)
+        return False
+
+
+# ── App focus ───────────────────────────────────────────────────────────────
+
+def _get_frontmost_app() -> str:
+    """Get the name of the frontmost application."""
+    try:
+        result = subprocess.run(
+            ["osascript", "-e",
+             'tell application "System Events" to get name of first application process whose frontmost is true'],
+            capture_output=True, text=True, timeout=2,
+        )
+        return result.stdout.strip()
+    except Exception:
+        return ""
+
+
+def _activate_app(app_name: str) -> bool:
+    """Bring an app to front using AppleScript. Returns True if successful."""
+    if not app_name:
+        return False
+    try:
+        # Use "activate" which brings the app to front and focuses it
+        script = f'''
+            tell application "System Events"
+                set frontmost of process "{app_name}" to true
+            end tell
+        '''
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True, text=True, timeout=3,
+        )
+        return result.returncode == 0
+    except Exception as e:
+        log.warning("Failed to activate '%s': %s", app_name, e)
+        return False
+
+
+def _wait_for_app_focus(app_name: str, timeout: float = 1.0) -> bool:
+    """Wait until the given app is actually frontmost. Returns True if focused."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        current = _get_frontmost_app()
+        if current == app_name or app_name.lower() in current.lower():
+            return True
+        time.sleep(0.05)
+    log.warning("Timed out waiting for '%s' to become frontmost", app_name)
+    return False
+
+
+# ── Quartz key simulation ──────────────────────────────────────────────────
 
 def _press_cmd_v():
     """Simulate Cmd+V using Quartz CGEvents."""
@@ -63,19 +124,14 @@ def _press_cmd_z():
 
 
 def _type_characters(text: str, delay: float = 0.008):
-    """Type text character-by-character using CGEvents.
-
-    Looks like natural typing. Works in apps that don't support paste.
-    """
+    """Type text character-by-character using CGEvents."""
     try:
         from Quartz import (
-            CGEventCreateKeyboardEvent, CGEventSetFlags, CGEventPost,
+            CGEventCreateKeyboardEvent, CGEventPost,
             CGEventKeyboardSetUnicodeString, kCGHIDEventTap,
         )
-        import CoreFoundation
 
         for char in text:
-            # Create a key event and set its unicode character
             event_down = CGEventCreateKeyboardEvent(None, 0, True)
             if event_down is None:
                 continue
@@ -93,9 +149,11 @@ def _type_characters(text: str, delay: float = 0.008):
         log.info("Typed %d chars character-by-character", len(text))
         return True
     except Exception as e:
-        log.error("Character typing failed: %s, falling back to paste", e)
+        log.error("Character typing failed: %s", e)
         return False
 
+
+# ── Public API ──────────────────────────────────────────────────────────────
 
 def get_selected_text() -> str:
     """Get currently selected text by simulating Cmd+C and reading clipboard."""
@@ -131,44 +189,38 @@ def get_selected_text() -> str:
     return selected if selected != old else ""
 
 
-def inject_text(text: str, mode: str | None = None) -> bool:
-    """Inject text at cursor. Returns True if successful.
+def inject_text(text: str, target_app: str = "", mode: str | None = None) -> bool:
+    """Inject text at cursor in the target app. Returns True if successful.
 
     Args:
         text: Text to inject
+        target_app: App name to focus before pasting (if empty, pastes into current app)
         mode: "paste" (clipboard+Cmd+V), "type" (char-by-char), or None (use default)
     """
     if not text:
         return False
 
+    # Step 1: If target app specified, refocus it first
+    if target_app:
+        current = _get_frontmost_app()
+        if current != target_app and target_app.lower() not in current.lower():
+            log.info("Refocusing '%s' (currently: '%s')", target_app, current)
+            _activate_app(target_app)
+            _wait_for_app_focus(target_app, timeout=1.0)
+            time.sleep(0.1)  # Give the app a moment to fully activate
+
     use_mode = mode or TYPING_MODE
 
     if use_mode == "type":
-        # Character-by-character typing
         success = _type_characters(text)
         if success:
-            # Also copy to clipboard as backup
-            try:
-                subprocess.run(["pbcopy"], input=text, text=True, timeout=3, capture_output=True)
-            except Exception:
-                pass
+            _set_clipboard(text)  # backup on clipboard
             return True
         # Fall through to paste mode on failure
 
-    # Paste mode (default)
-    try:
-        result = subprocess.run(["pbcopy"], input=text, text=True, timeout=3, capture_output=True)
-        if result.returncode != 0:
-            log.error("pbcopy failed: %s", result.stderr)
-            return False
-    except subprocess.TimeoutExpired:
-        log.error("pbcopy timed out")
-        return False
-    except FileNotFoundError:
-        log.error("pbcopy not found")
-        return False
-    except Exception as e:
-        log.error("pbcopy error: %s", e)
+    # Step 2: Paste mode
+    if not _set_clipboard(text):
+        log.error("Failed to set clipboard")
         return False
 
     time.sleep(0.1)
@@ -176,7 +228,7 @@ def inject_text(text: str, mode: str | None = None) -> bool:
     if not success:
         log.warning("Paste failed — text is on clipboard for manual Cmd+V")
 
-    log.info("Injected %d chars via %s", len(text), use_mode)
+    log.info("Injected %d chars via %s into '%s'", len(text), use_mode, target_app or "current app")
     return success
 
 
