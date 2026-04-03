@@ -178,7 +178,7 @@ class Transcriber:
             result = self._model.transcribe(
                 wav_path,
                 path_or_hf_repo="mlx-community/whisper-large-v3-turbo",
-                language=language or "en",
+                language=language,
                 initial_prompt=prompt,
             )
             return result.get("text", "").strip()
@@ -209,7 +209,7 @@ class Transcriber:
     def _transcribe_faster_whisper(self, audio, language=None, prompt=None) -> str:
         segments, info = self._model.transcribe(
             audio, beam_size=3, best_of=1,
-            language=language or "en",
+            language=language,
             condition_on_previous_text=False,
             initial_prompt=prompt,
             vad_filter=True,
@@ -220,13 +220,15 @@ class Transcriber:
             ),
             without_timestamps=True,
         )
+        if info and hasattr(info, 'language'):
+            log.info("Detected language: %s (%.0f%%)", info.language, (info.language_probability or 0) * 100)
         return " ".join(seg.text.strip() for seg in segments).strip()
 
     def _transcribe_faster_whisper_streaming(self, audio, on_segment, language=None, prompt=None) -> str:
         audio = _clean_audio(audio)
         segments, info = self._model.transcribe(
             audio, beam_size=3, best_of=1,
-            language=language or "en",
+            language=language,
             condition_on_previous_text=False,
             initial_prompt=prompt,
             vad_filter=True,
@@ -237,6 +239,8 @@ class Transcriber:
             ),
             without_timestamps=True,
         )
+        if info and hasattr(info, 'language'):
+            log.info("Detected language: %s (%.0f%%)", info.language, (info.language_probability or 0) * 100)
         parts = []
         for seg in segments:
             parts.append(seg.text.strip())
@@ -253,7 +257,7 @@ class Transcriber:
                                  compute_type=WHISPER_COMPUTE_TYPE,
                                  cpu_threads=_get_optimal_threads())
             segments, _ = model.transcribe(audio, beam_size=3, best_of=1,
-                                           language="en", vad_filter=True, without_timestamps=True)
+                                           vad_filter=True, without_timestamps=True)
             return " ".join(seg.text.strip() for seg in segments).strip()
         except Exception as e:
             log.error("Fallback also failed: %s", e)
