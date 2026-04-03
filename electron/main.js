@@ -1,9 +1,15 @@
 const { app, BrowserWindow, Tray, Menu, screen, nativeImage, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const WebSocket = require('ws');
 const http = require('http');
+
+// Prevent EPIPE crash when Python process dies
+process.on('uncaughtException', (err) => {
+  if (err.code === 'EPIPE' || err.code === 'ERR_STREAM_DESTROYED') return; // ignore pipe errors
+  console.error('[main] Uncaught:', err.message);
+});
 
 const PORT = 8528;
 
@@ -98,7 +104,13 @@ function startPython() {
   checkReq.setTimeout(1000, () => { checkReq.destroy(); actuallyStartPython(); });
 }
 
+function killPortHolder() {
+  try { execSync(`lsof -ti :${PORT} | xargs kill -9 2>/dev/null`, { stdio: 'ignore' }); } catch {}
+}
+
 function actuallyStartPython() {
+  // Kill anything holding our port before starting
+  killPortHolder();
 
   console.log(`[main] Starting Python (${IS_PACKAGED ? 'packaged' : 'dev'}) from ${PROJECT_DIR}`);
   const env = loadEnv();
@@ -108,13 +120,22 @@ function actuallyStartPython() {
   pythonProcess = spawn(PYTHON, [path.join(PROJECT_DIR, 'app.py'), '--no-browser'], {
     cwd: '/tmp',
     env,
-    stdio: ['pipe', 'pipe', 'pipe'],
+    stdio: ['ignore', 'pipe', 'pipe'],  // don't pipe stdin (prevents EPIPE on write)
   });
 
-  pythonProcess.stdout.on('data', d => console.log('[py]', d.toString().trim()));
+  pythonProcess.stdout.on('data', d => {
+    try { console.log('[py]', d.toString().trim()); } catch {}
+  });
   pythonProcess.stderr.on('data', d => {
-    const s = d.toString().trim();
-    if (s && !s.includes('RuntimeWarning')) console.log('[py:err]', s);
+    try {
+      const s = d.toString().trim();
+      if (s && !s.includes('RuntimeWarning')) console.log('[py:err]', s);
+    } catch {}
+  });
+
+  pythonProcess.on('error', (err) => {
+    console.error('[main] Python spawn error:', err.message);
+    pythonProcess = null;
   });
 
   pythonProcess.on('exit', (code) => {
@@ -122,7 +143,9 @@ function actuallyStartPython() {
     pythonProcess = null;
     if (!app.isQuitting && restartCount < 3) {
       restartCount++;
-      setTimeout(startPython, 2000);
+      const delay = 1000 * restartCount; // escalating delay: 1s, 2s, 3s
+      console.log(`[main] Restarting in ${delay}ms (attempt ${restartCount}/3)`);
+      setTimeout(startPython, delay);
     }
   });
 
