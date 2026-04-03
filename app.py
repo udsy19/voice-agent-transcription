@@ -124,8 +124,27 @@ _SOUNDS = {
     "done":  "/System/Library/Sounds/Pop.aiff",
     "error": "/System/Library/Sounds/Funk.aiff",
 }
-_sound_enabled = True
-_clipboard_context_enabled = True
+def _load_preferences() -> dict:
+    """Load persistent user preferences."""
+    import safe_json
+    from config import DATA_DIR
+    return safe_json.load(str(DATA_DIR / "preferences.json"), {
+        "sounds": True,
+        "clipboard_context": True,
+    })
+
+def _save_preferences():
+    """Save current preferences to disk."""
+    import safe_json
+    from config import DATA_DIR
+    safe_json.save(str(DATA_DIR / "preferences.json"), {
+        "sounds": _sound_enabled,
+        "clipboard_context": _clipboard_context_enabled,
+    })
+
+_prefs = _load_preferences()
+_sound_enabled = _prefs.get("sounds", True)
+_clipboard_context_enabled = _prefs.get("clipboard_context", True)
 
 def _play_sound(name: str):
     """Play a subtle system sound in background. Non-blocking."""
@@ -451,6 +470,7 @@ async def api_toggle_clipboard_context(body: dict):
     """Enable/disable clipboard context reading for Groq."""
     global _clipboard_context_enabled
     _clipboard_context_enabled = body.get("enabled", True)
+    _save_preferences()
     return {"ok": True, "clipboard_context": _clipboard_context_enabled}
 
 
@@ -607,6 +627,7 @@ async def api_set_hotkey(body: dict):
 async def api_toggle_sounds():
     global _sound_enabled
     _sound_enabled = not _sound_enabled
+    _save_preferences()
     return {"ok": True, "sounds": _sound_enabled}
 
 
@@ -1109,9 +1130,22 @@ def request_mic_permission():
 
 def load_engine():
     request_mic_permission()
+
+    # Ensure Groq key is in Keychain (persists even if .env is lost)
+    from config import GROQ_API_KEY, DATA_DIR, _keychain_get, _keychain_set
+    if GROQ_API_KEY and not _keychain_get("Muse", "groq_api_key"):
+        _keychain_set("Muse", "groq_api_key", GROQ_API_KEY)
+        log.info("Saved Groq key to Keychain for persistence")
+
+    # Copy .env to data dir if it doesn't exist there (packaged app support)
+    data_env = DATA_DIR / ".env"
+    if not data_env.exists() and GROQ_API_KEY:
+        try:
+            data_env.write_text(f"GROQ_API_KEY={GROQ_API_KEY}\n")
+        except Exception:
+            pass
+
     S.recorder = Recorder()
-    # Default to Groq API (most accurate + fast), fall back to faster-whisper if no key
-    from config import GROQ_API_KEY
     default_backend = "groq" if GROQ_API_KEY else "faster-whisper"
     S.transcriber = Transcriber(backend=default_backend)
     S.cleaner = Cleaner()
