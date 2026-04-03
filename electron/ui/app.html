@@ -3,15 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <title>Muse</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#191919;--surface:#1e1e1e;--hover:#252525;
-  --text:#e8e8e3;--text2:#9b9a97;--text3:#5a5a56;
-  --border:rgba(255,255,255,.055);
-  --blue:rgba(35,131,226,.85);--green:rgba(68,167,96,.85);--red:rgba(212,76,71,.85);--amber:rgba(203,145,47,.85);
-  --radius:6px;
-  --font:-apple-system,'Segoe UI','Helvetica Neue',sans-serif;
-  --mono:'SFMono-Regular','Menlo',monospace;
+  --bg:#141414;--surface:#1a1a1a;--hover:#222;
+  --text:#ececec;--text2:#8a8a8a;--text3:#4a4a4a;
+  --border:rgba(255,255,255,.06);
+  --blue:#4f8ff7;--green:#3ecf6e;--red:#e95650;--amber:#e8a33d;
+  --radius:8px;
+  --font:'Inter',-apple-system,'Segoe UI',sans-serif;
+  --mono:'SF Mono','Menlo','Consolas',monospace;
 }
 *{margin:0;padding:0;box-sizing:border-box}
 ::selection{background:rgba(35,131,226,.3)}
@@ -31,10 +34,10 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
   font-size:13px;
 }
 .sb-head{
-  padding:4px 10px 16px;display:flex;align-items:center;gap:8px;
-  font-size:14px;font-weight:600;letter-spacing:-.01em;
+  padding:4px 10px 20px;display:flex;align-items:center;gap:8px;
 }
-.sb-head .dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0}
+.sb-head img{height:18px;filter:invert(1);opacity:.85}
+.sb-head .dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0}
 .sb-head .dot.loading{background:var(--text3);animation:p 1.5s infinite}
 .sb-head .dot.recording{background:var(--red);animation:p .8s infinite}
 .sb-head .dot.processing{background:var(--amber)}
@@ -42,14 +45,14 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 
 .sb a{
   display:flex;align-items:center;gap:10px;
-  padding:6px 10px;border-radius:4px;
-  color:var(--text2);cursor:pointer;transition:background .08s;
-  text-decoration:none;border:none;background:none;width:100%;text-align:left;font:inherit;
+  padding:7px 10px;border-radius:6px;
+  color:var(--text2);cursor:pointer;transition:all .1s;
+  text-decoration:none;border:none;background:none;width:100%;text-align:left;font:13px/1 var(--font);font-weight:400;
 }
 .sb a:hover{background:var(--hover);color:var(--text)}
-.sb a.on{background:var(--hover);color:var(--text)}
-.sb a svg{width:16px;height:16px;opacity:.45;flex-shrink:0;stroke:currentColor;fill:none;stroke-width:1.5}
-.sb a.on svg{opacity:.7}
+.sb a.on{background:rgba(255,255,255,.07);color:var(--text)}
+.sb a svg{width:15px;height:15px;opacity:.4;flex-shrink:0;stroke:currentColor;fill:none;stroke-width:1.7}
+.sb a.on svg{opacity:.65}
 
 .sb-space{flex:1}
 .sb-foot{padding:6px 10px;font-size:11px;color:var(--text3);font-family:var(--mono)}
@@ -60,8 +63,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 
 .pg{display:none;max-width:720px;margin:0 auto;padding:8px 48px 64px}
 .pg.on{display:block}
-.pg h1{font-size:32px;font-weight:700;letter-spacing:-.03em;margin-bottom:4px}
-.pg .desc{font-size:14px;color:var(--text2);margin-bottom:28px}
+.pg h1{font-size:28px;font-weight:600;letter-spacing:-.025em;margin-bottom:6px}
+.pg .desc{font-size:13px;color:var(--text2);margin-bottom:28px;font-weight:400}
 
 .label{font-size:11px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin:28px 0 8px}
 
@@ -91,13 +94,13 @@ input.inp::placeholder{color:var(--text3)}
 select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%235a5a56'/%3E%3C/svg%3E") no-repeat right 8px center}
 
 .btn{
-  padding:6px 14px;border:none;border-radius:4px;
-  font:500 12px var(--font);cursor:pointer;transition:background .1s;
+  padding:7px 16px;border:none;border-radius:6px;
+  font:500 12px/1 var(--font);cursor:pointer;transition:all .12s;
 }
-.btn-p{background:var(--blue);color:#fff}
-.btn-p:hover{background:rgba(35,131,226,1)}
-.btn-g{background:var(--hover);color:var(--text)}
-.btn-g:hover{background:rgba(255,255,255,.1)}
+.btn-p{background:var(--text);color:var(--bg)}
+.btn-p:hover{opacity:.9}
+.btn-g{background:rgba(255,255,255,.06);color:var(--text2);border:1px solid var(--border)}
+.btn-g:hover{background:rgba(255,255,255,.1);color:var(--text)}
 
 /* Tags — muted pills */
 .tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
@@ -150,12 +153,12 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
 /* Setup */
 .setup{position:fixed;inset:0;background:var(--bg);z-index:100;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:40px}
 .setup.hidden{display:none}
-.setup h1{font-size:24px;font-weight:600;margin-bottom:6px}
-.setup .desc{color:var(--text2);margin-bottom:28px}
-.step{display:flex;gap:12px;margin-bottom:14px;width:100%;max-width:380px}
-.step-n{width:22px;height:22px;border-radius:50%;background:var(--hover);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0;color:var(--text3)}
-.step-n.ok{background:var(--green);color:#fff}
-.step-n.warn{background:var(--amber);color:#fff}
+.setup-logo{height:36px;filter:invert(1);opacity:.9;margin-bottom:16px}
+.setup .desc{color:var(--text2);margin-bottom:32px;font-size:15px;font-weight:300;letter-spacing:.01em}
+.step{display:flex;gap:14px;margin-bottom:16px;width:100%;max-width:360px}
+.step-n{width:24px;height:24px;border-radius:50%;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;flex-shrink:0;color:var(--text3)}
+.step-n.ok{background:var(--green);color:#fff;border-color:transparent}
+.step-n.warn{background:var(--amber);color:#fff;border-color:transparent}
 .step-body{flex:1;font-size:13px}
 .step-body b{font-weight:500;color:var(--text)}
 </style>
@@ -163,19 +166,19 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
 <body>
 
 <div class="setup" id="setup">
-  <h1>Muse</h1>
-  <div class="desc">Voice dictation + AI assistant</div>
+  <img src="../assets/muse-icon.png" alt="Muse" class="setup-logo">
+  <div class="desc">Voice dictation + AI assistant for macOS</div>
   <div class="step"><div class="step-n" id="s1n">1</div><div class="step-body"><b>Microphone</b><div id="s1d" style="color:var(--text3);margin-top:1px;font-size:12px">Checking...</div><div id="s1a"></div></div></div>
   <div class="step"><div class="step-n" id="s2n">2</div><div class="step-body"><b>Input Monitoring</b><div id="s2d" style="color:var(--text3);margin-top:1px;font-size:12px">Checking...</div><div id="s2a"></div></div></div>
   <div class="step"><div class="step-n" id="s3n">3</div><div class="step-body"><b>Groq API Key</b><div id="s3d" style="color:var(--text3);margin-top:1px;font-size:12px">Checking...</div><div id="s3a"></div></div></div>
-  <button class="btn btn-p" id="setupBtn" onclick="dismissSetup()" style="margin-top:16px;padding:8px 24px">Continue</button>
+  <button class="btn btn-p" id="setupBtn" onclick="dismissSetup()" style="margin-top:20px;padding:10px 32px;font-size:13px;border-radius:8px">Continue</button>
 </div>
 
 <div class="tb"></div>
 
 <div class="layout">
   <div class="sb">
-    <div class="sb-head"><span class="dot loading" id="logoDot"></span> Muse</div>
+    <div class="sb-head"><span class="dot loading" id="logoDot"></span><img src="../assets/muse-icon.png" alt="Muse"></div>
     <a class="on" data-pg="home" onclick="nav(this)"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Home</a>
     <a data-pg="dictionary" onclick="nav(this)"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Dictionary</a>
     <a data-pg="integrations" onclick="nav(this)"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Integrations</a>
