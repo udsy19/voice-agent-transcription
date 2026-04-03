@@ -166,7 +166,7 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
 <body>
 
 <div class="setup" id="setup">
-  <img src="../assets/muse-icon.png" alt="Muse" class="setup-logo">
+  <div style="font-size:28px;font-weight:600;letter-spacing:-.03em;margin-bottom:6px">Muse</div>
   <div class="desc">Voice dictation + AI assistant for macOS</div>
   <div class="step"><div class="step-n" id="s1n">1</div><div class="step-body"><b>Microphone</b><div id="s1d" style="color:var(--text3);margin-top:1px;font-size:12px">Checking...</div><div id="s1a"></div></div></div>
   <div class="step"><div class="step-n" id="s2n">2</div><div class="step-body"><b>Input Monitoring</b><div id="s2d" style="color:var(--text3);margin-top:1px;font-size:12px">Checking...</div><div id="s2a"></div></div></div>
@@ -178,7 +178,7 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
 
 <div class="layout">
   <div class="sb">
-    <div class="sb-head"><span class="dot loading" id="logoDot"></span><img src="../assets/muse-icon.png" alt="Muse"></div>
+    <div class="sb-head"><span class="dot loading" id="logoDot"></span><span style="font-size:14px;font-weight:600;letter-spacing:-.02em">Muse</span></div>
     <a class="on" data-pg="home" onclick="nav(this)"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Home</a>
     <a data-pg="dictionary" onclick="nav(this)"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Dictionary</a>
     <a data-pg="integrations" onclick="nav(this)"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Integrations</a>
