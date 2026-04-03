@@ -61,6 +61,9 @@ class BackendRequest(BaseModel):
 class RoleRequest(BaseModel):
     role: str
 
+from logger import get_logger
+log = get_logger("app")
+
 from pynput import keyboard
 from config import SILENCE_THRESHOLD
 from recorder import Recorder
@@ -74,9 +77,8 @@ from domains import DomainManager
 from macros import MacroEngine
 from conversation import ConversationTracker
 from exporter import export_json, export_txt, export_word, export_pdf, export_logs
-from logger import get_logger
-
-log = get_logger("app")
+from assistant import Assistant
+from integrations.oauth_manager import OAuthManager
 PORT = 8528
 HANDS_FREE_SILENCE_SEC = 2.0
 
@@ -105,6 +107,10 @@ def _load_hotkey():
     return keyboard.Key.alt_r, "alt_r"
 
 TRIGGER_KEY, TRIGGER_KEY_NAME = _load_hotkey()
+
+# Left Option = dictation, Right Option = assistant
+DICTATION_KEY = keyboard.Key.alt_l   # ⌥L = dictate
+ASSISTANT_KEY = keyboard.Key.alt_r   # ⌥R = assistant
 
 # Undo keywords
 UNDO_PHRASES = {"undo that", "go back", "undo", "scratch that", "never mind", "cancel that"}
@@ -152,6 +158,8 @@ class State:
         self.domains: DomainManager | None = None
         self.macros: MacroEngine | None = None
         self.conversation: ConversationTracker | None = None
+        self.assistant: Assistant | None = None
+        self.oauth: OAuthManager | None = None
 
         # Runtime state
         self.status: str = "loading"
@@ -166,6 +174,7 @@ class State:
         self.last_paste_time: float = 0.0
         self.tone_override: str | None = None  # set by macros
         self.source_app: str = ""  # app that had focus when recording started
+        self.recording_mode: str = "dictation"  # "dictation" or "assistant"
 
         # Collections
         self.history: list[dict] = []  # capped at 100 entries
@@ -469,6 +478,33 @@ async def api_export_logs():
         return {"ok": False, "reason": str(e)}
 
 
+# ── OAuth & Integrations ───────────────────────────────────────────────────
+
+@api.post("/api/oauth/connect")
+async def api_oauth_connect(body: dict = None):
+    """Connect Google. If credentials not saved yet, pass client_id + client_secret."""
+    if not S.oauth:
+        return {"ok": False, "error": "Not initialized"}
+    if body and body.get("client_id") and body.get("client_secret"):
+        S.oauth.save_credentials(body["client_id"].strip(), body["client_secret"].strip())
+    return S.oauth.connect(emit)
+
+
+@api.get("/api/accounts")
+async def api_list_accounts():
+    """List all connected OAuth accounts."""
+    accounts = S.oauth.list_accounts() if S.oauth else []
+    return {"accounts": accounts}
+
+
+@api.delete("/api/accounts/{service}/{email}")
+async def api_remove_account(service: str, email: str):
+    """Disconnect an OAuth account."""
+    if S.oauth:
+        S.oauth.remove_account(service, email)
+    return {"ok": True}
+
+
 @api.get("/api/permissions")
 async def api_permissions():
     """Check microphone and input monitoring permissions."""
@@ -591,7 +627,9 @@ async def ws_endpoint(ws: WebSocket):
         await ws.send_json({"type": "status", "status": S.status, "detail": S.detail})
         while True:
             await ws.receive_text()
-    except WebSocketDisconnect:
+    except Exception:
+        pass
+    finally:
         if ws in S.ws_clients:
             S.ws_clients.remove(ws)
 
@@ -601,34 +639,82 @@ async def ws_endpoint(ws: WebSocket):
 _key_lock = threading.Lock()
 
 
+_key_held_since = 0.0
+_last_dictation_release = 0.0  # for double-tap detection
+_dictation_toggle = False      # True = recording in toggle mode
+DOUBLE_TAP_WINDOW = 0.35
+
 def on_key_press(key):
-    """Hold Right Option to start recording."""
-    if key != TRIGGER_KEY:
+    """⌥L = dictation (hold or double-tap toggle). ⌥R = assistant (hold only)."""
+    global _key_held_since, _dictation_toggle
+
+    if key == DICTATION_KEY:
+        mode = "dictation"
+    elif key == ASSISTANT_KEY:
+        mode = "assistant"
+    else:
         return
+
     with _key_lock:
-        if S.key_held or S.processing or S.hands_free:
+        # Safety: reset stuck key_held after 30s
+        if S.key_held and (time.time() - _key_held_since) > 30:
+            S.key_held = False
+
+        if S.processing:
+            return
+
+        # If in toggle mode and user presses ⌥L again → stop
+        if mode == "dictation" and _dictation_toggle and S.recorder and S.recorder.is_recording:
+            _dictation_toggle = False
+            stop_and_process()
+            return
+
+        if S.key_held or S.hands_free:
             return
         if not S.recorder:
             return
+
         S.key_held = True
+        _key_held_since = time.time()
+        S.recording_mode = mode
         if not S.recorder.is_recording:
             S.source_app = _get_active_app()
             S.recorder.start()
             _play_sound("start")
             emit({"type": "trigger_mode", "mode": "hold"})
-            set_status("recording", "Listening — release to transcribe")
+            label = "assistant" if mode == "assistant" else "dictation"
+            set_status("recording", f"Listening ({label}) — release to process")
 
 
 def on_key_release(key):
-    if key != TRIGGER_KEY:
+    global _last_dictation_release, _dictation_toggle
+
+    if key not in (DICTATION_KEY, ASSISTANT_KEY):
         return
     with _key_lock:
         if S.hands_free:
             toggle_hands_free()
             return
+
+        now = time.time()
+
         if S.key_held:
             S.key_held = False
-            if S.recorder and S.recorder.is_recording:
+            held_duration = now - _key_held_since
+
+            # ⌥L: if released quickly (< 300ms) and second tap within window → toggle mode
+            if key == DICTATION_KEY and held_duration < 0.3:
+                if (now - _last_dictation_release) < DOUBLE_TAP_WINDOW:
+                    # Double tap! Switch to toggle mode — keep recording
+                    _dictation_toggle = True
+                    _last_dictation_release = 0
+                    emit({"type": "trigger_mode", "mode": "toggle"})
+                    set_status("recording", "Listening — press ⌥L to stop")
+                    return
+                else:
+                    _last_dictation_release = now
+
+            if S.recorder and S.recorder.is_recording and not _dictation_toggle:
                 stop_and_process()
 
 
@@ -676,28 +762,41 @@ def hands_free_loop():
 
 
 def stop_and_process():
-    audio = S.recorder.stop()
+    try:
+        audio = S.recorder.stop()
+    except Exception as e:
+        log.error("Recorder stop failed: %s", e)
+        set_status("idle", "Recording error")
+        return
     if audio is None:
         set_status("idle", "Too short or silent")
         return
     S.processing = True
-    threading.Thread(target=process_audio, args=(audio,), daemon=True).start()
+
+    def process_with_timeout():
+        try:
+            process_audio(audio)
+        finally:
+            S.processing = False  # guaranteed reset
+
+    threading.Thread(target=process_with_timeout, daemon=True).start()
 
 
 
 def _get_clipboard_context() -> str:
     """Read current clipboard for context injection into Groq."""
     try:
-        result = subprocess.run(["pbpaste"], capture_output=True, text=True, timeout=2)
-        text = result.stdout.strip()
+        result = subprocess.run(["pbpaste"], capture_output=True, timeout=1)
+        try:
+            text = result.stdout.decode('utf-8').strip()
+        except UnicodeDecodeError:
+            return ""
         if not text or len(text) > 2000:
             return ""
-        # Strip control characters, keep only printable + whitespace
         text = ''.join(c for c in text if c.isprintable() or c in '\n\t')
         return text[:500]
     except Exception:
-        pass
-    return ""
+        return ""
 
 
 def _compute_diff(raw: str, cleaned: str) -> list[dict]:
@@ -730,7 +829,7 @@ def process_audio(audio):
 
         # Skip injection for blocked apps (Siri, Spotlight, etc.)
         if app_name in BLOCKED_APPS:
-            log.info("Blocked app '%s' — skipping injection, saving to history only", app_name)
+            log.info("Blocked app '%s' — skipping injection", app_name)
 
         set_status("processing", "Transcribing...")
 
@@ -755,6 +854,20 @@ def process_audio(audio):
         )
         if not raw_text:
             set_status("idle", "Nothing detected")
+            return
+
+        # === Assistant mode (Right Option key) ===
+        if S.recording_mode == "assistant" and S.assistant:
+            set_status("processing", "Thinking...")
+            response = S.assistant.handle(raw_text)
+            dur = time.time() - t0
+            entry = {"raw": raw_text, "cleaned": response or "", "app": app_name,
+                     "duration": round(dur, 2), "ts": time.strftime("%H:%M:%S"),
+                     "type": "assistant"}
+            add_history(entry)
+            emit({"type": "result", **entry})
+            _play_sound("done")
+            set_status("idle", f"Done ({dur:.1f}s)")
             return
 
         # === Smart Undo ===
@@ -835,6 +948,21 @@ def process_audio(audio):
         style_prompt = S.styles.get_style_prompt(app_name) if S.styles else None
 
         if is_command:
+            # Try assistant first (calendar, email, etc.)
+            if S.assistant:
+                assistant_response = S.assistant.handle(raw_text)
+                if assistant_response is not None:
+                    dur = time.time() - t0
+                    entry = {"raw": raw_text, "cleaned": assistant_response, "app": app_name,
+                             "duration": round(dur, 2), "ts": time.strftime("%H:%M:%S"),
+                             "type": "assistant"}
+                    add_history(entry)
+                    emit({"type": "result", **entry})
+                    _play_sound("done")
+                    set_status("idle", f"Done ({dur:.1f}s)")
+                    return
+
+            # Fall through to text transform
             selected = get_selected_text()
             if selected:
                 cleaned = S.cleaner.transform(selected, raw_text)
@@ -942,9 +1070,8 @@ def audio_level_monitor():
             with S.recorder._lock:
                 if not S.recorder._frames:
                     continue
-                # Average last 2-3 frames for smoother signal
                 n = min(3, len(S.recorder._frames))
-                recent = np.concatenate([S.recorder._frames[-i].flatten() for i in range(1, n + 1)])
+                recent = np.concatenate([S.recorder._frames[-i].copy().flatten() for i in range(1, n + 1)])
             rms = float(np.sqrt(np.mean(recent ** 2)))
             smooth_rms = smooth_rms * 0.6 + rms * 0.4  # EMA smoothing
             emit({"type": "audio_level", "rms": round(smooth_rms, 4)})
@@ -992,10 +1119,19 @@ def load_engine():
     S.domains = DomainManager()
     S.macros = MacroEngine()
     S.conversation = ConversationTracker()
+    S.oauth = OAuthManager()
+    S.assistant = Assistant(S.cleaner._client, S.oauth, emit)
     set_status("idle", "Ready — hold ⌥R to dictate")
 
 
 def start_listener():
+    try:
+        import Quartz
+        if not Quartz.AXIsProcessTrusted():
+            log.error("Input Monitoring not granted — hotkeys won't work")
+            set_status("error", "Grant Input Monitoring in System Settings > Privacy")
+    except Exception:
+        pass
     with keyboard.Listener(on_press=on_key_press, on_release=on_key_release) as listener:
         listener.join()
 

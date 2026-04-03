@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onWsMessage: (cb) => addListener('ws-message', (_, msg) => cb(msg)),
   onStatus: (cb) => addListener('status', (_, msg) => cb(msg)),
   getPort: () => ipcRenderer.invoke('get-port'),
+  openOAuth: (url) => ipcRenderer.invoke('open-oauth', url),
 });
 
 // Prevent listener leaks on window reload

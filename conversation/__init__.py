@@ -76,7 +76,6 @@ class ConversationTracker:
         """Clear conversation history for an app (or all apps)."""
         if app_name:
             self._turns.pop(app_name, None)
-            self._turns.pop("_global", None)
         else:
             self._turns.clear()
 

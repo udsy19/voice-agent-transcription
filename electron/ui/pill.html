@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{background:transparent;overflow:hidden;width:200px;height:40px}
+html,body{background:transparent;overflow:hidden;width:320px;height:200px;pointer-events:none}
 
 .pill{
   position:absolute;top:4px;left:50%;transform:translateX(-50%);
@@ -15,86 +15,112 @@ html,body{background:transparent;overflow:hidden;width:200px;height:40px}
   box-shadow:0 0 0 0.5px rgba(0,0,0,0.6),0 2px 12px rgba(0,0,0,0.35);
   width:0;height:0;opacity:0;
   pointer-events:none;
-  transition:width .18s ease-in-out,height .18s ease-in-out,opacity .15s ease,border-radius .18s;
+  transition:width .22s ease-in-out,height .22s ease-in-out,opacity .15s ease,border-radius .22s;
 }
 .pill.rec{width:72px;height:30px;opacity:1;pointer-events:auto}
 .pill.rec.wide{width:136px;height:30px}
 .pill.proc{width:40px;height:20px;opacity:1;pointer-events:auto;border-radius:10px}
 .pill.done{width:40px;height:20px;opacity:0;pointer-events:none;border-radius:10px;transition:opacity .2s linear}
 
+/* ── Assistant — dynamic width/height based on text ── */
+.pill.assist{
+  opacity:1;pointer-events:auto;
+  border-radius:12px;
+  flex-direction:column;align-items:flex-start;justify-content:flex-start;
+  /* width/height set dynamically by JS */
+}
+
 /* ── Recording ── */
 .rec-ui{display:none;align-items:center;justify-content:center;height:100%;width:100%}
 .pill.rec .rec-ui{display:flex}
-
 .wv{display:flex;align-items:center;justify-content:center;gap:2.5px;height:100%;flex:1}
-.wv .bar{
-  width:3px;min-height:2px;max-height:16px;height:2px;
-  background:#fff;border-radius:1.5px;
-  transition:height 0.06s ease-out;
-}
-
-.stop{
-  display:none;align-items:center;gap:4px;
-  background:rgba(220,50,47,0.92);
-  border:none;border-radius:999px;
-  padding:4px 8px;margin-right:5px;
-  cursor:pointer;flex-shrink:0;
-  transition:opacity .1s,transform .08s;
-}
+.wv .bar{width:3px;min-height:2px;max-height:16px;height:2px;background:#fff;border-radius:1.5px}
+.stop{display:none;align-items:center;gap:4px;background:rgba(220,50,47,.92);border:none;border-radius:999px;padding:4px 8px;margin-right:5px;cursor:pointer;flex-shrink:0}
 .pill.rec.wide .stop{display:flex}
-.stop:hover{opacity:.8}
-.stop:active{transform:scale(.92)}
 .stop svg{width:8px;height:8px;fill:#fff}
 .stop span{font:600 10px/1 -apple-system,'SF Pro Rounded',system-ui,sans-serif;color:#fff}
 
-/* ── Processing — smooth pure CSS animation ── */
+/* ── Processing dots ── */
 .dots{display:none;align-items:center;justify-content:center;gap:3.5px}
 .pill.proc .dots{display:flex}
-.dots span{
-  width:4px;height:4px;border-radius:50%;
-  background:rgba(255,255,255,0.25);
-  animation:breathe 1.4s ease-in-out infinite;
-}
+.dots span{width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,.25);animation:breathe 1.4s ease-in-out infinite}
 .dots span:nth-child(1){animation-delay:0s}
-.dots span:nth-child(2){animation-delay:0.2s}
-.dots span:nth-child(3){animation-delay:0.4s}
+.dots span:nth-child(2){animation-delay:.2s}
+.dots span:nth-child(3){animation-delay:.4s}
+@keyframes breathe{0%,100%{background:rgba(255,255,255,.2);transform:scale(.85)}50%{background:rgba(255,255,255,.9);transform:scale(1.1)}}
 
-@keyframes breathe{
-  0%,100%{background:rgba(255,255,255,0.2);transform:scale(0.85)}
-  50%{background:rgba(255,255,255,0.9);transform:scale(1.1)}
+/* ── Assistant text ── */
+.atxt{
+  display:none;padding:10px 14px;
+  font:400 12px/1.5 -apple-system,'SF Pro Text',system-ui,sans-serif;
+  color:rgba(255,255,255,.88);
+  width:100%;word-wrap:break-word;
 }
+.pill.assist .atxt{display:block}
+.pill.assist .rec-ui,.pill.assist .dots{display:none}
+.atxt .cur{display:inline-block;width:1.5px;height:12px;background:rgba(255,255,255,.5);margin-left:2px;vertical-align:text-bottom;animation:bk .8s step-end infinite}
+@keyframes bk{0%,100%{opacity:1}50%{opacity:0}}
 </style>
 </head>
 <body>
 <div class="pill" id="pill">
   <div class="rec-ui">
     <div class="wv" id="wv"></div>
-    <button class="stop" id="bst">
-      <svg viewBox="0 0 9 9"><rect width="9" height="9" rx="1.5"/></svg>
-      <span>Stop</span>
-    </button>
+    <button class="stop" id="bst"><svg viewBox="0 0 9 9"><rect width="9" height="9" rx="1.5"/></svg><span>Stop</span></button>
   </div>
   <div class="dots"><span></span><span></span><span></span></div>
+  <div class="atxt" id="atxt"></div>
 </div>
-
 <script>
-const pill=document.getElementById('pill');
-const wvEl=document.getElementById('wv');
-
-const MULTS=[0.35,0.55,0.75,0.9,1.0,0.9,0.75,0.55,0.35];
-const MIN_H=2,MAX_H=16;
-const bars=[];
+const pill=document.getElementById('pill'),wvEl=document.getElementById('wv'),atxt=document.getElementById('atxt');
+const MULTS=[.35,.55,.75,.9,1,.9,.75,.55,.35],MIN_H=2,MAX_H=16,bars=[];
 for(let i=0;i<9;i++){const b=document.createElement('div');b.className='bar';wvEl.appendChild(b);bars.push(b)}
 
-let audioLevel=0,smoothLevel=0,st='hidden',triggerMode='hold';
+let audioLevel=0,smoothLevel=0,st='hidden',triggerMode='hold',assistTimer=null;
+
+// Measure helper to size pill to fit text
+const measure=document.createElement('div');
+measure.style.cssText='position:absolute;visibility:hidden;font:400 12px/1.5 -apple-system,system-ui,sans-serif;padding:10px 14px;max-width:290px;word-wrap:break-word;white-space:pre-wrap';
+document.body.appendChild(measure);
+
+function sizePillToText(text){
+  measure.textContent=text;
+  const w=Math.min(300,Math.max(120,measure.offsetWidth+4));
+  const h=Math.min(180,Math.max(36,measure.offsetHeight+4));
+  pill.style.width=w+'px';
+  pill.style.height=h+'px';
+}
+
+// Per-bar state for organic movement
+const barVel=new Float32Array(9);   // velocity for springy motion
+const barCur=new Float32Array(9);   // current height
+const barPhase=[];                  // random phase offset per bar
+for(let i=0;i<9;i++) barPhase.push(Math.random()*Math.PI*2);
 
 function updateWaveform(){
   if(st==='rec'){
-    if(audioLevel>smoothLevel)smoothLevel=smoothLevel*.3+audioLevel*.7;
-    else smoothLevel=smoothLevel*.6+audioLevel*.4;
+    // Fast attack, medium release
+    if(audioLevel>smoothLevel)smoothLevel=smoothLevel*.2+audioLevel*.8;
+    else smoothLevel=smoothLevel*.85+audioLevel*.15;
+
+    const t=performance.now()/1000;
     for(let i=0;i<9;i++){
-      const h=MIN_H+(MAX_H-MIN_H)*smoothLevel*MULTS[i];
-      bars[i].style.height=Math.max(MIN_H,Math.min(MAX_H,h))+'px';
+      // Target height from audio level
+      const base=smoothLevel*MULTS[i];
+      // Add organic wave motion (multiple frequencies)
+      const wave1=Math.sin(t*3.2+barPhase[i])*0.08;
+      const wave2=Math.sin(t*5.7+barPhase[i]*1.6)*0.05;
+      const wave3=Math.sin(t*1.8+i*0.9)*0.04;
+      // Idle breathing even when quiet
+      const idle=Math.sin(t*1.5+barPhase[i])*0.03+0.03;
+      const target=MIN_H+(MAX_H-MIN_H)*Math.max(idle,base+wave1+wave2+wave3);
+      // Spring physics for smooth, bouncy motion
+      const diff=target-barCur[i];
+      barVel[i]+=diff*0.35;       // spring force
+      barVel[i]*=0.65;            // damping
+      barCur[i]+=barVel[i];
+      barCur[i]=Math.max(MIN_H,Math.min(MAX_H,barCur[i]));
+      bars[i].style.height=barCur[i]+'px';
     }
   }
   requestAnimationFrame(updateWaveform);
@@ -102,31 +128,40 @@ function updateWaveform(){
 requestAnimationFrame(updateWaveform);
 
 function go(s){
+  if(assistTimer){clearTimeout(assistTimer);assistTimer=null}
   st=s;
   pill.className='pill'+(s==='hidden'?'':' '+s);
+  pill.style.width='';pill.style.height=''; // reset inline styles
   if(s==='rec'&&triggerMode==='toggle')pill.classList.add('wide');
   if(s==='done')setTimeout(()=>{if(st==='done'){st='hidden';pill.className='pill'}},700);
+  if(s!=='assist')atxt.innerHTML='';
 }
 
 if(window.electronAPI){
   window.electronAPI.onWsMessage(m=>{
     if(m.type==='audio_level'){audioLevel=m.rms*10;if(audioLevel>1)audioLevel=1}
     if(m.type==='trigger_mode'){triggerMode=m.mode}
+    if(m.type==='assistant_stream'){
+      if(st!=='assist')go('assist');
+      atxt.innerHTML=m.text+(m.done?'':'<span class="cur"></span>');
+      sizePillToText(m.text);
+      if(m.done){
+        if(assistTimer)clearTimeout(assistTimer);
+        assistTimer=setTimeout(()=>{if(st==='assist'){st='hidden';pill.className='pill';pill.style.width='';pill.style.height=''}},5000);
+      }
+    }
     if(m.type==='status'){
       if(m.status==='recording')go('rec');
       else if(m.status==='processing')go('proc');
       else if(m.status==='idle'){
         if(st==='proc'||st==='rec')go('done');
-        else{st='hidden';pill.className='pill'}
+        else if(st!=='assist'){st='hidden';pill.className='pill'}
       }
     }
   });
 }
 
-document.getElementById('bst').onclick=e=>{
-  e.stopPropagation();
-  fetch('http://127.0.0.1:8528/api/stop-recording',{method:'POST'}).catch(()=>{});
-};
+document.getElementById('bst').onclick=e=>{e.stopPropagation();fetch('http://127.0.0.1:8528/api/stop-recording',{method:'POST'}).catch(()=>{})};
 </script>
 </body>
 </html>

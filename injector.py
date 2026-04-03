@@ -206,8 +206,8 @@ def inject_text(text: str, target_app: str = "", mode: str | None = None) -> boo
         if current != target_app and target_app.lower() not in current.lower():
             log.info("Refocusing '%s' (currently: '%s')", target_app, current)
             _activate_app(target_app)
-            _wait_for_app_focus(target_app, timeout=1.0)
-            time.sleep(0.1)  # Give the app a moment to fully activate
+            _wait_for_app_focus(target_app, timeout=3.0)
+            time.sleep(0.15)
 
     use_mode = mode or TYPING_MODE
 

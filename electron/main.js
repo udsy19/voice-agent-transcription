@@ -177,6 +177,11 @@ function connectWS() {
         showPill();
       }
 
+      // Close OAuth window when auth completes
+      if (msg.type === 'oauth_complete' && oauthWindow && !oauthWindow.isDestroyed()) {
+        oauthWindow.close();
+      }
+
       sendToMain('ws-message', msg);
       sendToPill('ws-message', msg);
 
@@ -243,7 +248,7 @@ function createMainWindow() {
   });
 }
 
-const PILL_W = 200, PILL_H = 40;
+const PILL_W = 320, PILL_H = 200;
 
 function getPillPosition() {
   const display = screen.getPrimaryDisplay();
@@ -340,9 +345,28 @@ function updateTrayMenu() {
   ]));
 }
 
+// ── OAuth Window ───────────────────────────────────────────────────────────
+
+let oauthWindow = null;
+
+function createOAuthWindow(url) {
+  if (oauthWindow && !oauthWindow.isDestroyed()) {
+    oauthWindow.focus();
+    return;
+  }
+  oauthWindow = new BrowserWindow({
+    width: 600, height: 700,
+    title: 'Connect Account',
+    webPreferences: { contextIsolation: true, nodeIntegration: false },
+  });
+  oauthWindow.loadURL(url);
+  oauthWindow.on('closed', () => { oauthWindow = null; });
+}
+
 // ── IPC from renderers ──────────────────────────────────────────────────────
 
 ipcMain.handle('get-port', () => PORT);
+ipcMain.handle('open-oauth', (_, url) => { createOAuthWindow(url); return true; });
 
 // ── App Lifecycle ───────────────────────────────────────────────────────────
 

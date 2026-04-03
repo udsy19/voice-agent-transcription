@@ -390,6 +390,9 @@ select.inp{appearance:none;background:var(--bg) url("data:image/svg+xml,%3Csvg x
     <button class="nav-item" data-page="scratchpad" onclick="showPage('scratchpad',this)">
       <span class="icon">📝</span> Scratchpad
     </button>
+    <button class="nav-item" data-page="integrations" onclick="showPage('integrations',this)">
+      <span class="icon">🔗</span> Integrations
+    </button>
     <button class="nav-item" data-page="settings" onclick="showPage('settings',this)">
       <span class="icon">⚙️</span> Settings
     </button>
@@ -406,7 +409,7 @@ select.inp{appearance:none;background:var(--bg) url("data:image/svg+xml,%3Csvg x
         <div class="page-title">Welcome back</div>
         <div id="homeStats" style="display:flex;gap:14px;font-size:12px;color:var(--mut)"></div>
       </div>
-      <div class="page-sub">Hold <b>Right Option (⌥)</b> and speak. Release to transcribe.</div>
+      <div class="page-sub">Hold <b>Left Option (⌥L)</b> to dictate. Hold <b>Right Option (⌥R)</b> to talk to assistant.</div>
 
       <!-- Stats card -->
       <div class="card" id="statsCard" style="display:none">
@@ -544,6 +547,43 @@ select.inp{appearance:none;background:var(--bg) url("data:image/svg+xml,%3Csvg x
       <div class="page-sub">A place for notes. Failed pastes also land here.</div>
       <textarea class="scratch-area" id="scratchArea" placeholder="Type or paste anything..."
         oninput="localStorage.setItem('scratchpad',this.value)"></textarea>
+    </div>
+
+    <!-- INTEGRATIONS -->
+    <div class="page" id="pg-integrations">
+      <div class="page-title">Integrations</div>
+      <div class="page-sub">Connect Google for Calendar + Gmail voice commands.</div>
+
+      <!-- Not connected: show credentials + connect -->
+      <div class="card" id="googleSetup">
+        <div class="card-row" style="flex-direction:column;align-items:stretch;gap:8px">
+          <div class="card-row-label">Google</div>
+          <div class="card-row-sub" id="credHint">Enter your OAuth credentials, then click Connect.</div>
+          <input class="inp" id="gCid" placeholder="Client ID">
+          <input class="inp" id="gCs" placeholder="Client Secret" type="password">
+          <button class="btn btn-d" id="gBtn" onclick="gConnect()">Connect</button>
+        </div>
+      </div>
+
+      <!-- Connected -->
+      <div class="card" id="gConnected" style="display:none">
+        <div class="card-row">
+          <div style="flex:1">
+            <div class="card-row-label">Google</div>
+            <div class="card-row-sub" id="gEmail"></div>
+          </div>
+          <button class="btn btn-l btn-s" onclick="gDisconnect()">Disconnect</button>
+        </div>
+      </div>
+
+      <div style="margin-top:20px;padding:16px;background:var(--acc);border-radius:var(--r)">
+        <div style="font-size:13px;font-weight:500;margin-bottom:6px">How to use</div>
+        <div style="font-size:12px;color:var(--mut);line-height:1.6">
+          <b>⌥L</b> — Hold to dictate<br>
+          <b>⌥R</b> — Hold to talk to assistant<br><br>
+          Try: "Add a meeting tomorrow at 3pm"
+        </div>
+      </div>
     </div>
 
     <!-- SETTINGS -->
@@ -1160,6 +1200,76 @@ function dismissSetup() {
 }
 // Poll refresh every 5s as fallback
 setInterval(() => { if (connected) refresh(); }, 5000);
+
+// ── Integrations ──────────────────────────────────────────────────────────
+async function gConnect() {
+  const cid = document.getElementById('gCid').value.trim();
+  const cs = document.getElementById('gCs').value.trim();
+  const btn = document.getElementById('gBtn');
+  const body = (cid && cs) ? {client_id: cid, client_secret: cs} : {};
+
+  btn.disabled = true; btn.textContent = 'Opening browser...';
+  try {
+    const r = await fetch(`${API}/api/oauth/connect`, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      document.getElementById('credHint').textContent = 'Complete the login in your browser...';
+    } else if (d.needs_credentials) {
+      alert('Enter your Client ID and Client Secret first.');
+      btn.disabled = false; btn.textContent = 'Connect';
+    } else {
+      alert(d.error || 'Failed');
+      btn.disabled = false; btn.textContent = 'Connect';
+    }
+  } catch (e) {
+    alert('Error: ' + e.message);
+    btn.disabled = false; btn.textContent = 'Connect';
+  }
+}
+
+async function gDisconnect() {
+  const email = document.getElementById('gEmail').textContent;
+  await fetch(`${API}/api/accounts/google/${encodeURIComponent(email)}`, {method:'DELETE'});
+  gLoadAccounts();
+}
+
+async function gLoadAccounts() {
+  try {
+    const r = await fetch(`${API}/api/accounts`);
+    const d = await r.json();
+    const google = (d.accounts||[]).filter(a => a.service === 'google');
+    if (google.length > 0) {
+      document.getElementById('googleSetup').style.display = 'none';
+      document.getElementById('gConnected').style.display = '';
+      document.getElementById('gEmail').textContent = google.map(a=>a.email).join(', ');
+    } else {
+      document.getElementById('googleSetup').style.display = '';
+      document.getElementById('gConnected').style.display = 'none';
+      document.getElementById('gBtn').disabled = false;
+      document.getElementById('gBtn').textContent = 'Connect';
+      document.getElementById('credHint').textContent = 'Enter your OAuth credentials, then click Connect.';
+    }
+  } catch {}
+}
+
+function openExternal(url) {
+  if (window.electronAPI && window.electronAPI.openOAuth) { window.electronAPI.openOAuth(url); }
+  else { window.open(url, '_blank'); }
+}
+
+const origShowPage = showPage;
+showPage = function(page, btn) {
+  origShowPage(page, btn);
+  if (page === 'integrations') gLoadAccounts();
+};
+
+if (window.electronAPI) {
+  window.electronAPI.onWsMessage(m => {
+    if (m.type === 'oauth_complete') gLoadAccounts();
+  });
+}
 </script>
 </body>
 </html>
