@@ -23,6 +23,7 @@ from config import DATA_DIR
 
 REDIRECT_PORT = 8529
 SCOPES = [
+    "openid",
     "https://www.googleapis.com/auth/calendar",
     "https://www.googleapis.com/auth/gmail.send",
     "https://www.googleapis.com/auth/gmail.compose",
@@ -79,6 +80,12 @@ class OAuthManager:
             return {"ok": False, "error": "Google libraries not installed. Run: pip install google-api-python-client google-auth-oauthlib"}
         if not self.client_id or not self.client_secret:
             return {"ok": False, "needs_credentials": True}
+        # Kill any existing OAuth server on the port
+        try:
+            subprocess.run(f"lsof -ti :{REDIRECT_PORT} | xargs kill -9",
+                          shell=True, capture_output=True, timeout=3)
+        except Exception:
+            pass
 
         # Build config that google-auth-oauthlib expects
         config = {"installed": {
