@@ -24,7 +24,7 @@ log = get_logger("memory")
 
 MEMORY_DB_PATH = str(DATA_DIR / "memory_db")
 MAX_MEMORIES = 500  # cap total memories
-RATE_LIMIT_INTERVAL = 2.0  # min seconds between mem0 writes
+RATE_LIMIT_INTERVAL = 15.0  # min seconds between mem0 writes (Groq free = 6K TPM)
 EXPORT_PATH = str(DATA_DIR / "memories_export.json")
 
 _mem = None

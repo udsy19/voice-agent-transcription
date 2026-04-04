@@ -315,50 +315,59 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
     <!-- SETTINGS -->
     <div class="pg" id="pg-settings">
       <h1>Settings</h1>
-      <div class="desc">Configuration</div>
+
+      <div class="label">API Keys</div>
       <div class="block">
         <div class="row">
-          <div style="flex:1"><div class="row-label">Groq API Key</div><div class="row-sub" id="groqStatus">Checking...</div></div>
+          <div style="flex:1"><div class="row-label">Groq</div><div class="row-sub" id="groqStatus">Checking...</div></div>
           <div style="display:flex;gap:6px"><input class="inp" id="groqKeyInput" type="password" placeholder="gsk_..." style="width:140px;font-size:11px"><button class="btn btn-p" onclick="setGroqKey()">Save</button></div>
         </div>
-      </div>
-      <div class="block">
         <div class="row">
-          <div><div class="row-label">Transcription</div><div class="row-sub" id="backendStatus">Loading...</div></div>
-          <select class="inp" id="backendSelect" onchange="setBackend(this.value)" style="width:160px;font-size:12px">
-            <option value="groq">Groq API</option>
-            <option value="mlx">MLX Whisper</option>
-            <option value="parakeet">Parakeet</option>
-            <option value="faster-whisper">Faster-Whisper</option>
-          </select>
-        </div>
-      </div>
-      <div class="block">
-        <div class="row"><div><div class="row-label">Hands-Free</div><div class="row-sub">Continuous listening</div></div><button id="togHF" class="tog" onclick="apiPost('toggle-hands-free')"></button></div>
-        <div class="row"><div><div class="row-label">Whisper Mode</div><div class="row-sub">Extra mic sensitivity</div></div><button id="togW" class="tog" onclick="apiPost('toggle-whisper')"></button></div>
-        <div class="row"><div><div class="row-label">Sounds</div><div class="row-sub">Feedback on start/stop</div></div><button id="togS" class="tog on" onclick="apiPost('toggle-sounds')"></button></div>
-      </div>
-      <div class="label">Voice</div>
-      <div class="block">
-        <div class="row">
-          <div style="flex:1"><div class="row-label">ElevenLabs API Key</div><div class="row-sub" id="elevenStatus" style="font-size:11px">Not configured (using Kokoro offline)</div></div>
+          <div style="flex:1"><div class="row-label">ElevenLabs</div><div class="row-sub" id="elevenStatus" style="font-size:11px">Not configured (using offline TTS)</div></div>
           <div style="display:flex;gap:6px"><input class="inp" id="elevenKeyInput" type="password" placeholder="sk_..." style="width:140px;font-size:11px"><button class="btn btn-p" onclick="setElevenKey()">Save</button></div>
         </div>
       </div>
-      <div class="block" id="voiceBlock">
-        <div class="row" style="flex-direction:column;align-items:stretch;gap:6px;padding:14px">
-          <div class="row-label">Assistant Voice</div>
-          <div class="row-sub">ElevenLabs voices are premium (online). Kokoro voices work offline.</div>
-          <div id="voiceGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px"></div>
+
+      <div class="label">Transcription</div>
+      <div class="block">
+        <div class="row">
+          <div><div class="row-label">Engine</div><div class="row-sub" id="backendStatus">Loading...</div></div>
+          <select class="inp" id="backendSelect" onchange="setBackend(this.value)" style="width:160px;font-size:12px">
+            <option value="groq">Groq API (cloud)</option>
+            <option value="mlx">MLX Whisper (local GPU)</option>
+            <option value="parakeet">Parakeet (local, fast)</option>
+            <option value="faster-whisper">Faster-Whisper (local CPU)</option>
+          </select>
         </div>
       </div>
 
-      <div class="label">Export history</div>
-      <div style="display:flex;gap:4px">
-        <a class="btn btn-g" href="http://127.0.0.1:8528/api/export/json" target="_blank" style="font-size:11px">JSON</a>
-        <a class="btn btn-g" href="http://127.0.0.1:8528/api/export/txt" target="_blank" style="font-size:11px">TXT</a>
-        <a class="btn btn-g" href="http://127.0.0.1:8528/api/export/word" target="_blank" style="font-size:11px">Word</a>
-        <a class="btn btn-g" href="http://127.0.0.1:8528/api/export/pdf" target="_blank" style="font-size:11px">PDF</a>
+      <div class="label">Voice</div>
+      <div class="block" id="voiceBlock">
+        <div class="row" style="flex-direction:column;align-items:stretch;gap:6px;padding:14px">
+          <div class="row-sub">Select a voice for the assistant. ElevenLabs requires API key above.</div>
+          <div id="voiceGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:4px"></div>
+        </div>
+      </div>
+
+      <div class="label">Modes</div>
+      <div class="block">
+        <div class="row"><div><div class="row-label">Hands-Free</div><div class="row-sub">Continuous listening, auto-processes on silence</div></div><button id="togHF" class="tog" onclick="apiPost('toggle-hands-free')"></button></div>
+        <div class="row"><div><div class="row-label">Whisper Mode</div><div class="row-sub">Extra mic sensitivity for quiet speech</div></div><button id="togW" class="tog" onclick="apiPost('toggle-whisper')"></button></div>
+        <div class="row"><div><div class="row-label">Sound Feedback</div><div class="row-sub">Subtle sounds on start/stop/error</div></div><button id="togS" class="tog on" onclick="apiPost('toggle-sounds')"></button></div>
+      </div>
+
+      <div class="label">Data</div>
+      <div class="block">
+        <div class="row" style="flex-direction:column;align-items:stretch;gap:8px;padding:14px">
+          <div class="row-label">Export</div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap">
+            <a class="btn btn-g" href="http://127.0.0.1:8528/api/export/json" target="_blank" style="font-size:10px;padding:4px 10px">History (JSON)</a>
+            <a class="btn btn-g" href="http://127.0.0.1:8528/api/export/txt" target="_blank" style="font-size:10px;padding:4px 10px">History (TXT)</a>
+            <a class="btn btn-g" href="http://127.0.0.1:8528/api/export/pdf" target="_blank" style="font-size:10px;padding:4px 10px">History (PDF)</a>
+            <a class="btn btn-g" href="http://127.0.0.1:8528/api/memories/export" target="_blank" style="font-size:10px;padding:4px 10px">Memories</a>
+            <a class="btn btn-g" href="http://127.0.0.1:8528/api/export-logs" target="_blank" style="font-size:10px;padding:4px 10px">Logs</a>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -539,13 +548,14 @@ async function searchMem(){
 async function deleteMem(id){await fetch(`${API}/api/memories/${id}`,{method:'DELETE'});loadMemories()}
 function inferCategory(text){
   const t=text.toLowerCase();
-  if(/\b(prefer|like|favorite|always|never|hate)\b/.test(t))return'preference';
-  if(/\b(flight|travel|trip|airport|hotel)\b/.test(t))return'travel';
-  if(/\b(meeting|call|standup|sync)\b/.test(t))return'work';
-  if(/\b(name is|girlfriend|boyfriend|wife|husband|friend|family|mom|dad|parent)\b/.test(t))return'people';
-  if(/\b(email|gmail|outlook|message)\b/.test(t))return'contact';
-  if(/\b(project|code|api|build|deploy|launch)\b/.test(t))return'tech';
-  if(/\b(class|exam|university|purdue|professor|homework)\b/.test(t))return'school';
+  if(/\b(prefer|like|favorite|always|never|hate|love|enjoy)\b/.test(t))return'preference';
+  if(/\b(flight|travel|trip|airport|hotel|seat|window seat|aisle)\b/.test(t))return'travel';
+  if(/\b(girlfriend|boyfriend|wife|husband|friend|family|mom|dad|parent|sister|brother|samyukta)\b/.test(t))return'people';
+  if(/\b(email|gmail|outlook|phone|contact|address)\b/.test(t))return'contact';
+  if(/\b(meeting|call|standup|sync|work|ceo|company|founder|know technologies)\b/.test(t))return'work';
+  if(/\b(project|code|api|build|deploy|launch|python|javascript|react)\b/.test(t))return'tech';
+  if(/\b(class|exam|university|purdue|professor|homework|study|studi|cyber|degree|gpa)\b/.test(t))return'school';
+  if(/\b(coffee|food|restaurant|shop|store|buy|order)\b/.test(t))return'preference';
   return'general';
 }
 

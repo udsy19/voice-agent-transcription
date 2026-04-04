@@ -128,6 +128,18 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "remember_fact",
+            "description": "Save a fact about the user to long-term memory. Use when user says 'remember that', 'note that', 'keep in mind', or shares personal info (preferences, background, relationships).",
+            "parameters": {
+                "type": "object",
+                "properties": {"fact": {"type": "string", "description": "The fact to remember."}},
+                "required": ["fact"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "add_todo",
             "description": "Add a task to the todo list. Use for reminders, tasks, things to do.",
             "parameters": {
@@ -171,7 +183,7 @@ def _speak(text: str):
         import safe_json
         from config import DATA_DIR
         prefs = safe_json.load(str(DATA_DIR / "preferences.json"), {})
-        voice = prefs.get("voice", "af_heart")
+        voice = prefs.get("voice", "default")
         tts_module.speak(text, voice=voice)
     except Exception as e:
         log.warning("Kokoro TTS failed: %s, falling back to say", e)
@@ -265,8 +277,9 @@ class Assistant:
                     self._conversation.append({"role": "user", "content": command})
                     self._conversation.append({"role": "assistant", "content": text})
                     self._conversation_expires = time.time() + 600
-                    # Learn from this exchange
-                    mem.remember_async(f"User said: {command}\nAssistant replied: {text}")
+                    # Only save to memory if it contains personal/preference info
+                    if any(w in command.lower() for w in ['prefer','like','love','hate','always','never','name is','my ','remember','favorite','i am','i\'m']):
+                        mem.remember_async(command)
 
                     self._stream(text)
                     import threading
@@ -311,8 +324,9 @@ class Assistant:
             if len(self._conversation) > 20:
                 self._conversation = self._conversation[-20:]
 
-            # Learn from this exchange
-            mem.remember_async(f"User asked: {command}\nAssistant did: {text}")
+            # Only save to memory if user shared personal info
+            if any(w in command.lower() for w in ['prefer','like','love','hate','always','never','name is','my ','remember','favorite','i am','i\'m']):
+                mem.remember_async(command)
 
             self._stream(text)
             import threading
@@ -403,6 +417,10 @@ class Assistant:
             if result.get("ok"):
                 self._oauth._last_draft_id = None
             return result
+
+        elif name == "remember_fact":
+            mem.remember(args["fact"])
+            return {"ok": True, "fact": args["fact"]}
 
         elif name == "add_todo":
             if self._todos:
