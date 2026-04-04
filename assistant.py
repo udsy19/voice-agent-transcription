@@ -260,15 +260,25 @@ class Assistant:
             self._conversation.clear()
 
         accounts = self._oauth.list_accounts() if self._oauth else []
-        today_context = self._prefetch_today()
-        brain_context = self._brain.get_context_for_llm() if self._brain else ""
-        todos_context = self._todos.summary_for_llm() if self._todos else ""
-        # Recall relevant memories for this query
-        import memory as mem
-        mem_context = mem.get_context_for_llm(command)
-        system_prompt = self._build_system_prompt(
-            accounts, today_context + brain_context + todos_context + mem_context
-        )
+
+        # Only fetch expensive context when likely needed
+        cmd_lower = command.lower()
+        extra_context = ""
+
+        # Calendar context — only if query mentions time/schedule/calendar/meeting
+        if any(w in cmd_lower for w in ['calendar','schedule','today','tomorrow','week','meeting','event','free','busy','flight']):
+            extra_context += self._prefetch_today()
+
+        # Todos context — only if query mentions tasks/todos/list
+        if any(w in cmd_lower for w in ['todo','task','list','remind','grocery','shopping','buy']):
+            extra_context += self._todos.summary_for_llm() if self._todos else ""
+
+        # Memory context — only for questions about people/preferences/facts
+        if any(w in cmd_lower for w in ['who','what','my','favorite','prefer','remember','know','friend','girlfriend']):
+            import memory as mem
+            extra_context += mem.get_context_for_llm(command)
+
+        system_prompt = self._build_system_prompt(accounts, extra_context)
 
         # Build messages: system + conversation history + new user message
         messages = [{"role": "system", "content": system_prompt}]
@@ -480,34 +490,35 @@ class Assistant:
 
         elif name == "remember_fact":
             import memory as mem_module
+            fact_text = args["fact"]
+
+            # Check if a similar memory exists (same person/topic) — update instead of duplicate
+            existing = mem_module.recall(fact_text, limit=3)
+            for ex in existing:
+                if ex.get("score", 0) > 0.5:  # high similarity = likely about same thing
+                    # Delete the old one, we'll add the new version
+                    mem_module.delete(ex["id"])
+                    log.info("Replacing similar memory: %s", ex.get("memory", "")[:40])
+
+            # Store directly in vector DB (no LLM re-extraction)
             m = mem_module._get_mem0()
             if m:
                 try:
-                    # Store the fact directly as-is — don't let LLM re-extract/mangle it
-                    from qdrant_client.models import PointStruct
                     import uuid, hashlib
-                    fact_text = args["fact"]
-                    # Generate embedding
                     embedding = m.embedding_model.embed(fact_text)
-                    # Store directly in vector DB
                     point_id = str(uuid.uuid4())
                     m.vector_store.insert(
                         vectors=[embedding],
                         payloads=[{"data": fact_text, "hash": hashlib.md5(fact_text.encode()).hexdigest(),
-                                   "user_id": "user", "created_at": __import__('time').strftime("%Y-%m-%dT%H:%M:%S+00:00")}],
+                                   "user_id": "user", "created_at": time.strftime("%Y-%m-%dT%H:%M:%S+00:00")}],
                         ids=[point_id],
                     )
-                    log.info("Remembered directly: %s", fact_text[:50])
+                    log.info("Remembered: %s", fact_text[:50])
                     self._emit({"type": "memory_updated"})
                     return {"ok": True, "fact": fact_text}
                 except Exception as e:
-                    log.error("Direct remember failed: %s — falling back to mem0.add", e)
-                    try:
-                        m.add(args["fact"], user_id="user")
-                        self._emit({"type": "memory_updated"})
-                        return {"ok": True, "fact": args["fact"]}
-                    except Exception as e2:
-                        return {"ok": False, "error": str(e2)}
+                    log.error("Remember failed: %s", e)
+                    return {"ok": False, "error": str(e)}
             return {"ok": False, "error": "Memory not available"}
 
         elif name == "add_todo":
@@ -567,53 +578,13 @@ class Assistant:
         return {"error": f"Unknown tool: {name}"}
 
     def _build_system_prompt(self, accounts: list[dict], today_context: str = "") -> str:
-        now = time.strftime("%A, %B %d, %Y at %I:%M %p")
-        acct_list = "\n".join(f"- {a['service']}: {a['email']}" for a in accounts) if accounts else "None"
-
+        now = time.strftime("%a %b %d, %I:%M %p")
         return (
-            f"You are a smart personal voice assistant. Right now: {now}\n"
-            f"Connected accounts: {acct_list}\n"
-            f"{today_context}\n"
-            "\n## How to respond\n"
-            "- Your response will be SPOKEN ALOUD by a voice synthesizer.\n"
-            "- Keep responses SHORT — 1-3 sentences max.\n"
-            "- Write how you'd SPEAK, not how you'd type:\n"
-            "  GOOD: 'You have a meeting with Teng at 1 PM, then you're free.'\n"
-            "  BAD: 'You have the following events: 1. Meeting with Teng Zhang - RGTI at 13:00:00'\n"
-            "- Use natural time: '1 PM' not '13:00', '10:45 AM' not '10:45:00'\n"
-            "- Use natural dates: 'next Thursday' not 'April 10th, 2026'\n"
-            "- Don't use bullet points, numbered lists, or markdown — speak in flowing sentences.\n"
-            "- Don't say event IDs, calendar IDs, or technical details.\n"
-            "- Be warm and conversational, like a real assistant.\n"
-            "- When listing events, say times naturally: '10:43 AM' not '10:43:00', '12 PM' not '12:00:00', '1 PM' not '13:00'.\n"
-            "- Say events naturally: 'You have a flight to New York at 10:43 AM, then coffee with Teng at 1 PM.'\n"
-            "- Don't just list data — interpret it. 'Looks like a busy morning but your afternoon is free.'\n"
-            "\n## Calendar intelligence\n"
-            "- 'today' = days 1, 'this week' = days 7, 'next week' = days 14, 'this month' = days 30\n"
-            "- 'tomorrow' means the next day. 'next Monday' means the coming Monday.\n"
-            "- ALWAYS check for conflicts before creating. If there's an overlap, warn the user.\n"
-            "- If they say 'am I free at 2?' — check the calendar and answer directly.\n"
-            "- If they say 'move my 3pm to 4pm' — that requires delete + create (not yet supported, tell them).\n"
-            "- If they say 'cancel the meeting' — ask which one if there are multiple.\n"
-            "- If title is missing, ask. If time is missing, ask. If date is missing, ask.\n"
-            "- When creating, confirm: 'Created Team Sync for tomorrow at 2pm.'\n"
-            "\n## Email intelligence\n"
-            "- Default to DRAFT unless user says 'send'. After drafting: 'Draft ready. Say send it.'\n"
-            "- If no recipient, ask. If no subject, infer from body.\n"
-            "- Write the email body professionally but match the user's tone.\n"
-            "\n## Edge cases\n"
-            "- If you don't understand, ask for clarification — never guess wrong.\n"
-            "- If no accounts connected, say 'Connect Google in Settings first.'\n"
-            "- If a tool fails, explain what went wrong simply.\n"
-            "- If the user is just chatting (not calendar/email), respond briefly and naturally.\n"
-            "- When user says 'remember X' or shares personal info, use remember_fact (NOT add_todo).\n"
-            "  add_todo is ONLY for action items like 'buy groceries' or 'call dentist'.\n"
-            "- When user CORRECTS a fact ('it's not X, it's Y' or 'actually her name is Y'):\n"
-            "  1. FIRST call forget_fact to delete the wrong memory\n"
-            "  2. THEN call remember_fact to store the correct one\n"
-            "  You can call BOTH tools in the same response.\n"
-            "- USE your memories proactively — if you know who someone is, use that knowledge.\n"
-            "  Example: if user says 'email Samyukta' and you remember her email, use it.\n"
-            "  Example: if user has a meeting with someone you know, mention relevant context.\n"
-            "- When summarizing a conversation, extract key facts for memory.\n"
+            f"Voice assistant. {now}\n{today_context}\n"
+            "Spoken aloud — 1-2 sentences, natural speech, no markdown.\n"
+            "Times: '1 PM' not '13:00'. Dates: 'tomorrow' not '2026-04-05'.\n"
+            "Calendar: ask if title/time missing. Check conflicts before creating.\n"
+            "remember_fact=personal info. add_todo=action items. forget_fact=delete wrong memory.\n"
+            "Corrections ('not X, it's Y'): forget_fact + remember_fact together.\n"
+            "Use memories proactively.\n"
         )
