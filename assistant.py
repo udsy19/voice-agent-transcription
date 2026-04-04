@@ -196,6 +196,8 @@ def _speak(text: str):
         from config import DATA_DIR
         prefs = safe_json.load(str(DATA_DIR / "preferences.json"), {})
         voice = prefs.get("voice", "af_heart")
+        if voice not in ("af_heart","af_alloy","af_bella","af_nicole","af_nova","af_sky","am_adam","am_eric","am_michael","bf_emma","bm_daniel","bm_george"):
+            voice = "af_heart"
         tts_module.speak(text, voice=voice)
     except Exception as e:
         log.warning("TTS failed: %s", e)
@@ -262,15 +264,29 @@ class Assistant:
         messages.append({"role": "user", "content": command})
 
         try:
-            response = self._client.chat.completions.create(
-                model=ASSISTANT_MODEL,
-                messages=messages,
-                tools=TOOLS,
-                tool_choice="auto",
-                temperature=0.2,
-                max_tokens=512,
-                timeout=15,
-            )
+            try:
+                response = self._client.chat.completions.create(
+                    model=ASSISTANT_MODEL,
+                    messages=messages,
+                    tools=TOOLS,
+                    tool_choice="auto",
+                    temperature=0.2,
+                    max_tokens=512,
+                    timeout=15,
+                )
+            except Exception as tool_err:
+                if "tool_use_failed" in str(tool_err) or "400" in str(tool_err):
+                    # Groq/Llama tool format error — retry without tools
+                    log.warning("Tool call failed, retrying without tools: %s", str(tool_err)[:80])
+                    response = self._client.chat.completions.create(
+                        model=ASSISTANT_MODEL,
+                        messages=messages,
+                        temperature=0.3,
+                        max_tokens=512,
+                        timeout=15,
+                    )
+                else:
+                    raise
 
             choice = response.choices[0]
             tool_calls = choice.message.tool_calls
