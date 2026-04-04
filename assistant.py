@@ -100,14 +100,23 @@ TOOLS = [
 
 
 def _speak(text: str):
-    """Speak text aloud using macOS TTS. Non-blocking."""
+    """Speak text aloud using Kokoro TTS (or macOS say fallback)."""
     try:
-        subprocess.Popen(
-            ["say", "-v", "Samantha", "-r", "190", text],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
+        import tts as tts_module
+        import safe_json
+        from config import DATA_DIR
+        prefs = safe_json.load(str(DATA_DIR / "preferences.json"), {})
+        voice = prefs.get("voice", "af_heart")
+        tts_module.speak(text, voice=voice)
     except Exception as e:
-        log.warning("TTS failed: %s", e)
+        log.warning("Kokoro TTS failed: %s, falling back to say", e)
+        try:
+            subprocess.Popen(
+                ["say", "-v", "Samantha", "-r", "190", text],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass
 
 
 class Assistant:

@@ -147,6 +147,25 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
 .today-title{font-weight:500}
 .today-empty{font-size:12px;color:var(--text3);padding:8px 0}
 
+/* Voice cards */
+.vc{
+  display:flex;align-items:center;gap:8px;padding:7px 10px;
+  border-radius:5px;cursor:pointer;transition:background .1s;
+  border:1px solid transparent;
+}
+.vc:hover{background:var(--hover)}
+.vc.on{border-color:var(--blue);background:rgba(79,143,247,.08)}
+.vc-play{
+  width:26px;height:26px;border-radius:50%;background:var(--hover);
+  border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;transition:background .1s;
+}
+.vc-play:hover{background:rgba(255,255,255,.12)}
+.vc-play svg{width:10px;height:10px;fill:var(--text2)}
+.vc-info{flex:1;min-width:0}
+.vc-name{font-size:12px;font-weight:500}
+.vc-desc{font-size:10px;color:var(--text3)}
+
 .empty{text-align:center;padding:64px 16px;color:var(--text3);font-size:14px;line-height:1.8}
 
 /* Status bar — barely there */
@@ -268,6 +287,15 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
         <div class="row"><div><div class="row-label">Whisper Mode</div><div class="row-sub">Extra mic sensitivity</div></div><button id="togW" class="tog" onclick="apiPost('toggle-whisper')"></button></div>
         <div class="row"><div><div class="row-label">Sounds</div><div class="row-sub">Feedback on start/stop</div></div><button id="togS" class="tog on" onclick="apiPost('toggle-sounds')"></button></div>
       </div>
+      <div class="label">Voice</div>
+      <div class="block" id="voiceBlock">
+        <div class="row" style="flex-direction:column;align-items:stretch;gap:6px;padding:14px">
+          <div class="row-label">Assistant Voice</div>
+          <div class="row-sub">Choose how Muse sounds when speaking back to you.</div>
+          <div id="voiceGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px"></div>
+        </div>
+      </div>
+
       <div class="label">Export history</div>
       <div style="display:flex;gap:4px">
         <a class="btn btn-g" href="http://127.0.0.1:8528/api/export/json" target="_blank" style="font-size:11px">JSON</a>
@@ -285,7 +313,7 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
 const API='http://127.0.0.1:8528';let hist=[],connected=false;
 function esc(s){return s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):''}
 
-function nav(el){document.querySelectorAll('.sb a').forEach(a=>a.classList.remove('on'));el.classList.add('on');document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));document.getElementById('pg-'+el.dataset.pg).classList.add('on');if(el.dataset.pg==='integrations')gLoad()}
+function nav(el){document.querySelectorAll('.sb a').forEach(a=>a.classList.remove('on'));el.classList.add('on');document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));document.getElementById('pg-'+el.dataset.pg).classList.add('on');if(el.dataset.pg==='integrations')gLoad();if(el.dataset.pg==='settings')loadVoices()}
 
 function setupListeners(){if(window.electronAPI){window.electronAPI.onWsMessage(onMsg);window.electronAPI.onBackendReady(()=>{document.getElementById('setup').classList.add('hidden');connected=true;refresh()});poll()}else{connectWS()}}
 function poll(){fetch(`${API}/api/health`).then(r=>r.json()).then(d=>{if(d.ok){document.getElementById('setup').classList.add('hidden');connected=true;refresh()}else setTimeout(poll,1e3)}).catch(()=>setTimeout(poll,1e3))}
@@ -368,6 +396,42 @@ async function loadToday(){
 
     el.innerHTML=`<div class="today"><div class="today-head"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Today</div>${evs.map(e=>`<div class="today-ev" style="${e.isPast?'opacity:.4':''}${e.isNow?'border-left:2px solid var(--blue);padding-left:8px':''}"><div class="today-time">${e.time}</div><div class="today-info"><div class="today-title">${esc(e.summary)}</div><div style="font-size:11px;color:var(--text3)">${e.time} – ${e.endTime}</div></div></div>`).join('')}</div>`;
   }catch{}
+}
+
+// Voice selection
+let currentVoice='af_heart';
+async function loadVoices(){
+  try{
+    const r=await fetch(`${API}/api/voices`);const d=await r.json();
+    currentVoice=d.current||'af_heart';
+    const grid=document.getElementById('voiceGrid');
+    if(!grid)return;
+    grid.innerHTML=Object.entries(d.voices).map(([id,v])=>{
+      const gender=v.gender==='F'?'♀':'♂';
+      const flag=v.accent==='British'?'🇬🇧':'🇺🇸';
+      return`<div class="vc${id===currentVoice?' on':''}" onclick="selectVoice('${id}')">
+        <button class="vc-play" onclick="event.stopPropagation();previewVoice('${id}')" title="Preview">
+          <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
+        </button>
+        <div class="vc-info">
+          <div class="vc-name">${gender} ${v.name} <span style="font-size:9px;opacity:.5">${flag}</span></div>
+          <div class="vc-desc">${v.desc}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }catch{}
+}
+async function selectVoice(id){
+  await apiPost('voices/set',{voice:id});
+  currentVoice=id;
+  document.querySelectorAll('.vc').forEach(el=>{
+    el.classList.toggle('on',el.onclick.toString().includes(id));
+  });
+  loadVoices(); // re-render to update selection
+}
+async function previewVoice(id){
+  await fetch(`${API}/api/voices/stop`,{method:'POST'}).catch(()=>{});
+  await fetch(`${API}/api/voices/preview`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({voice:id})}).catch(()=>{});
 }
 
 chkGroq();chkBackend();setupListeners();

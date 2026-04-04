@@ -79,6 +79,7 @@ from conversation import ConversationTracker
 from exporter import export_json, export_txt, export_word, export_pdf, export_logs
 from assistant import Assistant
 from integrations.oauth_manager import OAuthManager
+import tts
 PORT = 8528
 HANDS_FREE_SILENCE_SEC = 2.0
 
@@ -582,6 +583,45 @@ async def api_today():
         return {"events": result.get("events", [])} if result.get("ok") else {"events": []}
     except Exception:
         return {"events": []}
+
+
+@api.get("/api/voices")
+async def api_voices():
+    """List all available TTS voices."""
+    voices = tts.get_voices()
+    # Load saved preference
+    import safe_json
+    prefs = safe_json.load(str(DATA_DIR / "preferences.json"), {})
+    current = prefs.get("voice", "af_heart")
+    return {"voices": voices, "current": current, "kokoro_available": tts.is_available()}
+
+
+@api.post("/api/voices/set")
+async def api_set_voice(body: dict):
+    """Set the TTS voice."""
+    voice = body.get("voice", "").strip()
+    if voice not in tts.get_voices():
+        return {"ok": False, "error": "Unknown voice"}
+    import safe_json
+    prefs = safe_json.load(str(DATA_DIR / "preferences.json"), {})
+    prefs["voice"] = voice
+    safe_json.save(str(DATA_DIR / "preferences.json"), prefs)
+    return {"ok": True, "voice": voice}
+
+
+@api.post("/api/voices/preview")
+async def api_preview_voice(body: dict):
+    """Play a preview of a TTS voice."""
+    voice = body.get("voice", "af_heart")
+    text = body.get("text", tts.PREVIEW_TEXT)
+    threading.Thread(target=tts.speak_sync, args=(text, voice), daemon=True).start()
+    return {"ok": True}
+
+
+@api.post("/api/voices/stop")
+async def api_stop_voice():
+    tts.stop()
+    return {"ok": True}
 
 
 @api.get("/api/debug")
