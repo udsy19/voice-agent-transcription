@@ -453,6 +453,7 @@ class Assistant:
                     result = m.add(args["fact"], user_id="user")
                     entries = result.get("results", [])
                     log.info("Remembered via tool: %s (%d facts)", args["fact"][:50], len(entries))
+                    self._emit({"type": "memory_updated"})
                     return {"ok": True, "fact": args["fact"], "stored": len(entries)}
                 except Exception as e:
                     log.error("Remember failed: %s", e)

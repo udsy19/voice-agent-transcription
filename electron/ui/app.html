@@ -180,23 +180,30 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
 .todo-add input:focus{border-color:var(--blue)}
 .todo-add input::placeholder{color:var(--text3)}
 
-/* Memory cards */
-.mem-card{padding:10px 0;border-bottom:1px solid var(--border)}
-.mem-card:last-child{border-bottom:none}
-.mem-text{font-size:13px;margin-bottom:3px}
-.mem-meta{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text3)}
-.mem-cat{padding:1px 6px;border-radius:3px;font-size:9px;font-weight:500}
-.mem-cat.preference{background:rgba(168,85,247,.15);color:#a855f7}
-.mem-cat.travel{background:rgba(59,130,246,.15);color:#3b82f6}
-.mem-cat.work{background:rgba(34,197,94,.15);color:#22c55e}
-.mem-cat.people{background:rgba(244,63,94,.15);color:#f43e5e}
-.mem-cat.contact{background:rgba(6,182,212,.15);color:#06b6d4}
-.mem-cat.tech{background:rgba(249,115,22,.15);color:#f97316}
-.mem-cat.school{background:rgba(234,179,8,.15);color:#eab308}
-.mem-cat.general{background:rgba(255,255,255,.06);color:var(--text3)}
-.mem-del{opacity:0;cursor:pointer;color:var(--text3);background:none;border:none;font-size:12px;margin-left:auto;padding:2px 6px}
-.mem-card:hover .mem-del{opacity:.5}
-.mem-del:hover{opacity:1!important}
+/* Memory boxes */
+.mem-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;overflow:hidden}
+.mem-box-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer}
+.mem-box-head:hover{background:var(--hover)}
+.mem-box-title{font-size:12px;font-weight:500;display:flex;align-items:center;gap:6px}
+.mem-box-count{font-size:10px;color:var(--text3);background:rgba(255,255,255,.06);padding:1px 6px;border-radius:3px}
+.mem-box-body{max-height:200px;overflow-y:auto;padding:0 14px}
+.mem-box-body::-webkit-scrollbar{width:3px}
+.mem-box-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:2px}
+.mem-item{display:flex;align-items:center;gap:8px;padding:7px 0;font-size:12px;border-bottom:1px solid var(--border)}
+.mem-item:last-child{border-bottom:none}
+.mem-item-text{flex:1;color:var(--text)}
+.mem-item-del{opacity:0;cursor:pointer;color:var(--text3);background:none;border:none;font-size:14px;padding:0 4px;flex-shrink:0}
+.mem-item:hover .mem-item-del{opacity:.5}
+.mem-item-del:hover{opacity:1!important;color:var(--red)}
+.mem-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.mem-dot.people{background:#f43e5e}
+.mem-dot.preference{background:#a855f7}
+.mem-dot.travel{background:#3b82f6}
+.mem-dot.work{background:#22c55e}
+.mem-dot.school{background:#eab308}
+.mem-dot.tech{background:#f97316}
+.mem-dot.contact{background:#06b6d4}
+.mem-dot.general{background:var(--text3)}
 
 .empty{text-align:center;padding:64px 16px;color:var(--text3);font-size:14px;line-height:1.8}
 
@@ -276,28 +283,14 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
     <!-- MEMORIES -->
     <div class="pg" id="pg-memories">
       <h1>Memories</h1>
-      <div class="desc">Everything the assistant has learned about you. Extracted automatically from conversations.</div>
-      <div class="fr" style="margin-bottom:10px">
+      <div class="desc">Everything learned about you, organized by category.</div>
+      <div class="fr" style="margin-bottom:12px">
         <input class="inp" id="memSearch" placeholder="Search memories..." onkeydown="if(event.key==='Enter')searchMem()">
         <button class="btn btn-p" onclick="searchMem()">Search</button>
+        <a class="btn btn-g" href="http://127.0.0.1:8528/api/memories/export" target="_blank" style="font-size:10px;padding:6px 10px;white-space:nowrap">Export</a>
       </div>
-      <div id="memFilters" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">
-        <button class="btn btn-g" style="font-size:10px;padding:3px 8px" onclick="filterMem('')">All</button>
-        <button class="btn btn-g" style="font-size:10px;padding:3px 8px" onclick="filterMem('people')">People</button>
-        <button class="btn btn-g" style="font-size:10px;padding:3px 8px" onclick="filterMem('preference')">Preferences</button>
-        <button class="btn btn-g" style="font-size:10px;padding:3px 8px" onclick="filterMem('travel')">Travel</button>
-        <button class="btn btn-g" style="font-size:10px;padding:3px 8px" onclick="filterMem('work')">Work</button>
-        <button class="btn btn-g" style="font-size:10px;padding:3px 8px" onclick="filterMem('school')">School</button>
-        <button class="btn btn-g" style="font-size:10px;padding:3px 8px" onclick="filterMem('tech')">Tech</button>
-      </div>
-      <div id="memResults" style="display:none;margin-bottom:20px"></div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
-        <div class="label" style="margin:0">All memories</div>
-        <div style="display:flex;gap:4px">
-          <a class="btn btn-g" href="http://127.0.0.1:8528/api/memories/export" target="_blank" style="font-size:10px;padding:4px 10px">Export</a>
-        </div>
-      </div>
-      <div id="memList" style="margin-top:8px"><div style="color:var(--text3);padding:16px 0;font-size:13px">Loading...</div></div>
+      <div id="memResults" style="display:none;margin-bottom:16px"></div>
+      <div id="memBoxes"></div>
     </div>
 
     <!-- INTEGRATIONS -->
@@ -396,7 +389,8 @@ function onMsg(m){
   if(m.type==='hands_free')document.getElementById('togHF').classList.toggle('on',m.on);
   if(m.type==='whisper')document.getElementById('togW').classList.toggle('on',m.on);
   if(m.type==='oauth_complete')gLoad();
-  if(m.type==='todo_added')loadTodos();
+  if(m.type==='todo_added'||m.type==='todo_completed')loadTodos();
+  if(m.type==='memory_updated')loadMemories();
 }
 function updStatus(s,d){const c={loading:'loading',idle:'',recording:'recording',processing:'processing',hands_free:''};document.getElementById('sDot').className='d '+(c[s]||'');document.getElementById('logoDot').className='dot '+(c[s]||'');document.getElementById('sTxt').textContent=d||s}
 
@@ -521,45 +515,60 @@ async function completeTodo(id){await apiPost('todos/complete',{id});loadTodos()
 async function addTodoInline(el){const t=el.value.trim();if(!t)return;await apiPost('todos/add',{text:t});el.value='';loadTodos()}
 
 // Memories
+const CAT_LABELS={people:'People',preference:'Preferences',travel:'Travel',work:'Work',school:'School',tech:'Tech',contact:'Contacts',general:'General'};
+const CAT_ORDER=['people','preference','travel','work','school','tech','contact','general'];
+
 async function loadMemories(){
   try{
     const r=await fetch(`${API}/api/memories`);const d=await r.json();
-    const el=document.getElementById('memList');
     const mems=d.memories||[];
-    _allMems=mems;
-    if(!mems.length){el.innerHTML='<div style="color:var(--text3);padding:16px 0;font-size:13px">No memories yet. Start talking to the assistant — it learns automatically.</div>';return}
-    el.innerHTML=mems.map(m=>{
-      const ts=m.created_at?new Date(m.created_at).toLocaleDateString('en-US',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}):'';
-      const cat=inferCategory(m.memory||'');
-      return`<div class="mem-card"><div class="mem-text">${esc(m.memory||'')}</div><div class="mem-meta"><span class="mem-cat ${cat}">${cat}</span><span>${ts}</span><button class="mem-del" onclick="deleteMem('${m.id}')">&times;</button></div></div>`;
-    }).join('');
+    renderMemBoxes(mems);
   }catch{}
 }
+
+function renderMemBoxes(mems){
+  const el=document.getElementById('memBoxes');
+  if(!mems.length){el.innerHTML='<div style="color:var(--text3);padding:24px 0;font-size:13px;text-align:center">No memories yet. Talk to the assistant — it learns automatically.</div>';return}
+  // Group by category
+  const groups={};
+  mems.forEach(m=>{const c=inferCategory(m.memory||'');if(!groups[c])groups[c]=[];groups[c].push(m)});
+  // Render boxes in order
+  el.innerHTML=CAT_ORDER.filter(c=>groups[c]&&groups[c].length).map(cat=>{
+    const items=groups[cat];
+    return`<div class="mem-box">
+      <div class="mem-box-head" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
+        <div class="mem-box-title"><span class="mem-dot ${cat}"></span>${CAT_LABELS[cat]||cat}</div>
+        <span class="mem-box-count">${items.length}</span>
+      </div>
+      <div class="mem-box-body">${items.map(m=>
+        `<div class="mem-item">
+          <span class="mem-item-text">${esc(m.memory||'')}</span>
+          <button class="mem-item-del" onclick="deleteMem('${m.id}')">&times;</button>
+        </div>`
+      ).join('')}</div>
+    </div>`;
+  }).join('');
+}
+
 async function searchMem(){
-  const q=document.getElementById('memSearch').value.trim();if(!q){document.getElementById('memResults').style.display='none';return}
+  const q=document.getElementById('memSearch').value.trim();
+  if(!q){document.getElementById('memResults').style.display='none';loadMemories();return}
   try{
     const r=await fetch(`${API}/api/memories/search`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q})});
     const d=await r.json();
-    const el=document.getElementById('memResults');
-    el.style.display='';
+    const el=document.getElementById('memResults');el.style.display='';
     const results=d.results||[];
     if(!results.length){el.innerHTML='<div style="color:var(--text3);font-size:13px;padding:8px 0">No memories found.</div>';return}
-    el.innerHTML='<div class="label">Search results</div>'+results.map(m=>{
-      const cat=inferCategory(m.memory||'');
-      return`<div class="mem-card"><div class="mem-text">${esc(m.memory||'')}</div><div class="mem-meta"><span class="mem-cat ${cat}">${cat}</span></div></div>`;
+    el.innerHTML=results.map(m=>{
+      const c=inferCategory(m.memory||'');
+      return`<div class="mem-item" style="border-bottom:1px solid var(--border)"><span class="mem-dot ${c}"></span><span class="mem-item-text">${esc(m.memory||'')}</span></div>`;
     }).join('');
   }catch{}
 }
-async function deleteMem(id){await fetch(`${API}/api/memories/${id}`,{method:'DELETE'});loadMemories()}
-let _allMems=[];
-function filterMem(cat){
-  const el=document.getElementById('memList');
-  const filtered=cat?_allMems.filter(m=>inferCategory(m.memory||'')===cat):_allMems;
-  el.innerHTML=filtered.map(m=>{
-    const ts=m.created_at?new Date(m.created_at).toLocaleDateString('en-US',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}):'';
-    const c=inferCategory(m.memory||'');
-    return`<div class="mem-card"><div class="mem-text">${esc(m.memory||'')}</div><div class="mem-meta"><span class="mem-cat ${c}">${c}</span><span>${ts}</span><button class="mem-del" onclick="deleteMem('${m.id}')">&times;</button></div></div>`;
-  }).join('')||'<div style="color:var(--text3);padding:12px 0;font-size:13px">No memories in this category.</div>';
+
+async function deleteMem(id){
+  await fetch(`${API}/api/memories/${id}`,{method:'DELETE'});
+  loadMemories();
 }
 function inferCategory(text){
   const t=text.toLowerCase();
