@@ -467,4 +467,8 @@ class Assistant:
             "- If no accounts connected, say 'Connect Google in Settings first.'\n"
             "- If a tool fails, explain what went wrong simply.\n"
             "- If the user is just chatting (not calendar/email), respond briefly and naturally.\n"
+            "- USE your memories proactively — if you know who someone is, use that knowledge.\n"
+            "  Example: if user says 'email Samyukta' and you remember her email, use it.\n"
+            "  Example: if user has a meeting with someone you know, mention relevant context.\n"
+            "- When summarizing a conversation, extract key facts for memory.\n"
         )

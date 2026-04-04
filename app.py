@@ -610,6 +610,26 @@ async def api_delete_memory(memory_id: str):
     return {"ok": True}
 
 
+@api.get("/api/memories/export")
+async def api_export_memories():
+    """Export all memories as JSON file."""
+    path = mem.export_memories()
+    return FileResponse(path, filename="muse-memories.json", media_type="application/json")
+
+
+@api.post("/api/memories/import")
+async def api_import_memories(body: dict):
+    """Import memories from JSON data."""
+    memories = body.get("memories", [])
+    count = 0
+    for m in memories:
+        text = m.get("memory", "")
+        if text:
+            mem.remember(text)
+            count += 1
+    return {"ok": True, "imported": count}
+
+
 @api.get("/api/todos")
 async def api_todos():
     return {"todos": S.todos.list_all() if S.todos else []}
@@ -1048,6 +1068,13 @@ def process_audio(audio):
             ddp = S.domains.get_whisper_prompt()
             if ddp:
                 prompt_parts.append(ddp)
+        # Add names from memory for better Whisper spelling
+        try:
+            mem_names = mem.get_names_for_dictation()
+            if mem_names:
+                prompt_parts.append(", ".join(mem_names))
+        except Exception:
+            pass
         whisper_prompt = ", ".join(prompt_parts) if prompt_parts else None
 
         # Streaming transcription — emit partial results as segments complete
@@ -1438,6 +1465,16 @@ if __name__ == "__main__":
     threading.Thread(target=load_engine, daemon=True).start()
     threading.Thread(target=start_listener, daemon=True).start()
     threading.Thread(target=audio_level_monitor, daemon=True).start()
+
+    # Periodic memory queue flusher
+    def memory_flusher():
+        while True:
+            time.sleep(30)
+            try:
+                mem.flush_pending()
+            except Exception:
+                pass
+    threading.Thread(target=memory_flusher, daemon=True).start()
 
     if "--no-browser" not in sys.argv:
         def open_browser():

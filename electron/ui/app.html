@@ -185,7 +185,15 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
 .mem-card:last-child{border-bottom:none}
 .mem-text{font-size:13px;margin-bottom:3px}
 .mem-meta{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text3)}
-.mem-cat{background:rgba(79,143,247,.15);color:var(--blue);padding:1px 6px;border-radius:3px;font-size:9px;font-weight:500}
+.mem-cat{padding:1px 6px;border-radius:3px;font-size:9px;font-weight:500}
+.mem-cat.preference{background:rgba(168,85,247,.15);color:#a855f7}
+.mem-cat.travel{background:rgba(59,130,246,.15);color:#3b82f6}
+.mem-cat.work{background:rgba(34,197,94,.15);color:#22c55e}
+.mem-cat.people{background:rgba(244,63,94,.15);color:#f43e5e}
+.mem-cat.contact{background:rgba(6,182,212,.15);color:#06b6d4}
+.mem-cat.tech{background:rgba(249,115,22,.15);color:#f97316}
+.mem-cat.school{background:rgba(234,179,8,.15);color:#eab308}
+.mem-cat.general{background:rgba(255,255,255,.06);color:var(--text3)}
 .mem-del{opacity:0;cursor:pointer;color:var(--text3);background:none;border:none;font-size:12px;margin-left:auto;padding:2px 6px}
 .mem-card:hover .mem-del{opacity:.5}
 .mem-del:hover{opacity:1!important}
@@ -274,8 +282,13 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
         <button class="btn btn-p" onclick="searchMem()">Search</button>
       </div>
       <div id="memResults" style="display:none;margin-bottom:20px"></div>
-      <div class="label">All memories</div>
-      <div id="memList"><div style="color:var(--text3);padding:16px 0;font-size:13px">Loading...</div></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px">
+        <div class="label" style="margin:0">All memories</div>
+        <div style="display:flex;gap:4px">
+          <a class="btn btn-g" href="http://127.0.0.1:8528/api/memories/export" target="_blank" style="font-size:10px;padding:4px 10px">Export</a>
+        </div>
+      </div>
+      <div id="memList" style="margin-top:8px"><div style="color:var(--text3);padding:16px 0;font-size:13px">Loading...</div></div>
     </div>
 
     <!-- INTEGRATIONS -->
@@ -497,7 +510,7 @@ async function loadMemories(){
     el.innerHTML=mems.map(m=>{
       const ts=m.created_at?new Date(m.created_at).toLocaleDateString('en-US',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}):'';
       const cat=inferCategory(m.memory||'');
-      return`<div class="mem-card"><div class="mem-text">${esc(m.memory||'')}</div><div class="mem-meta"><span class="mem-cat">${cat}</span><span>${ts}</span><button class="mem-del" onclick="deleteMem('${m.id}')">&times;</button></div></div>`;
+      return`<div class="mem-card"><div class="mem-text">${esc(m.memory||'')}</div><div class="mem-meta"><span class="mem-cat ${cat}">${cat}</span><span>${ts}</span><button class="mem-del" onclick="deleteMem('${m.id}')">&times;</button></div></div>`;
     }).join('');
   }catch{}
 }
@@ -512,7 +525,7 @@ async function searchMem(){
     if(!results.length){el.innerHTML='<div style="color:var(--text3);font-size:13px;padding:8px 0">No memories found.</div>';return}
     el.innerHTML='<div class="label">Search results</div>'+results.map(m=>{
       const cat=inferCategory(m.memory||'');
-      return`<div class="mem-card"><div class="mem-text">${esc(m.memory||'')}</div><div class="mem-meta"><span class="mem-cat">${cat}</span></div></div>`;
+      return`<div class="mem-card"><div class="mem-text">${esc(m.memory||'')}</div><div class="mem-meta"><span class="mem-cat ${cat}">${cat}</span></div></div>`;
     }).join('');
   }catch{}
 }
