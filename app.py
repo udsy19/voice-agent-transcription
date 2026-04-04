@@ -725,6 +725,20 @@ async def api_voices():
     return {"voices": voices, "current": current, "kokoro_available": tts.is_available()}
 
 
+@api.post("/api/elevenlabs-key")
+async def api_set_elevenlabs_key(body: dict):
+    """Set ElevenLabs API key."""
+    key = body.get("key", "").strip()
+    if not key:
+        return {"ok": False, "error": "Empty key"}
+    from config import _keychain_set
+    _keychain_set("Muse", "elevenlabs_api_key", key)
+    import config
+    config.ELEVENLABS_API_KEY = key
+    tts.ELEVENLABS_KEY = key
+    return {"ok": True}
+
+
 @api.post("/api/voices/set")
 async def api_set_voice(body: dict):
     """Set the TTS voice."""

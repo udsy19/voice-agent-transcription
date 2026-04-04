@@ -1,10 +1,13 @@
-"""Kokoro TTS — high-quality local text-to-speech with 20+ voices.
+"""TTS — ElevenLabs (online, premium) → Kokoro (offline fallback) → macOS say.
 
-Uses kokoro-onnx for fast inference. Models auto-download on first use.
-Voices are selectable in settings with live preview.
+Priority:
+1. ElevenLabs if API key configured + internet available
+2. Kokoro ONNX if models downloaded (local, no internet needed)
+3. macOS `say` command (always available)
 """
 
 import os
+import io
 import time
 import threading
 import subprocess
@@ -14,109 +17,153 @@ import sounddevice as sd
 from logger import get_logger
 from config import DATA_DIR
 
+log = get_logger("tts")
+
 # Suppress noisy warnings
 logging.getLogger("phonemizer").setLevel(logging.ERROR)
 
-# Suppress PortAudio stderr noise
-import io, contextlib
-os.environ["PA_ALSA_PLUGHW"] = "1"  # suppress ALSA warnings
+# ── ElevenLabs ──────────────────────────────────────────────────────────────
 
-log = get_logger("tts")
+try:
+    from config import ELEVENLABS_API_KEY
+    ELEVENLABS_KEY = ELEVENLABS_API_KEY
+except ImportError:
+    ELEVENLABS_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 
-MODEL_DIR = str(DATA_DIR / "models")
-MODEL_PATH = os.path.join(MODEL_DIR, "kokoro-v1.0.onnx")
-VOICES_PATH = os.path.join(MODEL_DIR, "voices-v1.0.bin")
-SAMPLE_RATE = 24000
-
-# All available Kokoro voices with descriptions
-VOICES = {
-    "af_heart":  {"name": "Heart", "gender": "F", "accent": "American", "desc": "Warm, friendly"},
-    "af_alloy":  {"name": "Alloy", "gender": "F", "accent": "American", "desc": "Clear, professional"},
-    "af_aoede":  {"name": "Aoede", "gender": "F", "accent": "American", "desc": "Soft, melodic"},
-    "af_bella":  {"name": "Bella", "gender": "F", "accent": "American", "desc": "Confident, bright"},
-    "af_jessica": {"name": "Jessica", "gender": "F", "accent": "American", "desc": "Casual, natural"},
-    "af_kore":   {"name": "Kore", "gender": "F", "accent": "American", "desc": "Gentle, calm"},
-    "af_nicole": {"name": "Nicole", "gender": "F", "accent": "American", "desc": "Smooth, articulate"},
-    "af_nova":   {"name": "Nova", "gender": "F", "accent": "American", "desc": "Energetic, youthful"},
-    "af_river":  {"name": "River", "gender": "F", "accent": "American", "desc": "Relaxed, flowing"},
-    "af_sarah":  {"name": "Sarah", "gender": "F", "accent": "American", "desc": "Warm, conversational"},
-    "af_sky":    {"name": "Sky", "gender": "F", "accent": "American", "desc": "Light, airy"},
-    "am_adam":   {"name": "Adam", "gender": "M", "accent": "American", "desc": "Deep, authoritative"},
-    "am_echo":   {"name": "Echo", "gender": "M", "accent": "American", "desc": "Resonant, clear"},
-    "am_eric":   {"name": "Eric", "gender": "M", "accent": "American", "desc": "Friendly, approachable"},
-    "am_liam":   {"name": "Liam", "gender": "M", "accent": "American", "desc": "Young, dynamic"},
-    "am_michael": {"name": "Michael", "gender": "M", "accent": "American", "desc": "Professional, steady"},
-    "am_onyx":   {"name": "Onyx", "gender": "M", "accent": "American", "desc": "Rich, powerful"},
-    "bf_emma":   {"name": "Emma", "gender": "F", "accent": "British", "desc": "Elegant, refined"},
-    "bf_isabella": {"name": "Isabella", "gender": "F", "accent": "British", "desc": "Graceful, poised"},
-    "bm_daniel": {"name": "Daniel", "gender": "M", "accent": "British", "desc": "Classic, distinguished"},
-    "bm_george": {"name": "George", "gender": "M", "accent": "British", "desc": "Warm, trustworthy"},
-    "bm_lewis":  {"name": "Lewis", "gender": "M", "accent": "British", "desc": "Modern, articulate"},
+# Default ElevenLabs voices (subset)
+ELEVENLABS_VOICES = {
+    "sarah":    {"id": "EXAVITQu4vr4xnSDxMaL", "name": "Sarah", "desc": "Mature, confident"},
+    "roger":    {"id": "CwhRBWXzGAHq8TQ4Fs17", "name": "Roger", "desc": "Laid-back, casual"},
+    "laura":    {"id": "FGY2WhTYpPnrIDTdsKH5", "name": "Laura", "desc": "Enthusiastic, quirky"},
+    "charlie":  {"id": "IKne3meq5aSn9XLyUdCD", "name": "Charlie", "desc": "Deep, confident"},
+    "george":   {"id": "JBFqnCBsd6RMkjVDRZzb", "name": "George", "desc": "Warm storyteller"},
+    "river":    {"id": "SAz9YHcvj6GT2YYXdXww", "name": "River", "desc": "Relaxed, neutral"},
+    "liam":     {"id": "TX3LPaxmHKxFdv7VOQHJ", "name": "Liam", "desc": "Energetic, social"},
+    "alice":    {"id": "Xb7hH8MSUJpSbSDYk0k2", "name": "Alice", "desc": "Clear, engaging"},
+    "matilda":  {"id": "XrExE9yKIg1WjnnlVkGX", "name": "Matilda", "desc": "Professional"},
+    "jessica":  {"id": "cgSgspJ2msm6clMCkdW9", "name": "Jessica", "desc": "Playful, warm"},
+    "eric":     {"id": "cjVigY5qzO86Huf0OWal", "name": "Eric", "desc": "Smooth, trustworthy"},
+    "bella":    {"id": "hpp4J3VqNfWAUOO0d1Us", "name": "Bella", "desc": "Professional, bright"},
 }
 
-PREVIEW_TEXT = "Hi, I'm your voice assistant. How can I help you today?"
+# ── Kokoro (offline fallback) ───────────────────────────────────────────────
+
+MODEL_DIR = str(DATA_DIR / "models")
+KOKORO_MODEL = os.path.join(MODEL_DIR, "kokoro-v1.0.onnx")
+KOKORO_VOICES = os.path.join(MODEL_DIR, "voices-v1.0.bin")
+
+KOKORO_VOICE_LIST = {
+    "af_heart":  {"name": "Heart", "gender": "F", "desc": "Warm, friendly"},
+    "af_alloy":  {"name": "Alloy", "gender": "F", "desc": "Clear, professional"},
+    "af_bella":  {"name": "Bella", "gender": "F", "desc": "Confident, bright"},
+    "af_nicole": {"name": "Nicole", "gender": "F", "desc": "Smooth, articulate"},
+    "af_nova":   {"name": "Nova", "gender": "F", "desc": "Energetic, youthful"},
+    "af_sky":    {"name": "Sky", "gender": "F", "desc": "Light, airy"},
+    "am_adam":   {"name": "Adam", "gender": "M", "desc": "Deep, authoritative"},
+    "am_eric":   {"name": "Eric", "gender": "M", "desc": "Friendly, approachable"},
+    "am_michael": {"name": "Michael", "gender": "M", "desc": "Professional, steady"},
+    "bf_emma":   {"name": "Emma", "gender": "F", "desc": "Elegant, refined"},
+    "bm_daniel": {"name": "Daniel", "gender": "M", "desc": "Classic, distinguished"},
+    "bm_george": {"name": "George", "gender": "M", "desc": "Warm, trustworthy"},
+}
 
 _kokoro = None
 _kokoro_lock = threading.Lock()
 _playing = False
 
+PREVIEW_TEXT = "Hi, I'm your voice assistant. How can I help you today?"
 
-def _ensure_models():
-    """Download models if not present."""
-    os.makedirs(MODEL_DIR, exist_ok=True)
-    base_url = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
-    for fname in ["kokoro-v1.0.onnx", "voices-v1.0.bin"]:
-        path = os.path.join(MODEL_DIR, fname)
-        if not os.path.exists(path):
-            log.info("Downloading %s...", fname)
-            try:
-                import urllib.request
-                import ssl
-                try:
-                    import certifi
-                    ctx = ssl.create_default_context(cafile=certifi.where())
-                except ImportError:
-                    ctx = ssl.create_default_context()
-                urllib.request.urlretrieve(f"{base_url}/{fname}", path,
-                                          context=ctx if hasattr(urllib.request, 'urlretrieve') else None)
-                # Actually urlretrieve doesn't take context, use urlopen
-                req = urllib.request.Request(f"{base_url}/{fname}")
-                with urllib.request.urlopen(req, context=ctx) as resp, open(path, 'wb') as f:
-                    while True:
-                        chunk = resp.read(65536)
-                        if not chunk:
-                            break
-                        f.write(chunk)
-                log.info("Downloaded %s", fname)
-            except Exception as e:
-                log.error("Failed to download %s: %s", fname, e)
-                return False
-    return True
+
+def _get_elevenlabs_key():
+    """Get ElevenLabs key from env, keychain, or config."""
+    key = ELEVENLABS_KEY
+    if not key:
+        try:
+            from config import _keychain_get
+            key = _keychain_get("Muse", "elevenlabs_api_key")
+        except Exception:
+            pass
+    return key
+
+
+def _speak_elevenlabs(text: str, voice: str = "sarah") -> bool:
+    """Speak using ElevenLabs API. Returns True on success."""
+    key = _get_elevenlabs_key()
+    if not key:
+        return False
+    try:
+        import elevenlabs
+        elevenlabs.set_api_key(key)
+        voice_id = ELEVENLABS_VOICES.get(voice, {}).get("id", voice)
+        audio = elevenlabs.generate(text=text, voice=voice_id, model="eleven_turbo_v2_5")
+        # Play the audio bytes
+        audio_bytes = b"".join(audio) if hasattr(audio, '__iter__') and not isinstance(audio, bytes) else audio
+        import tempfile, soundfile as sf
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            f.write(audio_bytes)
+            tmp = f.name
+        # Use afplay for mp3 (simpler than decoding)
+        subprocess.run(["afplay", tmp], capture_output=True, timeout=30)
+        os.remove(tmp)
+        return True
+    except Exception as e:
+        log.warning("ElevenLabs failed: %s", e)
+        return False
 
 
 def _get_kokoro():
-    """Lazy-load Kokoro TTS engine."""
+    """Lazy-load Kokoro TTS."""
     global _kokoro
     if _kokoro is not None:
         return _kokoro
     with _kokoro_lock:
         if _kokoro is not None:
             return _kokoro
-        if not os.path.exists(MODEL_PATH) or not os.path.exists(VOICES_PATH):
-            if not _ensure_models():
-                return None
+        if not os.path.exists(KOKORO_MODEL) or not os.path.exists(KOKORO_VOICES):
+            return None
         try:
             from kokoro_onnx import Kokoro
-            _kokoro = Kokoro(MODEL_PATH, VOICES_PATH)
+            _kokoro = Kokoro(KOKORO_MODEL, KOKORO_VOICES)
             log.info("Kokoro TTS loaded")
             return _kokoro
         except Exception as e:
-            log.error("Failed to load Kokoro: %s", e)
+            log.error("Kokoro load failed: %s", e)
             return None
 
 
-def speak(text: str, voice: str = "af_heart"):
-    """Speak text using Kokoro TTS. Non-blocking."""
+def _speak_kokoro(text: str, voice: str = "af_heart") -> bool:
+    """Speak using Kokoro (local). Returns True on success."""
+    kokoro = _get_kokoro()
+    if not kokoro:
+        return False
+    try:
+        audio, sr = kokoro.create(text, voice=voice, speed=1.0)
+        if audio is not None and len(audio) > 0:
+            try:
+                sd.play(audio, samplerate=sr)
+                sd.wait()
+            except Exception:
+                sd.play(audio, samplerate=sr, device=sd.default.device[1])
+                sd.wait()
+        return True
+    except Exception as e:
+        log.warning("Kokoro failed: %s", e)
+        return False
+
+
+def _speak_macos(text: str):
+    """Fallback: macOS say command."""
+    try:
+        subprocess.Popen(["say", "-v", "Samantha", "-r", "190", text],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+
+# ── Public API ──────────────────────────────────────────────────────────────
+
+def speak(text: str, voice: str = "sarah"):
+    """Speak text. ElevenLabs → Kokoro → macOS say. Non-blocking."""
     global _playing
     if _playing:
         stop()
@@ -125,71 +172,55 @@ def speak(text: str, voice: str = "af_heart"):
         global _playing
         _playing = True
         try:
-            kokoro = _get_kokoro()
-            if kokoro is None:
-                # Fallback to macOS say
-                _fallback_speak(text)
+            # Try ElevenLabs first
+            if _speak_elevenlabs(text, voice):
                 return
-            audio, sr = kokoro.create(text, voice=voice, speed=1.0)
-            if audio is not None and len(audio) > 0:
-                try:
-                    sd.play(audio, samplerate=sr)
-                    sd.wait()
-                except sd.PortAudioError:
-                    # PortAudio device error — try default device
-                    sd.play(audio, samplerate=sr, device=sd.default.device[1])
-                    sd.wait()
-        except Exception as e:
-            log.error("TTS failed: %s, falling back to macOS say", e)
-            _fallback_speak(text)
+            # Fallback to Kokoro
+            kokoro_voice = voice if voice in KOKORO_VOICE_LIST else "af_heart"
+            if _speak_kokoro(text, kokoro_voice):
+                return
+            # Last resort: macOS say
+            _speak_macos(text)
         finally:
             _playing = False
 
     threading.Thread(target=run, daemon=True).start()
 
 
-def speak_sync(text: str, voice: str = "af_heart") -> np.ndarray | None:
-    """Speak text and return audio array (for preview). Blocking."""
-    try:
-        kokoro = _get_kokoro()
-        if kokoro is None:
-            return None
-        audio, sr = kokoro.create(text, voice=voice, speed=1.0)
-        if audio is not None and len(audio) > 0:
-            sd.play(audio, samplerate=sr)
-            sd.wait()
-            return audio
-    except Exception as e:
-        log.error("TTS preview failed: %s", e)
-    return None
+def speak_sync(text: str, voice: str = "sarah"):
+    """Speak text synchronously (for preview). Blocking."""
+    if _speak_elevenlabs(text, voice):
+        return
+    kokoro_voice = voice if voice in KOKORO_VOICE_LIST else "af_heart"
+    if _speak_kokoro(text, kokoro_voice):
+        return
+    _speak_macos(text)
 
 
 def stop():
-    """Stop any currently playing audio."""
+    """Stop playback."""
     global _playing
     try:
         sd.stop()
+        subprocess.run(["killall", "afplay"], capture_output=True, timeout=2)
     except Exception:
         pass
     _playing = False
 
 
-def _fallback_speak(text: str):
-    """Fallback to macOS say command."""
-    try:
-        subprocess.Popen(
-            ["say", "-v", "Samantha", "-r", "190", text],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
-    except Exception:
-        pass
-
-
 def get_voices() -> dict:
-    """Return all available voices with metadata."""
-    return VOICES
+    """Return all available voices grouped by provider."""
+    voices = {}
+    # ElevenLabs voices (if configured)
+    if _get_elevenlabs_key():
+        for k, v in ELEVENLABS_VOICES.items():
+            voices[k] = {**v, "provider": "elevenlabs"}
+    # Kokoro voices (always available offline)
+    for k, v in KOKORO_VOICE_LIST.items():
+        voices[k] = {**v, "provider": "kokoro"}
+    return voices
 
 
 def is_available() -> bool:
-    """Check if Kokoro models are downloaded."""
-    return os.path.exists(MODEL_PATH) and os.path.exists(VOICES_PATH)
+    """Check if any TTS is available."""
+    return bool(_get_elevenlabs_key()) or (os.path.exists(KOKORO_MODEL) and os.path.exists(KOKORO_VOICES))

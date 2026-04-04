@@ -339,10 +339,16 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
         <div class="row"><div><div class="row-label">Sounds</div><div class="row-sub">Feedback on start/stop</div></div><button id="togS" class="tog on" onclick="apiPost('toggle-sounds')"></button></div>
       </div>
       <div class="label">Voice</div>
+      <div class="block">
+        <div class="row">
+          <div style="flex:1"><div class="row-label">ElevenLabs API Key</div><div class="row-sub" id="elevenStatus" style="font-size:11px">Not configured (using Kokoro offline)</div></div>
+          <div style="display:flex;gap:6px"><input class="inp" id="elevenKeyInput" type="password" placeholder="sk_..." style="width:140px;font-size:11px"><button class="btn btn-p" onclick="setElevenKey()">Save</button></div>
+        </div>
+      </div>
       <div class="block" id="voiceBlock">
         <div class="row" style="flex-direction:column;align-items:stretch;gap:6px;padding:14px">
           <div class="row-label">Assistant Voice</div>
-          <div class="row-sub">Choose how Muse sounds when speaking back to you.</div>
+          <div class="row-sub">ElevenLabs voices are premium (online). Kokoro voices work offline.</div>
           <div id="voiceGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px"></div>
         </div>
       </div>
@@ -451,7 +457,9 @@ async function loadToday(){
 }
 
 // Voice selection
-let currentVoice='af_heart';
+async function setElevenKey(){const k=document.getElementById('elevenKeyInput').value.trim();if(!k)return;const r=await fetch(`${API}/api/elevenlabs-key`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})});const d=await r.json();if(d.ok){document.getElementById('elevenKeyInput').value='';document.getElementById('elevenStatus').textContent='Configured';document.getElementById('elevenStatus').style.color='var(--green)';loadVoices()}}
+
+let currentVoice='sarah';
 async function loadVoices(){
   try{
     const r=await fetch(`${API}/api/voices`);const d=await r.json();
@@ -459,14 +467,13 @@ async function loadVoices(){
     const grid=document.getElementById('voiceGrid');
     if(!grid)return;
     grid.innerHTML=Object.entries(d.voices).map(([id,v])=>{
-      const gender=v.gender==='F'?'♀':'♂';
-      const flag=v.accent==='British'?'🇬🇧':'🇺🇸';
+      const prov=v.provider==='elevenlabs'?'<span style="font-size:8px;color:var(--blue);margin-left:4px">11labs</span>':'<span style="font-size:8px;color:var(--text3);margin-left:4px">offline</span>';
       return`<div class="vc${id===currentVoice?' on':''}" onclick="selectVoice('${id}')">
         <button class="vc-play" onclick="event.stopPropagation();previewVoice('${id}')" title="Preview">
           <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
         </button>
         <div class="vc-info">
-          <div class="vc-name">${gender} ${v.name} <span style="font-size:9px;opacity:.5">${flag}</span></div>
+          <div class="vc-name">${v.name}${prov}</div>
           <div class="vc-desc">${v.desc}</div>
         </div>
       </div>`;

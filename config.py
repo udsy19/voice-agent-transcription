@@ -64,6 +64,7 @@ def _keychain_set(service: str, account: str, password: str) -> bool:
 
 # Try Keychain first, then .env fallback
 GROQ_API_KEY = _keychain_get("Muse", "groq_api_key") or os.getenv("GROQ_API_KEY", "")
+ELEVENLABS_API_KEY = _keychain_get("Muse", "elevenlabs_api_key") or os.getenv("ELEVENLABS_API_KEY", "")
 GROQ_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 # ── Whisper ──────────────────────────────────────────────────────────────────
