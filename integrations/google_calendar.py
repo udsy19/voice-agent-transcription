@@ -75,7 +75,10 @@ def create_event(token_data: dict, summary: str, start_time: str,
         }
     except Exception as e:
         log.error("Calendar create_event failed: %s", e)
-        return {"ok": False, "error": str(e)}
+        err = str(e)
+        if "accessNotConfigured" in err or "has not been used" in err:
+            return {"ok": False, "error": "Google Calendar API is not enabled. Enable it at console.cloud.google.com."}
+        return {"ok": False, "error": err}
 
 
 def list_events(token_data: dict, days_ahead: int = 1, max_results: int = 10) -> dict:
@@ -120,4 +123,7 @@ def list_events(token_data: dict, days_ahead: int = 1, max_results: int = 10) ->
         return {"ok": True, "events": events}
     except Exception as e:
         log.error("Calendar list_events failed: %s", e)
-        return {"ok": False, "error": str(e)}
+        err = str(e)
+        if "accessNotConfigured" in err or "has not been used" in err:
+            return {"ok": False, "error": "Google Calendar API is not enabled. Enable it at console.cloud.google.com."}
+        return {"ok": False, "error": err}

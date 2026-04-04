@@ -51,7 +51,10 @@ def draft_email(token_data: dict, to: str, subject: str, body: str) -> dict:
         return {"ok": True, "draft_id": draft_id, "to": to, "subject": subject}
     except Exception as e:
         log.error("Gmail draft failed: %s", e)
-        return {"ok": False, "error": str(e)}
+        err = str(e)
+        if "accessNotConfigured" in err or "has not been used" in err:
+            return {"ok": False, "error": "Gmail API is not enabled. Enable it at console.cloud.google.com > APIs > Gmail API."}
+        return {"ok": False, "error": err}
 
 
 def send_email(token_data: dict, to: str, subject: str, body: str) -> dict:
@@ -74,7 +77,10 @@ def send_email(token_data: dict, to: str, subject: str, body: str) -> dict:
         return {"ok": True, "message_id": msg_id, "to": to, "subject": subject}
     except Exception as e:
         log.error("Gmail send failed: %s", e)
-        return {"ok": False, "error": str(e)}
+        err = str(e)
+        if "accessNotConfigured" in err or "has not been used" in err:
+            return {"ok": False, "error": "Gmail API is not enabled. Enable it at console.cloud.google.com > APIs > Gmail API."}
+        return {"ok": False, "error": err}
 
 
 def send_draft(token_data: dict, draft_id: str) -> dict:
