@@ -63,10 +63,14 @@ def _get_kokoro():
 
 
 def speak(text: str, voice: str = "af_heart"):
-    """Speak text. Kokoro → macOS say. Non-blocking."""
+    """Speak text. Preprocesses for natural speech, then Kokoro → macOS say."""
     global _playing
     if _playing:
         stop()
+
+    # Preprocess text for natural speech
+    from speech_prep import prepare_for_speech
+    spoken_text = prepare_for_speech(text)
 
     def run():
         global _playing
@@ -74,7 +78,7 @@ def speak(text: str, voice: str = "af_heart"):
         try:
             kokoro = _get_kokoro()
             if kokoro:
-                audio, sr = kokoro.create(text, voice=voice, speed=1.05)
+                audio, sr = kokoro.create(spoken_text, voice=voice, speed=1.05)
                 if audio is not None and len(audio) > 0:
                     try:
                         sd.play(audio, samplerate=sr)
@@ -86,10 +90,10 @@ def speak(text: str, voice: str = "af_heart"):
                         except Exception:
                             _speak_macos(text)
                     return
-            _speak_macos(text)
+            _speak_macos(spoken_text)
         except Exception as e:
             log.warning("TTS failed: %s", e)
-            _speak_macos(text)
+            _speak_macos(spoken_text)
         finally:
             _playing = False
 
