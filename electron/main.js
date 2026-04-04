@@ -5,10 +5,13 @@ const { spawn, execSync } = require('child_process');
 const WebSocket = require('ws');
 const http = require('http');
 
-// Prevent EPIPE crash when Python process dies
+// Prevent crashes from pipe errors and disposed frames
 process.on('uncaughtException', (err) => {
-  if (err.code === 'EPIPE' || err.code === 'ERR_STREAM_DESTROYED') return; // ignore pipe errors
-  console.error('[main] Uncaught:', err.message);
+  const msg = err.message || '';
+  if (err.code === 'EPIPE' || err.code === 'ERR_STREAM_DESTROYED') return;
+  if (msg.includes('Render frame was disposed')) return;
+  if (msg.includes('WebFrameMain')) return;
+  console.error('[main] Uncaught:', msg);
 });
 
 const PORT = 8528;
