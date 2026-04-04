@@ -14,8 +14,12 @@ import sounddevice as sd
 from logger import get_logger
 from config import DATA_DIR
 
-# Suppress noisy phonemizer warnings
+# Suppress noisy warnings
 logging.getLogger("phonemizer").setLevel(logging.ERROR)
+
+# Suppress PortAudio stderr noise
+import io, contextlib
+os.environ["PA_ALSA_PLUGHW"] = "1"  # suppress ALSA warnings
 
 log = get_logger("tts")
 
@@ -128,8 +132,13 @@ def speak(text: str, voice: str = "af_heart"):
                 return
             audio, sr = kokoro.create(text, voice=voice, speed=1.0)
             if audio is not None and len(audio) > 0:
-                sd.play(audio, samplerate=sr)
-                sd.wait()
+                try:
+                    sd.play(audio, samplerate=sr)
+                    sd.wait()
+                except sd.PortAudioError:
+                    # PortAudio device error — try default device
+                    sd.play(audio, samplerate=sr, device=sd.default.device[1])
+                    sd.wait()
         except Exception as e:
             log.error("TTS failed: %s, falling back to macOS say", e)
             _fallback_speak(text)

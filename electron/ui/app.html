@@ -435,7 +435,8 @@ async function previewVoice(id){
 }
 
 chkGroq();chkBackend();setupListeners();
-setInterval(()=>{if(connected){refresh();loadToday()}},10e3);
+setInterval(()=>{if(connected)refresh()},10e3);
+setInterval(()=>{if(connected)loadToday()},60e3); // calendar every 60s, not 10s
 function waitAndLoadToday(){if(connected){loadToday()}else{setTimeout(waitAndLoadToday,2e3)}}
 setTimeout(waitAndLoadToday,2e3);
 
