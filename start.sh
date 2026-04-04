@@ -28,17 +28,11 @@ fi
 export PYTHONPATH="$DIR"
 
 # Kill ALL existing instances
-pkill -f "app.py.*--no-browser" 2>/dev/null || true
+pkill -9 -f "python3.*app.py" 2>/dev/null || true
 pkill -f "Muse" 2>/dev/null || true
 pkill -f "Electron.*muse" 2>/dev/null || true
-sleep 0.5
-
-# Check if port is free
-if lsof -i :8528 -sTCP:LISTEN &>/dev/null; then
-    echo "Port 8528 is in use. Killing existing process..."
-    lsof -ti :8528 | xargs kill -9 2>/dev/null || true
-    sleep 1
-fi
+lsof -ti :8528 | xargs kill -9 2>/dev/null || true
+sleep 1
 
 echo "Starting Muse..."
 
