@@ -1,6 +1,9 @@
-"""Google Calendar integration — create and list events."""
+"""Google Calendar — full CRUD: create, list, update, delete events.
 
-from datetime import datetime, timedelta, timezone
+Supports: location, notes, attendees, Google Meet, timezone, multi-day.
+"""
+
+from datetime import datetime, timedelta
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from logger import get_logger
@@ -9,7 +12,6 @@ log = get_logger("gcal")
 
 
 def _get_service(token_data: dict):
-    """Build a Calendar API service from token data."""
     if "credentials" in token_data:
         creds = token_data["credentials"]
     else:
@@ -21,29 +23,25 @@ def _get_service(token_data: dict):
     return build("calendar", "v3", credentials=creds, cache_discovery=False)
 
 
+def _api_error(e) -> dict:
+    err = str(e)
+    if "accessNotConfigured" in err or "has not been used" in err:
+        return {"ok": False, "error": "Google Calendar API not enabled. Enable at console.cloud.google.com."}
+    return {"ok": False, "error": err}
+
+
 def create_event(token_data: dict, summary: str, start_time: str,
                  end_time: str = "", description: str = "",
-                 attendees: list[str] | None = None) -> dict:
-    """Create a calendar event.
-
-    Args:
-        token_data: OAuth token dict from OAuthManager
-        summary: Event title
-        start_time: ISO 8601 datetime (e.g., "2026-04-04T15:00:00")
-        end_time: ISO 8601 datetime. Defaults to 1 hour after start.
-        description: Optional event description
-        attendees: Optional list of email addresses
-
-    Returns:
-        {"ok": True, "event_id": str, "link": str, "summary": str, "start": str}
-    """
+                 location: str = "", attendees: list[str] | None = None,
+                 timezone: str = "America/New_York",
+                 add_meet: bool = False) -> dict:
+    """Create a calendar event with full details."""
     service = _get_service(token_data)
 
-    # Parse start time and default end to +1 hour
     try:
         start_dt = datetime.fromisoformat(start_time)
     except ValueError:
-        return {"ok": False, "error": f"Invalid start_time format: {start_time}"}
+        return {"ok": False, "error": f"Invalid start_time: {start_time}"}
 
     if end_time:
         try:
@@ -55,46 +53,58 @@ def create_event(token_data: dict, summary: str, start_time: str,
 
     event_body = {
         "summary": summary,
-        "start": {"dateTime": start_dt.isoformat(), "timeZone": "America/New_York"},
-        "end": {"dateTime": end_dt.isoformat(), "timeZone": "America/New_York"},
+        "start": {"dateTime": start_dt.isoformat(), "timeZone": timezone},
+        "end": {"dateTime": end_dt.isoformat(), "timeZone": timezone},
     }
     if description:
         event_body["description"] = description
+    if location:
+        event_body["location"] = location
     if attendees:
-        event_body["attendees"] = [{"email": e} for e in attendees]
+        event_body["attendees"] = [{"email": e.strip()} for e in attendees if e.strip()]
+    if add_meet:
+        event_body["conferenceData"] = {
+            "createRequest": {
+                "requestId": f"muse-{int(datetime.now().timestamp())}",
+                "conferenceSolutionKey": {"type": "hangoutsMeet"},
+            }
+        }
 
     try:
-        event = service.events().insert(calendarId="primary", body=event_body).execute()
-        log.info("Created event: %s at %s", summary, start_time)
+        extra = {"conferenceDataVersion": 1} if add_meet else {}
+        event = service.events().insert(
+            calendarId="primary", body=event_body,
+            sendUpdates="all" if attendees else "none",
+            **extra,
+        ).execute()
+
+        meet_link = ""
+        if event.get("conferenceData", {}).get("entryPoints"):
+            for ep in event["conferenceData"]["entryPoints"]:
+                if ep.get("entryPointType") == "video":
+                    meet_link = ep["uri"]
+                    break
+
+        log.info("Created: %s at %s (attendees=%d, meet=%s)",
+                 summary, start_time, len(attendees or []), bool(meet_link))
         return {
             "ok": True,
             "event_id": event["id"],
             "link": event.get("htmlLink", ""),
+            "meet_link": meet_link,
             "summary": event["summary"],
             "start": event["start"].get("dateTime", event["start"].get("date", "")),
+            "attendees_notified": bool(attendees),
         }
     except Exception as e:
-        log.error("Calendar create_event failed: %s", e)
-        err = str(e)
-        if "accessNotConfigured" in err or "has not been used" in err:
-            return {"ok": False, "error": "Google Calendar API is not enabled. Enable it at console.cloud.google.com."}
-        return {"ok": False, "error": err}
+        log.error("create_event failed: %s", e)
+        return _api_error(e)
 
 
-def list_events(token_data: dict, days_ahead: int = 1, max_results: int = 10) -> dict:
-    """List upcoming calendar events.
-
-    Args:
-        token_data: OAuth token dict
-        days_ahead: How many days ahead to look (default 1 = today)
-        max_results: Max events to return
-
-    Returns:
-        {"ok": True, "events": [{"summary": str, "start": str, "end": str, "id": str}]}
-    """
+def list_events(token_data: dict, days_ahead: int = 1, max_results: int = 15) -> dict:
+    """List events with full details."""
     service = _get_service(token_data)
 
-    # Use naive UTC datetime — Google API rejects timezone-aware format with +00:00
     now = datetime.utcnow()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     time_min = today_start.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -103,27 +113,81 @@ def list_events(token_data: dict, days_ahead: int = 1, max_results: int = 10) ->
     try:
         result = service.events().list(
             calendarId="primary",
-            timeMin=time_min,
-            timeMax=time_max,
+            timeMin=time_min, timeMax=time_max,
             maxResults=max_results,
-            singleEvents=True,
-            orderBy="startTime",
+            singleEvents=True, orderBy="startTime",
         ).execute()
 
         events = []
         for item in result.get("items", []):
-            events.append({
+            ev = {
                 "summary": item.get("summary", "(no title)"),
                 "start": item["start"].get("dateTime", item["start"].get("date", "")),
                 "end": item["end"].get("dateTime", item["end"].get("date", "")),
                 "id": item["id"],
-            })
+            }
+            if item.get("location"):
+                ev["location"] = item["location"]
+            if item.get("description"):
+                ev["notes"] = item["description"][:200]
+            if item.get("attendees"):
+                ev["attendees"] = [a["email"] for a in item["attendees"][:10]]
+            if item.get("conferenceData", {}).get("entryPoints"):
+                for ep in item["conferenceData"]["entryPoints"]:
+                    if ep.get("entryPointType") == "video":
+                        ev["meet_link"] = ep["uri"]
+                        break
+            events.append(ev)
 
         log.info("Listed %d events (next %d days)", len(events), days_ahead)
         return {"ok": True, "events": events}
     except Exception as e:
-        log.error("Calendar list_events failed: %s", e)
-        err = str(e)
-        if "accessNotConfigured" in err or "has not been used" in err:
-            return {"ok": False, "error": "Google Calendar API is not enabled. Enable it at console.cloud.google.com."}
-        return {"ok": False, "error": err}
+        log.error("list_events failed: %s", e)
+        return _api_error(e)
+
+
+def update_event(token_data: dict, event_id: str, **fields) -> dict:
+    """Update an existing event. Pass only fields to change."""
+    service = _get_service(token_data)
+
+    try:
+        existing = service.events().get(calendarId="primary", eventId=event_id).execute()
+
+        if "summary" in fields:
+            existing["summary"] = fields["summary"]
+        if "description" in fields:
+            existing["description"] = fields["description"]
+        if "location" in fields:
+            existing["location"] = fields["location"]
+        if "start_time" in fields:
+            tz = existing["start"].get("timeZone", "America/New_York")
+            existing["start"] = {"dateTime": fields["start_time"], "timeZone": tz}
+        if "end_time" in fields:
+            tz = existing["end"].get("timeZone", "America/New_York")
+            existing["end"] = {"dateTime": fields["end_time"], "timeZone": tz}
+        if "attendees" in fields:
+            existing["attendees"] = [{"email": e.strip()} for e in fields["attendees"]]
+
+        updated = service.events().update(
+            calendarId="primary", eventId=event_id, body=existing,
+            sendUpdates="all" if fields.get("attendees") else "none",
+        ).execute()
+
+        log.info("Updated event: %s", event_id)
+        return {"ok": True, "event_id": event_id, "summary": updated.get("summary", "")}
+    except Exception as e:
+        log.error("update_event failed: %s", e)
+        return _api_error(e)
+
+
+def delete_event(token_data: dict, event_id: str) -> dict:
+    """Delete/cancel a calendar event."""
+    service = _get_service(token_data)
+    try:
+        service.events().delete(calendarId="primary", eventId=event_id,
+                                sendUpdates="all").execute()
+        log.info("Deleted event: %s", event_id)
+        return {"ok": True, "event_id": event_id}
+    except Exception as e:
+        log.error("delete_event failed: %s", e)
+        return _api_error(e)

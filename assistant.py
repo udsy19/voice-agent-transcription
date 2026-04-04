@@ -21,15 +21,18 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "create_calendar_event",
-            "description": "Create a new calendar event. Use when user wants to add, schedule, or create an event, meeting, or reminder. You MUST have a date/time before calling this — if the user didn't specify one, ask them first.",
+            "description": "Create a calendar event. MUST have title and start time. Ask user if missing.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "summary": {"type": "string", "description": "Event title"},
-                    "start_time": {"type": "string", "description": "Start time in ISO 8601 (e.g., 2026-04-04T15:00:00)"},
-                    "end_time": {"type": "string", "description": "End time in ISO 8601. Default 1 hour after start."},
-                    "description": {"type": "string", "description": "Event description"},
-                    "attendees": {"type": "array", "items": {"type": "string"}, "description": "Attendee emails"},
+                    "summary": {"type": "string", "description": "Event title. Format nicely: capitalize, be descriptive."},
+                    "start_time": {"type": "string", "description": "ISO 8601 start (e.g., 2026-04-04T15:00:00)"},
+                    "end_time": {"type": "string", "description": "ISO 8601 end. Default 1hr after start."},
+                    "description": {"type": "string", "description": "Notes/agenda for the event."},
+                    "location": {"type": "string", "description": "Location or address."},
+                    "attendees": {"type": "string", "description": "Comma-separated email addresses of invitees."},
+                    "timezone": {"type": "string", "description": "IANA timezone. Default America/New_York."},
+                    "add_meet": {"type": "string", "description": "'true' to add a Google Meet link. Use when user says 'add a meet link' or 'video call'."},
                 },
                 "required": ["summary", "start_time"],
             },
@@ -39,11 +42,11 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "list_calendar_events",
-            "description": "List calendar events. Returns events for today by default, or up to 14 days ahead if the user asks about 'next week', 'this week', 'upcoming', etc.",
+            "description": "List calendar events. today=1 day, this week=7, next week=14, this month=30.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "days": {"type": "number", "description": "Number of days to look ahead. Use 1 for today, 7 for this week, 14 for next week."},
+                    "days": {"type": "string", "description": "Days ahead to look. Default '1'."},
                 },
             },
         },
@@ -51,8 +54,42 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "update_calendar_event",
+            "description": "Update an existing event (rename, reschedule, add attendees, change location, add notes). Need the event_id from list_calendar_events.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "event_id": {"type": "string", "description": "The event ID to update."},
+                    "summary": {"type": "string", "description": "New title."},
+                    "start_time": {"type": "string", "description": "New start time ISO 8601."},
+                    "end_time": {"type": "string", "description": "New end time ISO 8601."},
+                    "description": {"type": "string", "description": "New notes/description."},
+                    "location": {"type": "string", "description": "New location."},
+                    "attendees": {"type": "string", "description": "Comma-separated emails to set as attendees."},
+                },
+                "required": ["event_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_calendar_event",
+            "description": "Delete/cancel a calendar event. Need event_id from list_calendar_events.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "event_id": {"type": "string", "description": "The event ID to delete."},
+                },
+                "required": ["event_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "draft_email",
-            "description": "Draft an email (does NOT send). Default to this unless user explicitly says 'send'.",
+            "description": "Draft an email (does NOT send). Default to this unless user says 'send'.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -68,7 +105,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "send_email",
-            "description": "Send an email immediately. ONLY when user explicitly says 'send'.",
+            "description": "Send email immediately. ONLY when user explicitly says 'send'.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -84,15 +121,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "send_last_draft",
-            "description": "Send the most recently created draft. Use when user says 'send it'.",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "list_accounts",
-            "description": "List connected accounts.",
+            "description": "Send the most recently created draft.",
             "parameters": {"type": "object", "properties": {}},
         },
     },
@@ -262,21 +291,23 @@ class Assistant:
         """Execute a tool and return the result."""
         log.info("Tool: %s(%s)", name, json.dumps(args)[:200])
 
-        if name == "list_accounts":
-            accounts = self._oauth.list_accounts() if self._oauth else []
-            if not accounts:
-                return {"result": "No accounts connected. Go to Settings > Integrations."}
-            return {"result": [f"{a['service']}: {a['email']}" for a in accounts]}
-
         token = self._oauth.get_token("google") if self._oauth else None
         if not token:
             return {"error": "No Google account connected. Go to Settings > Integrations."}
 
         if name == "create_calendar_event":
             from integrations.google_calendar import create_event
-            return create_event(token, args["summary"], args["start_time"],
-                                args.get("end_time", ""), args.get("description", ""),
-                                args.get("attendees"))
+            att_str = args.get("attendees", "")
+            attendees = [e.strip() for e in att_str.split(",") if e.strip()] if att_str else None
+            return create_event(
+                token, args["summary"], args["start_time"],
+                end_time=args.get("end_time", ""),
+                description=args.get("description", ""),
+                location=args.get("location", ""),
+                attendees=attendees,
+                timezone=args.get("timezone", "America/New_York"),
+                add_meet=str(args.get("add_meet", "")).lower() == "true",
+            )
 
         elif name == "list_calendar_events":
             from integrations.google_calendar import list_events
@@ -285,6 +316,20 @@ class Assistant:
             except (ValueError, TypeError):
                 days = 1
             return list_events(token, days_ahead=days, max_results=25)
+
+        elif name == "update_calendar_event":
+            from integrations.google_calendar import update_event
+            fields = {}
+            for k in ["summary", "description", "location", "start_time", "end_time"]:
+                if args.get(k):
+                    fields[k] = args[k]
+            if args.get("attendees"):
+                fields["attendees"] = [e.strip() for e in args["attendees"].split(",") if e.strip()]
+            return update_event(token, args["event_id"], **fields)
+
+        elif name == "delete_calendar_event":
+            from integrations.google_calendar import delete_event
+            return delete_event(token, args["event_id"])
 
         elif name == "draft_email":
             from integrations.gmail import draft_email
