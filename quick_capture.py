@@ -24,6 +24,9 @@ _PATTERNS = [
     (r'^(?:meeting notes?:?|from (?:the|my) meeting:?)\s+(.+)', "meeting_notes"),
     (r'^(?:action items?:?|takeaways?:?)\s+(.+)', "meeting_notes"),
 
+    # Standup
+    (r'^(?:standup:?|daily (?:standup|update):?|what (?:i|I) did today:?)\s*(.*)', "standup"),
+
     # Calendar (route to assistant)
     (r'^(?:schedule|book|add (?:a |an )?(?:event|meeting|call|appointment))\s+(.+)', "calendar"),
 ]

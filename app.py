@@ -1150,6 +1150,19 @@ def process_audio(audio):
                     add_history(entry)
                     emit({"type": "result", **entry})
                     return
+                elif intent == "standup":
+                    import standup
+                    structured = standup.generate(extracted or raw_text)
+                    inject_text(structured, target_app=app_name)
+                    if S.brain:
+                        S.brain.add_meeting_notes("Standup", time.strftime("%Y-%m-%d"), structured, [])
+                    _play_sound("done")
+                    set_status("idle", "Standup generated")
+                    entry = {"raw": raw_text, "cleaned": structured, "app": app_name,
+                             "duration": round(time.time() - t0, 2), "ts": time.strftime("%H:%M:%S")}
+                    add_history(entry)
+                    emit({"type": "result", **entry})
+                    return
                 elif intent == "calendar" and S.assistant:
                     # Route to assistant for calendar handling
                     S.recording_mode = "assistant"  # temporarily switch
@@ -1478,6 +1491,22 @@ if __name__ == "__main__":
     threading.Thread(target=load_engine, daemon=True).start()
     threading.Thread(target=start_listener, daemon=True).start()
     threading.Thread(target=audio_level_monitor, daemon=True).start()
+
+    # Follow-up checker (hourly)
+    def follow_up_checker():
+        import follow_ups
+        while True:
+            time.sleep(3600)
+            try:
+                reminders = follow_ups.get_pending_reminders()
+                for r in reminders:
+                    msg = f"No reply from {r['to']} about '{r['subject']}' ({r['days_ago']} days ago)"
+                    emit({"type": "notification", "message": msg})
+                    follow_ups.mark_reminded(r["to"], r["subject"])
+                    log.info("Follow-up reminder: %s", msg)
+            except Exception as e:
+                log.debug("Follow-up check: %s", e)
+    threading.Thread(target=follow_up_checker, daemon=True).start()
 
     # Periodic memory queue flusher
     def memory_flusher():

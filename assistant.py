@@ -197,6 +197,78 @@ TOOLS = [
             },
         },
     },
+    # ── Power features ──
+    {
+        "type": "function",
+        "function": {
+            "name": "transform_clipboard",
+            "description": "Read selected/clipboard text and transform it. Use for 'explain this', 'summarize', 'translate to X', 'make this professional', 'rewrite this'.",
+            "parameters": {
+                "type": "object",
+                "properties": {"instruction": {"type": "string", "description": "How to transform the text."}},
+                "required": ["instruction"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "open_app",
+            "description": "Open a macOS application. 'Open Slack', 'Launch Safari', etc.",
+            "parameters": {
+                "type": "object",
+                "properties": {"app_name": {"type": "string", "description": "App name: Slack, Safari, Notes, Finder, etc."}},
+                "required": ["app_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "system_command",
+            "description": "macOS system control: set volume, toggle DND, quit an app, run a Shortcut.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "description": "One of: set_volume, toggle_dnd, quit_app, run_shortcut"},
+                    "value": {"type": "string", "description": "Volume 0-100, app name, or shortcut name."},
+                },
+                "required": ["action"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_history",
+            "description": "Search past dictations and conversations. 'What did I say about X?', 'Find when I mentioned Y'.",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string", "description": "What to search for."}},
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "weekly_reflection",
+            "description": "Summarize this week: meetings, completed tasks, learnings, deadlines. 'How was my week?'",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "analyze_screen",
+            "description": "Take a screenshot and analyze what's on screen. 'Summarize this page', 'What am I looking at?', 'Read this error'.",
+            "parameters": {
+                "type": "object",
+                "properties": {"instruction": {"type": "string", "description": "What to do with the screenshot."}},
+                "required": ["instruction"],
+            },
+        },
+    },
 ]
 
 
@@ -552,7 +624,11 @@ class Assistant:
 
         elif name == "send_email":
             from integrations.gmail import send_email
-            return send_email(token, args["to"], args["subject"], args["body"])
+            result = send_email(token, args["to"], args["subject"], args["body"])
+            if result.get("ok"):
+                import follow_ups
+                follow_ups.add(args["to"], args["subject"], result.get("message_id", ""))
+            return result
 
         elif name == "send_last_draft":
             if not self._oauth or not self._oauth._last_draft_id:
@@ -562,6 +638,73 @@ class Assistant:
             if result.get("ok"):
                 self._oauth._last_draft_id = None
             return result
+
+        # ── Power features (no Google token needed) ──
+
+        elif name == "transform_clipboard":
+            from injector import get_selected_text, inject_text
+            from cleaner import Cleaner
+            selected = get_selected_text()
+            if not selected:
+                # Try clipboard
+                import subprocess
+                try:
+                    r = subprocess.run(["pbpaste"], capture_output=True, text=True, timeout=2)
+                    selected = r.stdout.strip()
+                except Exception:
+                    pass
+            if not selected:
+                return {"error": "No text selected or in clipboard."}
+            client = self._client
+            if client:
+                resp = client.chat.completions.create(
+                    model="llama-3.1-8b-instant",
+                    messages=[
+                        {"role": "system", "content": "Transform the text as instructed. Return ONLY the result."},
+                        {"role": "user", "content": f"Text:\n{selected[:3000]}\n\nInstruction: {args['instruction']}"},
+                    ],
+                    temperature=0.3, max_tokens=2048, timeout=15,
+                )
+                result = resp.choices[0].message.content.strip()
+                inject_text(result)
+                return {"ok": True, "chars": len(result)}
+            return {"error": "No LLM available."}
+
+        elif name == "open_app":
+            import system_control
+            return system_control.open_app(args["app_name"])
+
+        elif name == "system_command":
+            import system_control
+            action = args.get("action", "")
+            value = args.get("value", "")
+            if action == "set_volume":
+                return system_control.set_volume(int(value) if value else 50)
+            elif action == "toggle_dnd":
+                return system_control.toggle_dnd()
+            elif action == "quit_app":
+                return system_control.quit_app(value)
+            elif action == "run_shortcut":
+                return system_control.run_shortcut(value)
+            return {"error": f"Unknown action: {action}"}
+
+        elif name == "search_history":
+            import memory as mem_module
+            results = mem_module.recall(args["query"], limit=5)
+            if results:
+                return {"ok": True, "results": [{"text": r["memory"], "score": round(r.get("score", 0), 2)} for r in results]}
+            return {"ok": True, "results": [], "message": "Nothing found matching that query."}
+
+        elif name == "weekly_reflection":
+            import reflection
+            summary = reflection.compose_week(
+                brain=self._brain, todos=self._todos, oauth=self._oauth,
+            )
+            return {"ok": True, "summary": summary}
+
+        elif name == "analyze_screen":
+            import vision
+            return vision.analyze_screen(args["instruction"])
 
         return {"error": f"Unknown tool: {name}"}
 
