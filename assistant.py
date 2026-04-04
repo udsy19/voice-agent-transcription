@@ -43,7 +43,7 @@ TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "days_ahead": {"type": "integer", "description": "Days ahead to look. Default 1."},
+                    "days_ahead": {"type": "string", "description": "Number of days ahead to look. Default '1'."},
                 },
             },
         },
@@ -266,7 +266,11 @@ class Assistant:
 
         elif name == "list_calendar_events":
             from integrations.google_calendar import list_events
-            return list_events(token, args.get("days_ahead", 1))
+            try:
+                days = int(args.get("days_ahead", 1))
+            except (ValueError, TypeError):
+                days = 1
+            return list_events(token, days)
 
         elif name == "draft_email":
             from integrations.gmail import draft_email

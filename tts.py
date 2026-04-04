@@ -8,10 +8,14 @@ import os
 import time
 import threading
 import subprocess
+import logging
 import numpy as np
 import sounddevice as sd
 from logger import get_logger
 from config import DATA_DIR
+
+# Suppress noisy phonemizer warnings
+logging.getLogger("phonemizer").setLevel(logging.ERROR)
 
 log = get_logger("tts")
 
