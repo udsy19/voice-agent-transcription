@@ -62,7 +62,9 @@ html,body{background:transparent;overflow:hidden;width:320px;height:200px}
 @keyframes bk{0%,100%{opacity:1}50%{opacity:0}}
 
 /* Calendar mini-view */
-.cal-mini{padding:6px 12px 8px;width:100%;border-top:1px solid rgba(255,255,255,.06)}
+.cal-mini{padding:6px 12px 8px;width:100%;border-top:1px solid rgba(255,255,255,.06);max-height:140px;overflow-y:auto}
+.cal-mini::-webkit-scrollbar{width:3px}
+.cal-mini::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px}
 .pill.assist .cal-mini{display:block}
 .cal-ev{display:flex;gap:8px;padding:3px 0;font-size:10px;color:rgba(255,255,255,.7)}
 .cal-ev+.cal-ev{border-top:1px solid rgba(255,255,255,.04)}
@@ -153,10 +155,18 @@ if(window.electronAPI){
     if(m.type==='calendar_view'&&m.events){
       const cal=document.getElementById('calMini');
       cal.style.display='block';
+      // Group events by day for week view
+      let lastDay='';
       cal.innerHTML=m.events.map(e=>{
-        let t='';
-        try{const d=new Date(e.start);t=d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}catch{t=e.start}
-        return`<div class="cal-ev"><span class="cal-time">${t}</span><span class="cal-title">${e.summary||'(no title)'}</span></div>`;
+        let t='',day='';
+        try{
+          const d=new Date(e.start);
+          t=d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+          day=d.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'});
+        }catch{t=e.start}
+        let header='';
+        if(day!==lastDay){header=`<div style="font-size:9px;color:rgba(255,255,255,.35);padding:4px 0 1px;font-weight:600;${lastDay?'margin-top:4px;border-top:1px solid rgba(255,255,255,.06)':''}">${day}</div>`;lastDay=day}
+        return header+`<div class="cal-ev"><span class="cal-time">${t}</span><span class="cal-title">${e.summary||'(no title)'}</span></div>`;
       }).join('');
     }
     if(m.type==='assistant_stream'){
