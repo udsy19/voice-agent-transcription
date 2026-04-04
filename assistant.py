@@ -197,29 +197,34 @@ class Assistant:
         self._conversation: list[dict] = []
         self._conversation_expires: float = 0
 
+    _cached_today: str = ""
+    _cached_today_ts: float = 0
+
     def _prefetch_today(self) -> str:
-        """Pre-fetch today's events so the LLM has context without a tool call."""
+        """Get today's events — cached for 60s to avoid hammering Google API."""
+        if time.time() - self._cached_today_ts < 60 and self._cached_today:
+            return self._cached_today
         try:
             token = self._oauth.get_token("google") if self._oauth else None
             if not token:
-                return ""
+                return self._cached_today
             from integrations.google_calendar import list_events
             result = list_events(token, days_ahead=1, max_results=15)
             if result.get("ok") and result.get("events"):
-                lines = []
-                for e in result["events"]:
-                    lines.append(f"- {e['summary']} ({e['start']} to {e['end']})")
-                return "\n\nToday's calendar:\n" + "\n".join(lines)
+                lines = [f"- {e['summary']} ({e['start']} to {e['end']})" for e in result["events"]]
+                self._cached_today = "\n\nToday's calendar:\n" + "\n".join(lines)
+            else:
+                self._cached_today = ""
+            self._cached_today_ts = time.time()
         except Exception:
-            pass
-        return ""
+            pass  # use stale cache on network error
+        return self._cached_today
 
     def handle(self, command: str) -> str | None:
         """Process a voice command. Supports multi-turn follow-ups."""
         if not self._client:
             return None
 
-        # Expire stale conversations (10 min timeout)
         if time.time() > self._conversation_expires:
             self._conversation.clear()
 
@@ -240,9 +245,9 @@ class Assistant:
                 messages=messages,
                 tools=TOOLS,
                 tool_choice="auto",
-                temperature=0.3,
-                max_tokens=1024,
-                timeout=20,
+                temperature=0.2,
+                max_tokens=512,
+                timeout=15,
             )
 
             choice = response.choices[0]
@@ -252,13 +257,13 @@ class Assistant:
             if not tool_calls:
                 text = choice.message.content or ""
                 if text:
-                    # Save to conversation history
                     self._conversation.append({"role": "user", "content": command})
                     self._conversation.append({"role": "assistant", "content": text})
-                    self._conversation_expires = time.time() + 600  # 2 min window
+                    self._conversation_expires = time.time() + 600
 
                     self._stream(text)
-                    _speak(text)  # Speak the question/response aloud
+                    import threading
+                    threading.Thread(target=_speak, args=(text,), daemon=True).start()
                     return text
                 return None
 
@@ -283,27 +288,26 @@ class Assistant:
                     "content": json.dumps(result),
                 })
 
-            # Generate final human-readable response
+            # Fast model for summarizing tool results into speech
             final = self._client.chat.completions.create(
-                model=ASSISTANT_MODEL,
+                model="llama-3.1-8b-instant",
                 messages=messages,
                 temperature=0.3,
-                max_tokens=512,
-                timeout=20,
+                max_tokens=200,
+                timeout=10,
             )
 
             text = final.choices[0].message.content or "Done."
 
-            # Save to conversation + stream + speak
             self._conversation.append({"role": "assistant", "content": text})
             self._conversation_expires = time.time() + 600
-
-            # Keep conversation short (last 10 turns)
             if len(self._conversation) > 20:
                 self._conversation = self._conversation[-20:]
 
+            # Stream text to UI immediately, start TTS in parallel
             self._stream(text)
-            _speak(text)
+            import threading
+            threading.Thread(target=_speak, args=(text,), daemon=True).start()
             return text
 
         except Exception as e:
