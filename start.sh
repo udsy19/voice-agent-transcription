@@ -1,88 +1,89 @@
 #!/bin/bash
-# Muse launcher — starts Python backend + Electron UI
-# Run from Terminal.app for mic access
+# Muse — start script
 set -e
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Check python3
-if ! command -v python3 &>/dev/null; then
-    echo "ERROR: python3 not found. Install Python 3.11+"
-    exit 1
-fi
+# ── Prerequisites ────────────────────────────────────────────────────────────
+command -v python3 &>/dev/null || { echo "ERROR: python3 not found"; exit 1; }
+command -v npx &>/dev/null || { echo "ERROR: npx not found"; exit 1; }
+[ -d "$DIR/electron/node_modules/electron" ] || { echo "Installing Electron..."; cd "$DIR/electron" && npm install; }
 
-# Check node/npx
-if ! command -v npx &>/dev/null; then
-    echo "ERROR: npx not found. Install Node.js"
-    exit 1
-fi
-
-# Check electron installed
-if [ ! -d "$DIR/electron/node_modules/electron" ]; then
-    echo "Installing Electron..."
-    cd "$DIR/electron" && npm install
-fi
-
-# Load env
-[ -f "$DIR/.env" ] && { set -a; source "$DIR/.env"; set +a; }
-export PYTHONPATH="$DIR"
-
-# Kill ALL existing instances
+# ── Kill everything first ────────────────────────────────────────────────────
+echo "Cleaning up..."
 pkill -9 -f "python3.*app.py" 2>/dev/null || true
-pkill -f "Muse" 2>/dev/null || true
-pkill -f "Electron.*muse" 2>/dev/null || true
+pkill -9 -f "Muse" 2>/dev/null || true
+pkill -9 -f "Electron.*muse" 2>/dev/null || true
 lsof -ti :8528 | xargs kill -9 2>/dev/null || true
+lsof -ti :8529 | xargs kill -9 2>/dev/null || true
 sleep 1
 
-echo "Starting Muse..."
+# Double check port is free
+if lsof -i :8528 -sTCP:LISTEN &>/dev/null; then
+    echo "Port 8528 still in use — force killing..."
+    lsof -ti :8528 | xargs kill -9 2>/dev/null || true
+    sleep 2
+fi
 
-# Start Python backend from /tmp (numpy cwd fix)
+# ── Load env ─────────────────────────────────────────────────────────────────
+[ -f "$DIR/.env" ] && { set -a; source "$DIR/.env"; set +a; }
+export PYTHONPATH="$DIR"
+export TOKENIZERS_PARALLELISM=false
+
+# ── Start backend ────────────────────────────────────────────────────────────
+echo "Starting Muse..."
 cd /tmp
 python3 "$DIR/app.py" --no-browser &
 PY_PID=$!
 
-# Verify PID is valid
 if ! kill -0 $PY_PID 2>/dev/null; then
-    echo "ERROR: Python backend failed to start"
+    echo "ERROR: Backend failed to start"
     exit 1
 fi
 echo "  Backend PID: $PY_PID"
 
 # Wait for backend
 echo -n "  Waiting for backend"
-READY=0
-for i in $(seq 1 40); do
-    if curl -s http://127.0.0.1:8528/api/health 2>/dev/null | grep -q '"ok":true'; then
+for i in $(seq 1 30); do
+    if curl -s http://127.0.0.1:8528/api/health 2>/dev/null | grep -q '"ok"'; then
         echo " ready!"
-        READY=1
         break
     fi
+    if ! kill -0 $PY_PID 2>/dev/null; then
+        echo ""
+        echo "ERROR: Backend crashed during startup"
+        exit 1
+    fi
     echo -n "."
-    sleep 0.5
+    sleep 1
 done
 
-if [ $READY -eq 0 ]; then
-    echo " TIMEOUT — backend didn't start in 20s"
-    kill $PY_PID 2>/dev/null
+# Verify it actually started
+if ! curl -s http://127.0.0.1:8528/api/health 2>/dev/null | grep -q '"ok"'; then
+    echo ""
+    echo "ERROR: Backend didn't start in 30s"
+    kill -9 $PY_PID 2>/dev/null
     exit 1
 fi
 
-# Start Electron
+# ── Start Electron ───────────────────────────────────────────────────────────
 echo "  Starting UI..."
 cd "$DIR/electron"
 VOICE_AGENT_EXTERNAL_BACKEND=1 npx electron . &
 
 echo ""
 echo "Muse is running."
-echo "  Hold Right Option (⌥) to dictate."
-echo "  Press Ctrl+C to stop."
+echo "  ⌥L = dictate    ⌥R = assistant"
+echo "  Ctrl+C to stop"
 echo ""
 
-# Cleanup on exit
+# ── Cleanup on exit ──────────────────────────────────────────────────────────
 cleanup() {
+    echo ""
     echo "Stopping..."
     kill $PY_PID 2>/dev/null
     pkill -f "Electron.*muse" 2>/dev/null
+    lsof -ti :8528 | xargs kill -9 2>/dev/null || true
     exit 0
 }
 trap cleanup SIGINT SIGTERM
