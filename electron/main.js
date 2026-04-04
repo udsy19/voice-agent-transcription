@@ -230,15 +230,19 @@ function connectWS() {
 }
 
 function sendToMain(channel, data) {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    try { mainWindow.webContents.send(channel, data); } catch {}
-  }
+  try {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.send(channel, data);
+    }
+  } catch {}
 }
 
 function sendToPill(channel, data) {
-  if (pillWindow && !pillWindow.isDestroyed()) {
-    try { pillWindow.webContents.send(channel, data); } catch {}
-  }
+  try {
+    if (pillWindow && !pillWindow.isDestroyed() && pillWindow.webContents && !pillWindow.webContents.isDestroyed()) {
+      pillWindow.webContents.send(channel, data);
+    }
+  } catch {}
 }
 
 function killPython() {
