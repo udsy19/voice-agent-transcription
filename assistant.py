@@ -32,6 +32,18 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "forget_fact",
+            "description": "Delete/forget a memory. Use when user says 'forget X', 'that's wrong', 'remove X from memory', or corrects a previous fact.",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string", "description": "What to forget — search term to find and delete the memory."}},
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "create_calendar_event",
             "description": "Create a calendar event. MUST have title and start time. Ask user if missing.",
             "parameters": {
@@ -321,9 +333,7 @@ class Assistant:
                     self._conversation.append({"role": "user", "content": command})
                     self._conversation.append({"role": "assistant", "content": text})
                     self._conversation_expires = time.time() + 600
-                    # Only save to memory if it contains personal/preference info
-                    if any(w in command.lower() for w in ['prefer','like','love','hate','always','never','name is','my ','remember','favorite','i am','i\'m']):
-                        mem.remember_async(command)
+                    # Don't auto-save — memory is saved explicitly via remember_fact tool
 
                     self._stream(text)
                     import threading
@@ -473,14 +483,31 @@ class Assistant:
             m = mem_module._get_mem0()
             if m:
                 try:
-                    result = m.add(args["fact"], user_id="user")
-                    entries = result.get("results", [])
-                    log.info("Remembered via tool: %s (%d facts)", args["fact"][:50], len(entries))
+                    # Store the fact directly as-is — don't let LLM re-extract/mangle it
+                    from qdrant_client.models import PointStruct
+                    import uuid, hashlib
+                    fact_text = args["fact"]
+                    # Generate embedding
+                    embedding = m.embedding_model.embed(fact_text)
+                    # Store directly in vector DB
+                    point_id = str(uuid.uuid4())
+                    m.vector_store.insert(
+                        vectors=[embedding],
+                        payloads=[{"data": fact_text, "hash": hashlib.md5(fact_text.encode()).hexdigest(),
+                                   "user_id": "user", "created_at": __import__('time').strftime("%Y-%m-%dT%H:%M:%S+00:00")}],
+                        ids=[point_id],
+                    )
+                    log.info("Remembered directly: %s", fact_text[:50])
                     self._emit({"type": "memory_updated"})
-                    return {"ok": True, "fact": args["fact"], "stored": len(entries)}
+                    return {"ok": True, "fact": fact_text}
                 except Exception as e:
-                    log.error("Remember failed: %s", e)
-                    return {"ok": False, "error": str(e)}
+                    log.error("Direct remember failed: %s — falling back to mem0.add", e)
+                    try:
+                        m.add(args["fact"], user_id="user")
+                        self._emit({"type": "memory_updated"})
+                        return {"ok": True, "fact": args["fact"]}
+                    except Exception as e2:
+                        return {"ok": False, "error": str(e2)}
             return {"ok": False, "error": "Memory not available"}
 
         elif name == "add_todo":
@@ -489,6 +516,19 @@ class Assistant:
                 self._emit({"type": "todo_added", "item": item})
                 return {"ok": True, "text": args["text"]}
             return {"error": "Todos not available."}
+
+        elif name == "forget_fact":
+            import memory as mem_module
+            results = mem_module.recall(args["query"], limit=3)
+            if results:
+                deleted = []
+                for r in results:
+                    if r.get("id"):
+                        mem_module.delete(r["id"])
+                        deleted.append(r.get("memory", ""))
+                self._emit({"type": "memory_updated"})
+                return {"ok": True, "deleted": deleted}
+            return {"ok": False, "error": "No matching memory found."}
 
         elif name == "complete_todo":
             if self._todos:
