@@ -232,21 +232,18 @@ function connectWS() {
   ws.on('error', () => {});
 }
 
-function sendToMain(channel, data) {
+function safeSend(win, channel, data) {
   try {
-    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-      mainWindow.webContents.send(channel, data);
+    if (win && !win.isDestroyed()) {
+      const wc = win.webContents;
+      if (wc && !wc.isDestroyed() && !wc.isCrashed()) {
+        wc.send(channel, data);
+      }
     }
   } catch {}
 }
-
-function sendToPill(channel, data) {
-  try {
-    if (pillWindow && !pillWindow.isDestroyed() && pillWindow.webContents && !pillWindow.webContents.isDestroyed()) {
-      pillWindow.webContents.send(channel, data);
-    }
-  } catch {}
-}
+function sendToMain(channel, data) { safeSend(mainWindow, channel, data); }
+function sendToPill(channel, data) { safeSend(pillWindow, channel, data); }
 
 function killPython() {
   if (!pythonProcess) return;

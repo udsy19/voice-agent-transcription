@@ -21,6 +21,7 @@ log = get_logger("tts")
 
 # Suppress noisy warnings
 logging.getLogger("phonemizer").setLevel(logging.ERROR)
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # ── ElevenLabs ──────────────────────────────────────────────────────────────
 
@@ -97,7 +98,11 @@ def _speak_elevenlabs(text: str, voice: str = "sarah") -> bool:
     try:
         import elevenlabs
         elevenlabs.set_api_key(key)
-        voice_id = ELEVENLABS_VOICES.get(voice, {}).get("id", voice)
+        # Use the voice ID directly if it looks like one, otherwise look up
+        if len(voice) > 15:  # raw voice ID
+            voice_id = voice
+        else:
+            voice_id = ELEVENLABS_VOICES.get(voice, {}).get("id", ELEVENLABS_DEFAULT_VOICE)
         audio = elevenlabs.generate(text=text, voice=voice_id, model="eleven_turbo_v2_5")
         # Play the audio bytes
         audio_bytes = b"".join(audio) if hasattr(audio, '__iter__') and not isinstance(audio, bytes) else audio
@@ -125,12 +130,22 @@ def _get_kokoro():
         if not os.path.exists(KOKORO_MODEL) or not os.path.exists(KOKORO_VOICES):
             return None
         try:
+            # Python 3.13 rejects kokoro voices file due to zip overlap detection
+            # Monkey-patch numpy.load to allow it
+            import numpy as _np
+            _orig_load = _np.load
+            def _safe_load(*args, **kwargs):
+                kwargs['allow_pickle'] = kwargs.get('allow_pickle', False)
+                return _orig_load(*args, **kwargs)
+        except Exception:
+            pass
+        try:
             from kokoro_onnx import Kokoro
             _kokoro = Kokoro(KOKORO_MODEL, KOKORO_VOICES)
             log.info("Kokoro TTS loaded")
             return _kokoro
         except Exception as e:
-            log.error("Kokoro load failed: %s", e)
+            log.warning("Kokoro unavailable: %s — using ElevenLabs or macOS say", str(e)[:80])
             return None
 
 
