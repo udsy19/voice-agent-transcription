@@ -60,6 +60,14 @@ html,body{background:transparent;overflow:hidden;width:320px;height:200px}
 .pill.assist .rec-ui,.pill.assist .dots{display:none}
 .atxt .cur{display:inline-block;width:1.5px;height:12px;background:rgba(255,255,255,.5);margin-left:2px;vertical-align:text-bottom;animation:bk .8s step-end infinite}
 @keyframes bk{0%,100%{opacity:1}50%{opacity:0}}
+
+/* Calendar mini-view */
+.cal-mini{padding:6px 12px 8px;width:100%;border-top:1px solid rgba(255,255,255,.06)}
+.pill.assist .cal-mini{display:block}
+.cal-ev{display:flex;gap:8px;padding:3px 0;font-size:10px;color:rgba(255,255,255,.7)}
+.cal-ev+.cal-ev{border-top:1px solid rgba(255,255,255,.04)}
+.cal-time{font-family:'SF Mono',monospace;color:rgba(255,255,255,.4);min-width:42px;flex-shrink:0}
+.cal-title{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
 </head>
 <body>
@@ -70,6 +78,7 @@ html,body{background:transparent;overflow:hidden;width:320px;height:200px}
   </div>
   <div class="dots"><span></span><span></span><span></span></div>
   <div class="atxt" id="atxt"></div>
+  <div class="cal-mini" id="calMini" style="display:none"></div>
 </div>
 <script>
 const pill=document.getElementById('pill'),wvEl=document.getElementById('wv'),atxt=document.getElementById('atxt');
@@ -134,17 +143,32 @@ function go(s){
   pill.style.width='';pill.style.height=''; // reset inline styles
   if(s==='rec'&&triggerMode==='toggle')pill.classList.add('wide');
   if(s==='done')setTimeout(()=>{if(st==='done'){st='hidden';pill.className='pill'}},700);
-  if(s!=='assist')atxt.innerHTML='';
+  if(s!=='assist'){atxt.innerHTML='';document.getElementById('calMini').style.display='none';document.getElementById('calMini').innerHTML='';}
 }
 
 if(window.electronAPI){
   window.electronAPI.onWsMessage(m=>{
-    if(m.type==='audio_level'){audioLevel=m.rms*10;if(audioLevel>1)audioLevel=1}
+    if(m.type==='audio_level'){audioLevel=Math.min(1,m.rms*25)}
     if(m.type==='trigger_mode'){triggerMode=m.mode}
+    if(m.type==='calendar_view'&&m.events){
+      const cal=document.getElementById('calMini');
+      cal.style.display='block';
+      cal.innerHTML=m.events.map(e=>{
+        let t='';
+        try{const d=new Date(e.start);t=d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}catch{t=e.start}
+        return`<div class="cal-ev"><span class="cal-time">${t}</span><span class="cal-title">${e.summary||'(no title)'}</span></div>`;
+      }).join('');
+    }
     if(m.type==='assistant_stream'){
       if(st!=='assist')go('assist');
       atxt.innerHTML=m.text+(m.done?'':'<span class="cur"></span>');
-      sizePillToText(m.text);
+      // Size pill — account for calendar view if present
+      const calH=document.getElementById('calMini').offsetHeight||0;
+      measure.textContent=m.text;
+      const w=Math.min(310,Math.max(140,measure.offsetWidth+8));
+      const h=Math.min(280,Math.max(36,measure.offsetHeight+calH+8));
+      pill.style.width=w+'px';
+      pill.style.height=h+'px';
       if(m.done){
         if(assistTimer)clearTimeout(assistTimer);
         // Keep visible longer — estimate TTS duration from word count (~3 words/sec)

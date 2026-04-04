@@ -302,6 +302,12 @@ class Assistant:
                             "text": f"Running {fn_name.replace('_', ' ')}...", "done": False})
 
                 result = self._execute_tool(fn_name, args)
+
+                # If this was a calendar list, emit events for pill calendar view
+                if fn_name == "list_calendar_events" and isinstance(result, dict) and result.get("ok"):
+                    events = result.get("events", [])
+                    if events:
+                        self._emit({"type": "calendar_view", "events": events[:8]})
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
