@@ -1284,9 +1284,8 @@ def process_audio(audio):
         _play_sound("done")
         set_status("idle", f"Done ({dur:.1f}s)")
 
-        # Auto-learn: terms, deadlines, and memories in background
-        if cleaned and len(cleaned.split()) >= 15:  # only save substantial dictations
-            mem.remember_async(cleaned)
+        # Auto-learn terms + detect deadlines (no auto memory — too noisy)
+        if cleaned and len(cleaned.split()) >= 8:
             if S.dictionary and S.cleaner:
                 threading.Thread(target=_auto_learn_terms, args=(cleaned,), daemon=True).start()
             if S.brain:

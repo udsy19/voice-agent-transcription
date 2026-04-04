@@ -80,13 +80,13 @@ let audioLevel=0,smoothLevel=0,st='hidden',triggerMode='hold',assistTimer=null;
 
 // Measure helper to size pill to fit text
 const measure=document.createElement('div');
-measure.style.cssText='position:absolute;visibility:hidden;font:400 12px/1.5 -apple-system,system-ui,sans-serif;padding:10px 14px;max-width:290px;word-wrap:break-word;white-space:pre-wrap';
+measure.style.cssText='position:absolute;visibility:hidden;font:400 12px/1.5 -apple-system,system-ui,sans-serif;padding:10px 14px;max-width:300px;word-wrap:break-word;white-space:pre-wrap';
 document.body.appendChild(measure);
 
 function sizePillToText(text){
   measure.textContent=text;
-  const w=Math.min(300,Math.max(120,measure.offsetWidth+4));
-  const h=Math.min(180,Math.max(36,measure.offsetHeight+4));
+  const w=Math.min(310,Math.max(140,measure.offsetWidth+8));
+  const h=Math.min(190,Math.max(36,measure.offsetHeight+8));
   pill.style.width=w+'px';
   pill.style.height=h+'px';
 }
@@ -147,7 +147,10 @@ if(window.electronAPI){
       sizePillToText(m.text);
       if(m.done){
         if(assistTimer)clearTimeout(assistTimer);
-        assistTimer=setTimeout(()=>{if(st==='assist'){st='hidden';pill.className='pill';pill.style.width='';pill.style.height=''}},15000);
+        // Keep visible longer — estimate TTS duration from word count (~3 words/sec)
+        const words=(m.text||'').split(' ').length;
+        const ttsDuration=Math.max(5000,words*350+3000);
+        assistTimer=setTimeout(()=>{if(st==='assist'){st='hidden';pill.className='pill';pill.style.width='';pill.style.height=''}},ttsDuration);
       }
     }
     if(m.type==='status'){

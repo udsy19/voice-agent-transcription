@@ -20,6 +20,18 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "remember_fact",
+            "description": "Save a fact about the user to long-term memory. ALWAYS use this (not add_todo) when user says 'remember', 'note that', 'keep in mind', or shares personal info about themselves, their preferences, relationships, or background.",
+            "parameters": {
+                "type": "object",
+                "properties": {"fact": {"type": "string", "description": "The fact to remember about the user."}},
+                "required": ["fact"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "create_calendar_event",
             "description": "Create a calendar event. MUST have title and start time. Ask user if missing.",
             "parameters": {
@@ -123,18 +135,6 @@ TOOLS = [
             "name": "send_last_draft",
             "description": "Send the most recently created draft.",
             "parameters": {"type": "object", "properties": {}},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "remember_fact",
-            "description": "Save a fact about the user to long-term memory. Use when user says 'remember that', 'note that', 'keep in mind', or shares personal info (preferences, background, relationships).",
-            "parameters": {
-                "type": "object",
-                "properties": {"fact": {"type": "string", "description": "The fact to remember."}},
-                "required": ["fact"],
-            },
         },
     },
     {
@@ -419,8 +419,18 @@ class Assistant:
             return result
 
         elif name == "remember_fact":
-            mem.remember(args["fact"])
-            return {"ok": True, "fact": args["fact"]}
+            # Bypass rate limit for explicit remember requests
+            m = mem._get_mem0()
+            if m:
+                try:
+                    result = m.add(args["fact"], user_id="user")
+                    entries = result.get("results", [])
+                    log.info("Remembered via tool: %s (%d facts)", args["fact"][:50], len(entries))
+                    return {"ok": True, "fact": args["fact"], "stored": len(entries)}
+                except Exception as e:
+                    log.error("Remember failed: %s", e)
+                    return {"ok": False, "error": str(e)}
+            return {"ok": False, "error": "Memory not available"}
 
         elif name == "add_todo":
             if self._todos:
@@ -485,6 +495,8 @@ class Assistant:
             "- If no accounts connected, say 'Connect Google in Settings first.'\n"
             "- If a tool fails, explain what went wrong simply.\n"
             "- If the user is just chatting (not calendar/email), respond briefly and naturally.\n"
+            "- When user says 'remember X' or shares personal info, use remember_fact (NOT add_todo).\n"
+            "  add_todo is ONLY for action items like 'buy groceries' or 'call dentist'.\n"
             "- USE your memories proactively — if you know who someone is, use that knowledge.\n"
             "  Example: if user says 'email Samyukta' and you remember her email, use it.\n"
             "  Example: if user has a meeting with someone you know, mention relevant context.\n"
