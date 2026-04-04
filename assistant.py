@@ -130,12 +130,25 @@ class Assistant:
         self._conversation: list[dict] = []
         self._conversation_expires: float = 0
 
-    def handle(self, command: str) -> str | None:
-        """Process a voice command. Supports multi-turn follow-ups.
+    def _prefetch_today(self) -> str:
+        """Pre-fetch today's events so the LLM has context without a tool call."""
+        try:
+            token = self._oauth.get_token("google") if self._oauth else None
+            if not token:
+                return ""
+            from integrations.google_calendar import list_events
+            result = list_events(token, days_ahead=1, max_results=15)
+            if result.get("ok") and result.get("events"):
+                lines = []
+                for e in result["events"]:
+                    lines.append(f"- {e['summary']} ({e['start']} to {e['end']})")
+                return "\n\nToday's calendar:\n" + "\n".join(lines)
+        except Exception:
+            pass
+        return ""
 
-        If the LLM needs more info, it asks back via TTS and the conversation
-        state is preserved. The user's next ⌥R press continues the conversation.
-        """
+    def handle(self, command: str) -> str | None:
+        """Process a voice command. Supports multi-turn follow-ups."""
         if not self._client:
             return None
 
@@ -144,7 +157,8 @@ class Assistant:
             self._conversation.clear()
 
         accounts = self._oauth.list_accounts() if self._oauth else []
-        system_prompt = self._build_system_prompt(accounts)
+        today_context = self._prefetch_today()
+        system_prompt = self._build_system_prompt(accounts, today_context)
 
         # Build messages: system + conversation history + new user message
         messages = [{"role": "system", "content": system_prompt}]
@@ -294,26 +308,35 @@ class Assistant:
 
         return {"error": f"Unknown tool: {name}"}
 
-    def _build_system_prompt(self, accounts: list[dict]) -> str:
+    def _build_system_prompt(self, accounts: list[dict], today_context: str = "") -> str:
         now = time.strftime("%A, %B %d, %Y at %I:%M %p")
-        acct_list = "\n".join(f"- {a['service']}: {a['email']}" for a in accounts) if accounts else "No accounts connected."
+        acct_list = "\n".join(f"- {a['service']}: {a['email']}" for a in accounts) if accounts else "None"
 
         return (
-            f"You are Muse, a smart voice assistant. Current date/time: {now}\n"
-            f"\nConnected accounts:\n{acct_list}\n"
-            "\nRules:\n"
-            "- Be concise — 1-2 sentences max, spoken aloud\n"
-            "- Be SMART about calendar:\n"
-            "  - If creating an event, FIRST list_calendar_events for that day to check for conflicts\n"
-            "  - If there's a conflict, warn: 'You already have X at that time. Want me to schedule anyway?'\n"
-            "  - If they say 'what does my day look like', list ALL events for that day with times\n"
-            "  - If no title given, ask 'What should I call the event?'\n"
-            "  - If no date/time given, ask 'When should I schedule it?'\n"
-            "  - Include duration info: 'from 2pm to 3pm' not just '2pm'\n"
-            "- Be SMART about email:\n"
-            "  - If no recipient, ask 'Who should I send it to?'\n"
-            "  - Default to DRAFTING, not sending, unless they say 'send'\n"
-            "  - After drafting, say 'Draft created. Say send it to send.'\n"
-            "- If no accounts connected, tell them to go to Settings > Integrations\n"
-            "- Be conversational and helpful — you're a personal assistant\n"
+            f"You are a smart personal voice assistant. Right now: {now}\n"
+            f"Connected accounts: {acct_list}\n"
+            f"{today_context}\n"
+            "\n## How to respond\n"
+            "- Keep responses SHORT — 1-3 sentences max. This will be spoken aloud.\n"
+            "- Be natural and conversational, like a real assistant.\n"
+            "- When listing events, say them naturally: 'You have a flight to New York at 10:43am, then coffee with Teng at 1pm.'\n"
+            "- Don't just list data — interpret it. 'Looks like a busy morning but your afternoon is free.'\n"
+            "\n## Calendar intelligence\n"
+            "- 'today' = days 1, 'this week' = days 7, 'next week' = days 14, 'this month' = days 30\n"
+            "- 'tomorrow' means the next day. 'next Monday' means the coming Monday.\n"
+            "- ALWAYS check for conflicts before creating. If there's an overlap, warn the user.\n"
+            "- If they say 'am I free at 2?' — check the calendar and answer directly.\n"
+            "- If they say 'move my 3pm to 4pm' — that requires delete + create (not yet supported, tell them).\n"
+            "- If they say 'cancel the meeting' — ask which one if there are multiple.\n"
+            "- If title is missing, ask. If time is missing, ask. If date is missing, ask.\n"
+            "- When creating, confirm: 'Created Team Sync for tomorrow at 2pm.'\n"
+            "\n## Email intelligence\n"
+            "- Default to DRAFT unless user says 'send'. After drafting: 'Draft ready. Say send it.'\n"
+            "- If no recipient, ask. If no subject, infer from body.\n"
+            "- Write the email body professionally but match the user's tone.\n"
+            "\n## Edge cases\n"
+            "- If you don't understand, ask for clarification — never guess wrong.\n"
+            "- If no accounts connected, say 'Connect Google in Settings first.'\n"
+            "- If a tool fails, explain what went wrong simply.\n"
+            "- If the user is just chatting (not calendar/email), respond briefly and naturally.\n"
         )
