@@ -83,6 +83,7 @@ from todos import TodoList
 from brain import Brain
 import quick_capture
 import briefing
+import memory as mem
 import tts
 PORT = 8528
 HANDS_FREE_SILENCE_SEC = 2.0
@@ -573,6 +574,40 @@ async def api_permissions():
     result["groq_key"] = bool(GROQ_API_KEY) or bool(S.cleaner and S.cleaner._client)
 
     return result
+
+
+@api.get("/api/memories")
+async def api_memories():
+    """Get all stored memories."""
+    memories = mem.get_all()
+    return {"memories": memories}
+
+
+@api.post("/api/memories/search")
+async def api_search_memories(body: dict):
+    """Search memories."""
+    query = body.get("query", "")
+    if not query:
+        return {"results": []}
+    results = mem.recall(query, limit=10)
+    return {"results": results}
+
+
+@api.post("/api/memories/add")
+async def api_add_memory(body: dict):
+    """Manually add a memory."""
+    text = body.get("text", "").strip()
+    if not text:
+        return {"ok": False}
+    entries = mem.remember(text)
+    return {"ok": True, "entries": entries}
+
+
+@api.delete("/api/memories/{memory_id}")
+async def api_delete_memory(memory_id: str):
+    """Delete a memory."""
+    mem.delete(memory_id)
+    return {"ok": True}
 
 
 @api.get("/api/todos")
@@ -1208,8 +1243,9 @@ def process_audio(audio):
         _play_sound("done")
         set_status("idle", f"Done ({dur:.1f}s)")
 
-        # Auto-learn terms + detect deadlines in background
+        # Auto-learn: terms, deadlines, and memories in background
         if cleaned and len(cleaned.split()) >= 8:
+            mem.remember_async(cleaned)
             if S.dictionary and S.cleaner:
                 threading.Thread(target=_auto_learn_terms, args=(cleaned,), daemon=True).start()
             if S.brain:

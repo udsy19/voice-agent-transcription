@@ -180,6 +180,16 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
 .todo-add input:focus{border-color:var(--blue)}
 .todo-add input::placeholder{color:var(--text3)}
 
+/* Memory cards */
+.mem-card{padding:10px 0;border-bottom:1px solid var(--border)}
+.mem-card:last-child{border-bottom:none}
+.mem-text{font-size:13px;margin-bottom:3px}
+.mem-meta{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text3)}
+.mem-cat{background:rgba(79,143,247,.15);color:var(--blue);padding:1px 6px;border-radius:3px;font-size:9px;font-weight:500}
+.mem-del{opacity:0;cursor:pointer;color:var(--text3);background:none;border:none;font-size:12px;margin-left:auto;padding:2px 6px}
+.mem-card:hover .mem-del{opacity:.5}
+.mem-del:hover{opacity:1!important}
+
 .empty{text-align:center;padding:64px 16px;color:var(--text3);font-size:14px;line-height:1.8}
 
 /* Status bar — barely there */
@@ -224,6 +234,7 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
     <div class="sb-head"><span class="dot loading" id="logoDot"></span></div>
     <a class="on" data-pg="home" onclick="nav(this)"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Home</a>
     <a data-pg="dictionary" onclick="nav(this)"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Dictionary</a>
+    <a data-pg="memories" onclick="nav(this)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Memories</a>
     <a data-pg="integrations" onclick="nav(this)"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Integrations</a>
     <a data-pg="settings" onclick="nav(this)"><svg viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>Settings</a>
     <div class="sb-space"></div>
@@ -252,6 +263,19 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
       <div class="label">Snippets</div>
       <div class="fr"><input class="inp" id="snT" placeholder="Trigger phrase..." style="flex:.35"><input class="inp" id="snV" placeholder="Text to paste..." style="flex:.65" onkeydown="if(event.key==='Enter')addSnip()"><button class="btn btn-g" onclick="addSnip()">Add</button></div>
       <div id="snList"></div>
+    </div>
+
+    <!-- MEMORIES -->
+    <div class="pg" id="pg-memories">
+      <h1>Memories</h1>
+      <div class="desc">Everything the assistant has learned about you. Extracted automatically from conversations.</div>
+      <div class="fr" style="margin-bottom:16px">
+        <input class="inp" id="memSearch" placeholder="Search memories..." onkeydown="if(event.key==='Enter')searchMem()">
+        <button class="btn btn-p" onclick="searchMem()">Search</button>
+      </div>
+      <div id="memResults" style="display:none;margin-bottom:20px"></div>
+      <div class="label">All memories</div>
+      <div id="memList"><div style="color:var(--text3);padding:16px 0;font-size:13px">Loading...</div></div>
     </div>
 
     <!-- INTEGRATIONS -->
@@ -327,7 +351,7 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
 const API='http://127.0.0.1:8528';let hist=[],connected=false;
 function esc(s){return s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):''}
 
-function nav(el){document.querySelectorAll('.sb a').forEach(a=>a.classList.remove('on'));el.classList.add('on');document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));document.getElementById('pg-'+el.dataset.pg).classList.add('on');if(el.dataset.pg==='integrations')gLoad();if(el.dataset.pg==='settings')loadVoices()}
+function nav(el){document.querySelectorAll('.sb a').forEach(a=>a.classList.remove('on'));el.classList.add('on');document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));document.getElementById('pg-'+el.dataset.pg).classList.add('on');if(el.dataset.pg==='integrations')gLoad();if(el.dataset.pg==='settings')loadVoices();if(el.dataset.pg==='memories')loadMemories()}
 
 function setupListeners(){if(window.electronAPI){window.electronAPI.onWsMessage(onMsg);window.electronAPI.onBackendReady(()=>{document.getElementById('setup').classList.add('hidden');connected=true;refresh()});poll()}else{connectWS()}}
 function poll(){fetch(`${API}/api/health`).then(r=>r.json()).then(d=>{if(d.ok){document.getElementById('setup').classList.add('hidden');connected=true;refresh()}else setTimeout(poll,1e3)}).catch(()=>setTimeout(poll,1e3))}
@@ -462,6 +486,48 @@ async function loadTodos(){
 }
 async function completeTodo(id){await apiPost('todos/complete',{id});loadTodos()}
 async function addTodoInline(el){const t=el.value.trim();if(!t)return;await apiPost('todos/add',{text:t});el.value='';loadTodos()}
+
+// Memories
+async function loadMemories(){
+  try{
+    const r=await fetch(`${API}/api/memories`);const d=await r.json();
+    const el=document.getElementById('memList');
+    const mems=d.memories||[];
+    if(!mems.length){el.innerHTML='<div style="color:var(--text3);padding:16px 0;font-size:13px">No memories yet. Start talking to the assistant — it learns automatically.</div>';return}
+    el.innerHTML=mems.map(m=>{
+      const ts=m.created_at?new Date(m.created_at).toLocaleDateString('en-US',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}):'';
+      const cat=inferCategory(m.memory||'');
+      return`<div class="mem-card"><div class="mem-text">${esc(m.memory||'')}</div><div class="mem-meta"><span class="mem-cat">${cat}</span><span>${ts}</span><button class="mem-del" onclick="deleteMem('${m.id}')">&times;</button></div></div>`;
+    }).join('');
+  }catch{}
+}
+async function searchMem(){
+  const q=document.getElementById('memSearch').value.trim();if(!q){document.getElementById('memResults').style.display='none';return}
+  try{
+    const r=await fetch(`${API}/api/memories/search`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q})});
+    const d=await r.json();
+    const el=document.getElementById('memResults');
+    el.style.display='';
+    const results=d.results||[];
+    if(!results.length){el.innerHTML='<div style="color:var(--text3);font-size:13px;padding:8px 0">No memories found.</div>';return}
+    el.innerHTML='<div class="label">Search results</div>'+results.map(m=>{
+      const cat=inferCategory(m.memory||'');
+      return`<div class="mem-card"><div class="mem-text">${esc(m.memory||'')}</div><div class="mem-meta"><span class="mem-cat">${cat}</span></div></div>`;
+    }).join('');
+  }catch{}
+}
+async function deleteMem(id){await fetch(`${API}/api/memories/${id}`,{method:'DELETE'});loadMemories()}
+function inferCategory(text){
+  const t=text.toLowerCase();
+  if(/\b(prefer|like|favorite|always|never|hate)\b/.test(t))return'preference';
+  if(/\b(flight|travel|trip|airport|hotel)\b/.test(t))return'travel';
+  if(/\b(meeting|call|standup|sync)\b/.test(t))return'work';
+  if(/\b(name is|girlfriend|boyfriend|wife|husband|friend|family|mom|dad|parent)\b/.test(t))return'people';
+  if(/\b(email|gmail|outlook|message)\b/.test(t))return'contact';
+  if(/\b(project|code|api|build|deploy|launch)\b/.test(t))return'tech';
+  if(/\b(class|exam|university|purdue|professor|homework)\b/.test(t))return'school';
+  return'general';
+}
 
 chkGroq();chkBackend();setupListeners();
 setInterval(()=>{if(connected){refresh();loadTodos()}},10e3);

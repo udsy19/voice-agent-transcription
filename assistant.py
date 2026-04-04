@@ -232,7 +232,12 @@ class Assistant:
         today_context = self._prefetch_today()
         brain_context = self._brain.get_context_for_llm() if self._brain else ""
         todos_context = self._todos.summary_for_llm() if self._todos else ""
-        system_prompt = self._build_system_prompt(accounts, today_context + brain_context + todos_context)
+        # Recall relevant memories for this query
+        import memory as mem
+        mem_context = mem.get_context_for_llm(command)
+        system_prompt = self._build_system_prompt(
+            accounts, today_context + brain_context + todos_context + mem_context
+        )
 
         # Build messages: system + conversation history + new user message
         messages = [{"role": "system", "content": system_prompt}]
@@ -260,6 +265,8 @@ class Assistant:
                     self._conversation.append({"role": "user", "content": command})
                     self._conversation.append({"role": "assistant", "content": text})
                     self._conversation_expires = time.time() + 600
+                    # Learn from this exchange
+                    mem.remember_async(f"User said: {command}\nAssistant replied: {text}")
 
                     self._stream(text)
                     import threading
@@ -304,7 +311,9 @@ class Assistant:
             if len(self._conversation) > 20:
                 self._conversation = self._conversation[-20:]
 
-            # Stream text to UI immediately, start TTS in parallel
+            # Learn from this exchange
+            mem.remember_async(f"User asked: {command}\nAssistant did: {text}")
+
             self._stream(text)
             import threading
             threading.Thread(target=_speak, args=(text,), daemon=True).start()
