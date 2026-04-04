@@ -589,8 +589,8 @@ async def api_today():
 async def api_voices():
     """List all available TTS voices."""
     voices = tts.get_voices()
-    # Load saved preference
     import safe_json
+    from config import DATA_DIR
     prefs = safe_json.load(str(DATA_DIR / "preferences.json"), {})
     current = prefs.get("voice", "af_heart")
     return {"voices": voices, "current": current, "kokoro_available": tts.is_available()}
@@ -603,6 +603,7 @@ async def api_set_voice(body: dict):
     if voice not in tts.get_voices():
         return {"ok": False, "error": "Unknown voice"}
     import safe_json
+    from config import DATA_DIR
     prefs = safe_json.load(str(DATA_DIR / "preferences.json"), {})
     prefs["voice"] = voice
     safe_json.save(str(DATA_DIR / "preferences.json"), prefs)
