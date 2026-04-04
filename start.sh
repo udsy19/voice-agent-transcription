@@ -16,14 +16,15 @@ pkill -9 -f "Muse" 2>/dev/null || true
 pkill -9 -f "Electron.*muse" 2>/dev/null || true
 lsof -ti :8528 | xargs kill -9 2>/dev/null || true
 lsof -ti :8529 | xargs kill -9 2>/dev/null || true
-sleep 1
+sleep 2
 
-# Double check port is free
-if lsof -i :8528 -sTCP:LISTEN &>/dev/null; then
-    echo "Port 8528 still in use — force killing..."
+# Keep trying until port is free
+for i in 1 2 3; do
+    if ! lsof -i :8528 -sTCP:LISTEN &>/dev/null; then break; fi
+    echo "Port 8528 still held — retry $i..."
     lsof -ti :8528 | xargs kill -9 2>/dev/null || true
     sleep 2
-fi
+done
 
 # ── Load env ─────────────────────────────────────────────────────────────────
 [ -f "$DIR/.env" ] && { set -a; source "$DIR/.env"; set +a; }
