@@ -4,30 +4,14 @@ Supports: location, notes, attendees, Google Meet, timezone, multi-day.
 """
 
 from datetime import datetime, timedelta
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
+from integrations.google_auth import get_service, api_error as _api_error
 from logger import get_logger
 
 log = get_logger("gcal")
 
 
 def _get_service(token_data: dict):
-    if "credentials" in token_data:
-        creds = token_data["credentials"]
-    else:
-        creds = Credentials(
-            token=token_data["access_token"],
-            refresh_token=token_data.get("refresh_token"),
-            token_uri="https://oauth2.googleapis.com/token",
-        )
-    return build("calendar", "v3", credentials=creds, cache_discovery=False)
-
-
-def _api_error(e) -> dict:
-    err = str(e)
-    if "accessNotConfigured" in err or "has not been used" in err:
-        return {"ok": False, "error": "Google Calendar API not enabled. Enable at console.cloud.google.com."}
-    return {"ok": False, "error": err}
+    return get_service(token_data, "calendar", "v3")
 
 
 def create_event(token_data: dict, summary: str, start_time: str,

@@ -21,38 +21,7 @@ def _set_clipboard(text: str) -> bool:
 
 # ── App focus ───────────────────────────────────────────────────────────────
 
-def _get_frontmost_app() -> str:
-    """Get the name of the frontmost application."""
-    try:
-        result = subprocess.run(
-            ["osascript", "-e",
-             'tell application "System Events" to get name of first application process whose frontmost is true'],
-            capture_output=True, text=True, timeout=2,
-        )
-        return result.stdout.strip()
-    except Exception:
-        return ""
-
-
-def _activate_app(app_name: str) -> bool:
-    """Bring an app to front using AppleScript. Returns True if successful."""
-    if not app_name:
-        return False
-    try:
-        # Use "activate" which brings the app to front and focuses it
-        script = f'''
-            tell application "System Events"
-                set frontmost of process "{app_name}" to true
-            end tell
-        '''
-        result = subprocess.run(
-            ["osascript", "-e", script],
-            capture_output=True, text=True, timeout=3,
-        )
-        return result.returncode == 0
-    except Exception as e:
-        log.warning("Failed to activate '%s': %s", app_name, e)
-        return False
+from utils import get_active_app as _get_frontmost_app, activate_app as _activate_app
 
 
 def _wait_for_app_focus(app_name: str, timeout: float = 1.0) -> bool:

@@ -31,35 +31,7 @@ load_dotenv(PROJECT_DIR / ".env")
 
 # ── Groq ─────────────────────────────────────────────────────────────────────
 
-def _keychain_get(service: str, account: str) -> str:
-    """Read a secret from macOS Keychain. Returns empty string on failure."""
-    try:
-        import subprocess
-        result = subprocess.run(
-            ["security", "find-generic-password", "-s", service, "-a", account, "-w"],
-            capture_output=True, text=True, timeout=5,
-        )
-        return result.stdout.strip() if result.returncode == 0 else ""
-    except Exception:
-        return ""
-
-
-def _keychain_set(service: str, account: str, password: str) -> bool:
-    """Store a secret in macOS Keychain. Returns True on success."""
-    try:
-        import subprocess
-        # Delete existing entry first (ignore errors)
-        subprocess.run(
-            ["security", "delete-generic-password", "-s", service, "-a", account],
-            capture_output=True, timeout=5,
-        )
-        result = subprocess.run(
-            ["security", "add-generic-password", "-s", service, "-a", account, "-w", password],
-            capture_output=True, timeout=5,
-        )
-        return result.returncode == 0
-    except Exception:
-        return False
+from utils import keychain_get as _keychain_get, keychain_set as _keychain_set
 
 
 # Try Keychain first, then .env fallback

@@ -11,6 +11,7 @@ import time
 import threading
 import subprocess
 from logger import get_logger
+from utils import keychain_get as _kg, keychain_set as _ks_raw, keychain_delete as _kd_raw
 
 log = get_logger("oauth")
 
@@ -33,25 +34,10 @@ SCOPES = [
 ]
 
 
-def _kc_get(a):
-    try:
-        r = subprocess.run(["security","find-generic-password","-s","Muse","-a",a,"-w"],
-                           capture_output=True,text=True,timeout=5)
-        return r.stdout.strip() if r.returncode==0 else ""
-    except: return ""
-
-def _kc_set(a, v):
-    try:
-        subprocess.run(["security","delete-generic-password","-s","Muse","-a",a],
-                       capture_output=True,timeout=5)
-        subprocess.run(["security","add-generic-password","-s","Muse","-a",a,"-w",v],
-                       capture_output=True,timeout=5)
-    except: pass
-
-def _kc_delete(a):
-    try: subprocess.run(["security","delete-generic-password","-s","Muse","-a",a],
-                        capture_output=True,timeout=5)
-    except: pass
+# Thin wrappers binding "Muse" as the keychain service
+def _kc_get(a): return _kg("Muse", a)
+def _kc_set(a, v): return _ks_raw("Muse", a, v)
+def _kc_delete(a): return _kd_raw("Muse", a)
 
 
 class OAuthManager:

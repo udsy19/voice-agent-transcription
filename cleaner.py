@@ -112,16 +112,7 @@ APP_TONE_MAP = {
 }
 
 
-def _get_active_app() -> str:
-    try:
-        result = subprocess.run(
-            ["osascript", "-e",
-             'tell application "System Events" to get name of first application process whose frontmost is true'],
-            capture_output=True, text=True, timeout=2,
-        )
-        return result.stdout.strip()
-    except Exception:
-        return ""
+from utils import get_active_app as _get_active_app
 
 
 def _get_tone_for_app(app_name: str) -> str | None:

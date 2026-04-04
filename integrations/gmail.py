@@ -2,24 +2,14 @@
 
 import base64
 from email.mime.text import MIMEText
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
+from integrations.google_auth import get_service, api_error
 from logger import get_logger
 
 log = get_logger("gmail")
 
 
 def _get_service(token_data: dict):
-    """Build a Gmail API service from token data."""
-    if "credentials" in token_data:
-        creds = token_data["credentials"]
-    else:
-        creds = Credentials(
-            token=token_data["access_token"],
-            refresh_token=token_data.get("refresh_token"),
-            token_uri="https://oauth2.googleapis.com/token",
-        )
-    return build("gmail", "v1", credentials=creds, cache_discovery=False)
+    return get_service(token_data, "gmail", "v1")
 
 
 def _create_message(to: str, subject: str, body: str, sender: str = "me") -> dict:
@@ -51,10 +41,7 @@ def draft_email(token_data: dict, to: str, subject: str, body: str) -> dict:
         return {"ok": True, "draft_id": draft_id, "to": to, "subject": subject}
     except Exception as e:
         log.error("Gmail draft failed: %s", e)
-        err = str(e)
-        if "accessNotConfigured" in err or "has not been used" in err:
-            return {"ok": False, "error": "Gmail API is not enabled. Enable it at console.cloud.google.com > APIs > Gmail API."}
-        return {"ok": False, "error": err}
+        return api_error(e)
 
 
 def send_email(token_data: dict, to: str, subject: str, body: str) -> dict:
@@ -77,10 +64,7 @@ def send_email(token_data: dict, to: str, subject: str, body: str) -> dict:
         return {"ok": True, "message_id": msg_id, "to": to, "subject": subject}
     except Exception as e:
         log.error("Gmail send failed: %s", e)
-        err = str(e)
-        if "accessNotConfigured" in err or "has not been used" in err:
-            return {"ok": False, "error": "Gmail API is not enabled. Enable it at console.cloud.google.com > APIs > Gmail API."}
-        return {"ok": False, "error": err}
+        return api_error(e)
 
 
 def send_draft(token_data: dict, draft_id: str) -> dict:
