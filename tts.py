@@ -31,7 +31,10 @@ except ImportError:
     ELEVENLABS_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 
 # Default ElevenLabs voices (subset)
+ELEVENLABS_DEFAULT_VOICE = "DXFkLCBUTmvXpp2QwZjA"  # User's preferred voice
+
 ELEVENLABS_VOICES = {
+    "default":  {"id": "DXFkLCBUTmvXpp2QwZjA", "name": "Default", "desc": "Your preferred voice"},
     "sarah":    {"id": "EXAVITQu4vr4xnSDxMaL", "name": "Sarah", "desc": "Mature, confident"},
     "roger":    {"id": "CwhRBWXzGAHq8TQ4Fs17", "name": "Roger", "desc": "Laid-back, casual"},
     "laura":    {"id": "FGY2WhTYpPnrIDTdsKH5", "name": "Laura", "desc": "Enthusiastic, quirky"},
@@ -162,7 +165,7 @@ def _speak_macos(text: str):
 
 # ── Public API ──────────────────────────────────────────────────────────────
 
-def speak(text: str, voice: str = "sarah"):
+def speak(text: str, voice: str = "default"):
     """Speak text. ElevenLabs → Kokoro → macOS say. Non-blocking."""
     global _playing
     if _playing:
@@ -187,7 +190,7 @@ def speak(text: str, voice: str = "sarah"):
     threading.Thread(target=run, daemon=True).start()
 
 
-def speak_sync(text: str, voice: str = "sarah"):
+def speak_sync(text: str, voice: str = "default"):
     """Speak text synchronously (for preview). Blocking."""
     if _speak_elevenlabs(text, voice):
         return
