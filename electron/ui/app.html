@@ -213,6 +213,12 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
 .entry-badge.mem{background:rgba(168,85,247,.12);color:#a855f7}
 .entry-badge.todo{background:rgba(234,179,8,.12);color:#eab308}
 
+/* Live streaming */
+.live-entry{border-left:2px solid var(--blue);padding-left:12px;animation:fadeIn .3s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+.typing-cursor{display:inline-block;width:2px;height:13px;background:var(--text2);margin-left:2px;vertical-align:text-bottom;animation:blink .7s step-end infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
 .empty{text-align:center;padding:64px 16px;color:var(--text3);font-size:14px;line-height:1.8}
 
 /* Status bar — barely there */
@@ -409,8 +415,54 @@ function onMsg(m){
   if(m.type==='oauth_complete')gLoad();
   if(m.type==='todo_added'||m.type==='todo_completed')loadTodos();
   if(m.type==='memory_updated')loadMemories();
+
+  // Live stream assistant text into the page
+  if(m.type==='assistant_stream'){
+    let live=document.getElementById('liveStream');
+    if(!live){
+      live=document.createElement('div');
+      live.id='liveStream';
+      live.className='entry live-entry';
+      live.innerHTML='<div class="entry-head"><span class="entry-app"><span class="entry-badge assist">assistant</span></span><span class="entry-time">now</span></div><div class="entry-text" id="liveText"></div>';
+      const histEl=document.getElementById('hist');
+      if(histEl)histEl.prepend(live);
+    }
+    document.getElementById('liveText').innerHTML=m.text+(m.done?'':'<span class="typing-cursor"></span>');
+    if(m.done){
+      setTimeout(()=>{const el=document.getElementById('liveStream');if(el)el.id='';el.classList.remove('live-entry')},1000);
+    }
+  }
+
+  // Live stream partial transcription
+  if(m.type==='partial'){
+    let live=document.getElementById('liveTranscript');
+    if(!live){
+      live=document.createElement('div');
+      live.id='liveTranscript';
+      live.className='entry live-entry';
+      live.innerHTML='<div class="entry-head"><span class="entry-app">transcribing</span></div><div class="entry-text" id="liveTransText" style="color:var(--text3)"></div>';
+      const histEl=document.getElementById('hist');
+      if(histEl)histEl.prepend(live);
+    }
+    document.getElementById('liveTransText').textContent=m.text;
+  }
+  if(m.type==='status'&&m.status==='processing'){
+    const lt=document.getElementById('liveTranscript');
+    if(lt){lt.remove()}
+  }
 }
-function updStatus(s,d){document.getElementById('sTxt').textContent=d||s}
+function updStatus(s,d){
+  document.getElementById('sTxt').textContent=d||s;
+  // Update greeting with status hint
+  const gr=document.getElementById('greeting');
+  if(gr){
+    const h=new Date().getHours();
+    const g=h<12?'Good morning':h<17?'Good afternoon':'Good evening';
+    if(s==='recording')gr.textContent=g+' — listening...';
+    else if(s==='processing')gr.textContent=g+' — thinking...';
+    else gr.textContent=g;
+  }
+}
 
 function renderHist(){
   const el=document.getElementById('hist');
