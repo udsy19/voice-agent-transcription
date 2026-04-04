@@ -1131,8 +1131,8 @@ def process_audio(audio):
                     add_history(entry)
                     emit({"type": "result", **entry})
                     return
-                elif intent == "memory" and S.brain:
-                    S.brain.remember(extracted)
+                elif intent == "memory":
+                    mem.remember(extracted)
                     _play_sound("done")
                     set_status("idle", f"Noted: {extracted[:40]}")
                     entry = {"raw": raw_text, "cleaned": f"[note] {extracted}", "app": app_name,

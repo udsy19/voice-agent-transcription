@@ -394,9 +394,7 @@ class Assistant:
             if len(self._conversation) > 20:
                 self._conversation = self._conversation[-20:]
 
-            # Only save to memory if user shared personal info
-            if any(w in command.lower() for w in ['prefer','like','love','hate','always','never','name is','my ','remember','favorite','i am','i\'m']):
-                mem.remember_async(command)
+            # Don't auto-save — memory is saved explicitly via remember_fact tool
 
             self._stream(text)
             import threading
@@ -428,6 +426,83 @@ class Assistant:
         """Execute a tool and return the result."""
         log.info("Tool: %s(%s)", name, json.dumps(args)[:200])
 
+        # Non-Google tools first (don't need OAuth token)
+        if name == "remember_fact":
+            import memory as mem_module
+            fact_text = args["fact"]
+            existing = mem_module.recall(fact_text, limit=3)
+            for ex in existing:
+                if ex.get("score", 0) > 0.5:
+                    mem_module.delete(ex["id"])
+                    log.info("Replacing similar memory: %s", ex.get("memory", "")[:40])
+            m = mem_module._get_mem0()
+            if m:
+                try:
+                    import uuid, hashlib
+                    embedding = m.embedding_model.embed(fact_text)
+                    m.vector_store.insert(
+                        vectors=[embedding],
+                        payloads=[{"data": fact_text, "hash": hashlib.md5(fact_text.encode()).hexdigest(),
+                                   "user_id": "user", "created_at": time.strftime("%Y-%m-%dT%H:%M:%S+00:00")}],
+                        ids=[str(uuid.uuid4())],
+                    )
+                    log.info("Remembered: %s", fact_text[:50])
+                    self._emit({"type": "memory_updated"})
+                    return {"ok": True, "fact": fact_text}
+                except Exception as e:
+                    log.error("Remember failed: %s", e)
+                    return {"ok": False, "error": str(e)}
+            return {"ok": False, "error": "Memory not available"}
+
+        elif name == "forget_fact":
+            import memory as mem_module
+            results = mem_module.recall(args["query"], limit=3)
+            if results:
+                deleted = []
+                for r in results:
+                    if r.get("id"):
+                        mem_module.delete(r["id"])
+                        deleted.append(r.get("memory", ""))
+                self._emit({"type": "memory_updated"})
+                return {"ok": True, "deleted": deleted}
+            return {"ok": False, "error": "No matching memory found."}
+
+        elif name == "add_todo":
+            if self._todos:
+                item = self._todos.add(args["text"])
+                self._emit({"type": "todo_added", "item": item})
+                return {"ok": True, "text": args["text"]}
+            return {"error": "Todos not available."}
+
+        elif name == "complete_todo":
+            if self._todos:
+                search = args["text"].lower()
+                for item in self._todos.list_pending():
+                    if search in item["text"].lower() or item["text"].lower() in search:
+                        self._todos.complete(item["id"])
+                        self._emit({"type": "todo_completed", "id": item["id"]})
+                        return {"ok": True, "completed": item["text"]}
+                return {"ok": False, "error": f"No pending task matching '{args['text']}'"}
+            return {"error": "Todos not available."}
+
+        elif name == "list_todos":
+            if self._todos:
+                pending = self._todos.list_pending()
+                return {"result": [t["text"] for t in pending]} if pending else {"result": "No pending tasks."}
+            return {"result": "Todos not available."}
+
+        elif name == "save_meeting_notes":
+            if self._brain:
+                actions = [a.strip() for a in args.get("action_items", "").split(",") if a.strip()]
+                self._brain.add_meeting_notes(args["summary"], time.strftime("%Y-%m-%d"), args["notes"], actions)
+                if actions and self._todos:
+                    for a in actions:
+                        item = self._todos.add(a)
+                        self._emit({"type": "todo_added", "item": item})
+                return {"ok": True, "summary": args["summary"], "action_items": actions}
+            return {"error": "Brain not available."}
+
+        # Google tools — need OAuth token
         token = self._oauth.get_token("google") if self._oauth else None
         if not token:
             return {"error": "No Google account connected. Go to Settings > Integrations."}
@@ -487,93 +562,6 @@ class Assistant:
             if result.get("ok"):
                 self._oauth._last_draft_id = None
             return result
-
-        elif name == "remember_fact":
-            import memory as mem_module
-            fact_text = args["fact"]
-
-            # Check if a similar memory exists (same person/topic) — update instead of duplicate
-            existing = mem_module.recall(fact_text, limit=3)
-            for ex in existing:
-                if ex.get("score", 0) > 0.5:  # high similarity = likely about same thing
-                    # Delete the old one, we'll add the new version
-                    mem_module.delete(ex["id"])
-                    log.info("Replacing similar memory: %s", ex.get("memory", "")[:40])
-
-            # Store directly in vector DB (no LLM re-extraction)
-            m = mem_module._get_mem0()
-            if m:
-                try:
-                    import uuid, hashlib
-                    embedding = m.embedding_model.embed(fact_text)
-                    point_id = str(uuid.uuid4())
-                    m.vector_store.insert(
-                        vectors=[embedding],
-                        payloads=[{"data": fact_text, "hash": hashlib.md5(fact_text.encode()).hexdigest(),
-                                   "user_id": "user", "created_at": time.strftime("%Y-%m-%dT%H:%M:%S+00:00")}],
-                        ids=[point_id],
-                    )
-                    log.info("Remembered: %s", fact_text[:50])
-                    self._emit({"type": "memory_updated"})
-                    return {"ok": True, "fact": fact_text}
-                except Exception as e:
-                    log.error("Remember failed: %s", e)
-                    return {"ok": False, "error": str(e)}
-            return {"ok": False, "error": "Memory not available"}
-
-        elif name == "add_todo":
-            if self._todos:
-                item = self._todos.add(args["text"])
-                self._emit({"type": "todo_added", "item": item})
-                return {"ok": True, "text": args["text"]}
-            return {"error": "Todos not available."}
-
-        elif name == "forget_fact":
-            import memory as mem_module
-            results = mem_module.recall(args["query"], limit=3)
-            if results:
-                deleted = []
-                for r in results:
-                    if r.get("id"):
-                        mem_module.delete(r["id"])
-                        deleted.append(r.get("memory", ""))
-                self._emit({"type": "memory_updated"})
-                return {"ok": True, "deleted": deleted}
-            return {"ok": False, "error": "No matching memory found."}
-
-        elif name == "complete_todo":
-            if self._todos:
-                search = args["text"].lower()
-                for item in self._todos.list_pending():
-                    if search in item["text"].lower() or item["text"].lower() in search:
-                        self._todos.complete(item["id"])
-                        self._emit({"type": "todo_completed", "id": item["id"]})
-                        return {"ok": True, "completed": item["text"]}
-                return {"ok": False, "error": f"No pending task matching '{args['text']}'"}
-            return {"error": "Todos not available."}
-
-        elif name == "list_todos":
-            if self._todos:
-                pending = self._todos.list_pending()
-                if not pending:
-                    return {"result": "No pending tasks."}
-                return {"result": [t["text"] for t in pending]}
-            return {"result": "Todos not available."}
-
-        elif name == "save_meeting_notes":
-            if self._brain:
-                actions = [a.strip() for a in args.get("action_items", "").split(",") if a.strip()]
-                self._brain.add_meeting_notes(
-                    args["summary"], time.strftime("%Y-%m-%d"),
-                    args["notes"], actions,
-                )
-                # Auto-create todos from action items
-                if actions and self._todos:
-                    for a in actions:
-                        item = self._todos.add(a)
-                        self._emit({"type": "todo_added", "item": item})
-                return {"ok": True, "summary": args["summary"], "action_items": actions}
-            return {"error": "Brain not available."}
 
         return {"error": f"Unknown tool: {name}"}
 

@@ -167,11 +167,14 @@ def get_context_for_llm(query: str, user_id: str = "user") -> str:
     return "\n\nWhat I know about you:\n" + "\n".join(lines) if lines else ""
 
 
-def get_names_for_dictation(user_id: str = "user") -> list[str]:
-    """Get known names/terms from memory for Whisper prompt hints.
+_names_cache: list[str] = []
+_names_cache_ts: float = 0
 
-    This helps Whisper spell names correctly during dictation.
-    """
+def get_names_for_dictation(user_id: str = "user") -> list[str]:
+    """Get known names/terms from memory for Whisper prompt hints. Cached 2 min."""
+    global _names_cache, _names_cache_ts
+    if time.time() - _names_cache_ts < 120 and _names_cache:
+        return _names_cache
     memories = get_all(user_id)
     names = set()
     import re
@@ -181,7 +184,9 @@ def get_names_for_dictation(user_id: str = "user") -> list[str]:
         for word in re.findall(r'\b[A-Z][a-z]+\b', text):
             if len(word) > 2:
                 names.add(word)
-    return list(names)[:30]  # cap at 30 for whisper prompt
+    _names_cache = list(names)[:30]
+    _names_cache_ts = time.time()
+    return _names_cache
 
 
 # ── Rate limiting + offline queue ────────────────────────────────────────────

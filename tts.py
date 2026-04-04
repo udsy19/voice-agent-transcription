@@ -88,7 +88,7 @@ def speak(text: str, voice: str = "af_heart"):
                             sd.play(audio, samplerate=sr, device=sd.default.device[1])
                             sd.wait()
                         except Exception:
-                            _speak_macos(text)
+                            _speak_macos(spoken_text)
                     return
             _speak_macos(spoken_text)
         except Exception as e:
