@@ -465,7 +465,7 @@ async function addTodoInline(el){const t=el.value.trim();if(!t)return;await apiP
 
 chkGroq();chkBackend();setupListeners();
 setInterval(()=>{if(connected){refresh();loadTodos()}},10e3);
-setInterval(()=>{if(connected)loadToday()},60e3); // calendar every 60s, not 10s
+setInterval(()=>{if(connected)loadToday()},300e3); // calendar every 5min
 function waitAndLoadToday(){if(connected){loadToday();loadTodos()}else{setTimeout(waitAndLoadToday,2e3)}}
 setTimeout(waitAndLoadToday,2e3);
 

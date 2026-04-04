@@ -140,11 +140,19 @@ class OAuthManager:
         threading.Thread(target=run, daemon=True).start()
         return {"ok": True}
 
+    _token_cache = {}  # {service:email: {data, ts}}
+
     def get_token(self, service="google", email=""):
         if not email:
             accts = self.list_accounts(service)
             if not accts: return None
             email = accts[0]["email"]
+
+        # Return cached token if less than 30 min old
+        cache_key = f"{service}:{email}"
+        cached = self._token_cache.get(cache_key)
+        if cached and (time.time() - cached["ts"]) < 1800:
+            return cached["data"]
 
         raw = _kc_get(f"oauth:{service}:{email}")
         if not raw: return None
@@ -167,7 +175,9 @@ class OAuthManager:
             except Exception as e:
                 log.error("Refresh failed: %s — trying with existing token", e)
 
-        return {"access_token": creds.token, "credentials": creds, "email": email}
+        result = {"access_token": creds.token, "credentials": creds, "email": email}
+        self._token_cache[cache_key] = {"data": result, "ts": time.time()}
+        return result
 
     def remove_account(self, service, email):
         _kc_delete(f"oauth:{service}:{email}")
