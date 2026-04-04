@@ -147,7 +147,7 @@ if(window.electronAPI){
       sizePillToText(m.text);
       if(m.done){
         if(assistTimer)clearTimeout(assistTimer);
-        assistTimer=setTimeout(()=>{if(st==='assist'){st='hidden';pill.className='pill';pill.style.width='';pill.style.height=''}},5000);
+        assistTimer=setTimeout(()=>{if(st==='assist'){st='hidden';pill.className='pill';pill.style.width='';pill.style.height=''}},15000);
       }
     }
     if(m.type==='status'){

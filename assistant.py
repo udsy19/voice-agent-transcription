@@ -39,10 +39,12 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "list_calendar_events",
-            "description": "List today's and upcoming calendar events. Always returns today's full schedule.",
+            "description": "List calendar events. Returns events for today by default, or up to 14 days ahead if the user asks about 'next week', 'this week', 'upcoming', etc.",
             "parameters": {
                 "type": "object",
-                "properties": {},
+                "properties": {
+                    "days": {"type": "number", "description": "Number of days to look ahead. Use 1 for today, 7 for this week, 14 for next week."},
+                },
             },
         },
     },
@@ -264,7 +266,11 @@ class Assistant:
 
         elif name == "list_calendar_events":
             from integrations.google_calendar import list_events
-            return list_events(token, days_ahead=1)
+            try:
+                days = max(1, min(30, int(float(args.get("days", 1)))))
+            except (ValueError, TypeError):
+                days = 1
+            return list_events(token, days_ahead=days, max_results=25)
 
         elif name == "draft_email":
             from integrations.gmail import draft_email
