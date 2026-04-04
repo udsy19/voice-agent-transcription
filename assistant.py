@@ -152,6 +152,18 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "complete_todo",
+            "description": "Mark a task as done/completed. Use when user says they finished something, 'check off X', 'done with X', 'bought X'.",
+            "parameters": {
+                "type": "object",
+                "properties": {"text": {"type": "string", "description": "The task text to mark as done (fuzzy match)."}},
+                "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "list_todos",
             "description": "List pending tasks/todos.",
             "parameters": {"type": "object", "properties": {}},
@@ -177,23 +189,16 @@ TOOLS = [
 
 
 def _speak(text: str):
-    """Speak text aloud using Kokoro TTS (or macOS say fallback)."""
+    """Speak text via Kokoro TTS."""
     try:
         import tts as tts_module
         import safe_json
         from config import DATA_DIR
         prefs = safe_json.load(str(DATA_DIR / "preferences.json"), {})
-        voice = prefs.get("voice", "default")
+        voice = prefs.get("voice", "af_heart")
         tts_module.speak(text, voice=voice)
     except Exception as e:
-        log.warning("Kokoro TTS failed: %s, falling back to say", e)
-        try:
-            subprocess.Popen(
-                ["say", "-v", "Samantha", "-r", "190", text],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
-        except Exception:
-            pass
+        log.warning("TTS failed: %s", e)
 
 
 class Assistant:
@@ -425,8 +430,8 @@ class Assistant:
             return result
 
         elif name == "remember_fact":
-            # Bypass rate limit for explicit remember requests
-            m = mem._get_mem0()
+            import memory as mem_module
+            m = mem_module._get_mem0()
             if m:
                 try:
                     result = m.add(args["fact"], user_id="user")
@@ -443,6 +448,17 @@ class Assistant:
                 item = self._todos.add(args["text"])
                 self._emit({"type": "todo_added", "item": item})
                 return {"ok": True, "text": args["text"]}
+            return {"error": "Todos not available."}
+
+        elif name == "complete_todo":
+            if self._todos:
+                search = args["text"].lower()
+                for item in self._todos.list_pending():
+                    if search in item["text"].lower() or item["text"].lower() in search:
+                        self._todos.complete(item["id"])
+                        self._emit({"type": "todo_completed", "id": item["id"]})
+                        return {"ok": True, "completed": item["text"]}
+                return {"ok": False, "error": f"No pending task matching '{args['text']}'"}
             return {"error": "Todos not available."}
 
         elif name == "list_todos":
@@ -481,7 +497,8 @@ class Assistant:
             "\n## How to respond\n"
             "- Keep responses SHORT — 1-3 sentences max. This will be spoken aloud.\n"
             "- Be natural and conversational, like a real assistant.\n"
-            "- When listing events, say them naturally: 'You have a flight to New York at 10:43am, then coffee with Teng at 1pm.'\n"
+            "- When listing events, say times naturally: '10:43 AM' not '10:43:00', '12 PM' not '12:00:00', '1 PM' not '13:00'.\n"
+            "- Say events naturally: 'You have a flight to New York at 10:43 AM, then coffee with Teng at 1 PM.'\n"
             "- Don't just list data — interpret it. 'Looks like a busy morning but your afternoon is free.'\n"
             "\n## Calendar intelligence\n"
             "- 'today' = days 1, 'this week' = days 7, 'next week' = days 14, 'this month' = days 30\n"

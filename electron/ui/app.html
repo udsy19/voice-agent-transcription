@@ -277,12 +277,21 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
     <div class="pg" id="pg-memories">
       <h1>Memories</h1>
       <div class="desc">Everything the assistant has learned about you. Extracted automatically from conversations.</div>
-      <div class="fr" style="margin-bottom:16px">
+      <div class="fr" style="margin-bottom:10px">
         <input class="inp" id="memSearch" placeholder="Search memories..." onkeydown="if(event.key==='Enter')searchMem()">
         <button class="btn btn-p" onclick="searchMem()">Search</button>
       </div>
+      <div id="memFilters" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">
+        <button class="btn btn-g" style="font-size:10px;padding:3px 8px" onclick="filterMem('')">All</button>
+        <button class="btn btn-g" style="font-size:10px;padding:3px 8px" onclick="filterMem('people')">People</button>
+        <button class="btn btn-g" style="font-size:10px;padding:3px 8px" onclick="filterMem('preference')">Preferences</button>
+        <button class="btn btn-g" style="font-size:10px;padding:3px 8px" onclick="filterMem('travel')">Travel</button>
+        <button class="btn btn-g" style="font-size:10px;padding:3px 8px" onclick="filterMem('work')">Work</button>
+        <button class="btn btn-g" style="font-size:10px;padding:3px 8px" onclick="filterMem('school')">School</button>
+        <button class="btn btn-g" style="font-size:10px;padding:3px 8px" onclick="filterMem('tech')">Tech</button>
+      </div>
       <div id="memResults" style="display:none;margin-bottom:20px"></div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
         <div class="label" style="margin:0">All memories</div>
         <div style="display:flex;gap:4px">
           <a class="btn btn-g" href="http://127.0.0.1:8528/api/memories/export" target="_blank" style="font-size:10px;padding:4px 10px">Export</a>
@@ -322,10 +331,6 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
           <div style="flex:1"><div class="row-label">Groq</div><div class="row-sub" id="groqStatus">Checking...</div></div>
           <div style="display:flex;gap:6px"><input class="inp" id="groqKeyInput" type="password" placeholder="gsk_..." style="width:140px;font-size:11px"><button class="btn btn-p" onclick="setGroqKey()">Save</button></div>
         </div>
-        <div class="row">
-          <div style="flex:1"><div class="row-label">ElevenLabs</div><div class="row-sub" id="elevenStatus" style="font-size:11px">Not configured (using offline TTS)</div></div>
-          <div style="display:flex;gap:6px"><input class="inp" id="elevenKeyInput" type="password" placeholder="sk_..." style="width:140px;font-size:11px"><button class="btn btn-p" onclick="setElevenKey()">Save</button></div>
-        </div>
       </div>
 
       <div class="label">Transcription</div>
@@ -344,7 +349,7 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
       <div class="label">Voice</div>
       <div class="block" id="voiceBlock">
         <div class="row" style="flex-direction:column;align-items:stretch;gap:6px;padding:14px">
-          <div class="row-sub">Select a voice for the assistant. ElevenLabs requires API key above.</div>
+          <div class="row-sub">All voices run locally via Kokoro.</div>
           <div id="voiceGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:4px"></div>
         </div>
       </div>
@@ -466,9 +471,7 @@ async function loadToday(){
 }
 
 // Voice selection
-async function setElevenKey(){const k=document.getElementById('elevenKeyInput').value.trim();if(!k)return;const r=await fetch(`${API}/api/elevenlabs-key`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})});const d=await r.json();if(d.ok){document.getElementById('elevenKeyInput').value='';document.getElementById('elevenStatus').textContent='Configured';document.getElementById('elevenStatus').style.color='var(--green)';loadVoices()}}
-
-let currentVoice='sarah';
+let currentVoice='af_heart';
 async function loadVoices(){
   try{
     const r=await fetch(`${API}/api/voices`);const d=await r.json();
@@ -476,13 +479,14 @@ async function loadVoices(){
     const grid=document.getElementById('voiceGrid');
     if(!grid)return;
     grid.innerHTML=Object.entries(d.voices).map(([id,v])=>{
-      const prov=v.provider==='elevenlabs'?'<span style="font-size:8px;color:var(--blue);margin-left:4px">11labs</span>':'<span style="font-size:8px;color:var(--text3);margin-left:4px">offline</span>';
+      const flag=v.accent==='UK'?'🇬🇧':'🇺🇸';
+      const g=v.gender==='F'?'♀':'♂';
       return`<div class="vc${id===currentVoice?' on':''}" onclick="selectVoice('${id}')">
         <button class="vc-play" onclick="event.stopPropagation();previewVoice('${id}')" title="Preview">
           <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
         </button>
         <div class="vc-info">
-          <div class="vc-name">${v.name}${prov}</div>
+          <div class="vc-name">${g} ${v.name} ${flag}</div>
           <div class="vc-desc">${v.desc}</div>
         </div>
       </div>`;
@@ -522,6 +526,7 @@ async function loadMemories(){
     const r=await fetch(`${API}/api/memories`);const d=await r.json();
     const el=document.getElementById('memList');
     const mems=d.memories||[];
+    _allMems=mems;
     if(!mems.length){el.innerHTML='<div style="color:var(--text3);padding:16px 0;font-size:13px">No memories yet. Start talking to the assistant — it learns automatically.</div>';return}
     el.innerHTML=mems.map(m=>{
       const ts=m.created_at?new Date(m.created_at).toLocaleDateString('en-US',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}):'';
@@ -546,6 +551,16 @@ async function searchMem(){
   }catch{}
 }
 async function deleteMem(id){await fetch(`${API}/api/memories/${id}`,{method:'DELETE'});loadMemories()}
+let _allMems=[];
+function filterMem(cat){
+  const el=document.getElementById('memList');
+  const filtered=cat?_allMems.filter(m=>inferCategory(m.memory||'')===cat):_allMems;
+  el.innerHTML=filtered.map(m=>{
+    const ts=m.created_at?new Date(m.created_at).toLocaleDateString('en-US',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}):'';
+    const c=inferCategory(m.memory||'');
+    return`<div class="mem-card"><div class="mem-text">${esc(m.memory||'')}</div><div class="mem-meta"><span class="mem-cat ${c}">${c}</span><span>${ts}</span><button class="mem-del" onclick="deleteMem('${m.id}')">&times;</button></div></div>`;
+  }).join('')||'<div style="color:var(--text3);padding:12px 0;font-size:13px">No memories in this category.</div>';
+}
 function inferCategory(text){
   const t=text.toLowerCase();
   if(/\b(prefer|like|favorite|always|never|hate|love|enjoy)\b/.test(t))return'preference';
