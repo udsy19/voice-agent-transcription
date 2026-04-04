@@ -323,6 +323,9 @@ function createPillWindow() {
   pillWindow.loadFile(path.join(__dirname, 'ui', 'pill.html'));
   pillWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
+  // Let clicks pass through the transparent area — only the pill itself catches events
+  pillWindow.setIgnoreMouseEvents(true, { forward: true });
+
   // Reposition when display changes (dock resize, external monitor, fullscreen toggle)
   screen.on('display-metrics-changed', repositionPill);
 }
@@ -404,6 +407,11 @@ function createOAuthWindow(url) {
 
 ipcMain.handle('get-port', () => PORT);
 ipcMain.handle('open-oauth', (_, url) => { createOAuthWindow(url); return true; });
+ipcMain.handle('set-ignore-mouse', (_, ignore, opts) => {
+  if (pillWindow && !pillWindow.isDestroyed()) {
+    pillWindow.setIgnoreMouseEvents(ignore, opts || {});
+  }
+});
 
 // ── App Lifecycle ───────────────────────────────────────────────────────────
 

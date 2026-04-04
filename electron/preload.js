@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onStatus: (cb) => addListener('status', (_, msg) => cb(msg)),
   getPort: () => ipcRenderer.invoke('get-port'),
   openOAuth: (url) => ipcRenderer.invoke('open-oauth', url),
+  setIgnoreMouseEvents: (ignore, opts) => ipcRenderer.invoke('set-ignore-mouse', ignore, opts),
 });
 
 // Prevent listener leaks on window reload

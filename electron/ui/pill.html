@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{background:transparent;overflow:hidden;width:320px;height:200px;pointer-events:none}
+html,body{background:transparent;overflow:hidden;width:320px;height:200px}
 
 .pill{
   position:absolute;top:4px;left:50%;transform:translateX(-50%);
@@ -162,6 +162,26 @@ if(window.electronAPI){
 }
 
 document.getElementById('bst').onclick=e=>{e.stopPropagation();fetch('http://127.0.0.1:8528/api/stop-recording',{method:'POST'}).catch(()=>{})};
+
+// Mouse event forwarding — let clicks pass through transparent areas
+// When mouse enters the visible pill, enable mouse events; otherwise pass through
+if(window.electronAPI && window.electronAPI.setIgnoreMouseEvents){
+  document.addEventListener('mouseenter',()=>{
+    if(st!=='hidden')window.electronAPI.setIgnoreMouseEvents(false);
+  });
+  document.addEventListener('mouseleave',()=>{
+    window.electronAPI.setIgnoreMouseEvents(true,{forward:true});
+  });
+}
+// Also handle via CSS — transparent areas don't catch events
+pill.addEventListener('mouseenter',()=>{
+  if(window.electronAPI&&window.electronAPI.setIgnoreMouseEvents)
+    window.electronAPI.setIgnoreMouseEvents(false);
+});
+pill.addEventListener('mouseleave',()=>{
+  if(window.electronAPI&&window.electronAPI.setIgnoreMouseEvents)
+    window.electronAPI.setIgnoreMouseEvents(true,{forward:true});
+});
 </script>
 </body>
 </html>
