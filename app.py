@@ -568,6 +568,22 @@ async def api_permissions():
     return result
 
 
+@api.get("/api/today")
+async def api_today():
+    """Get today's calendar events for the home card."""
+    if not S.oauth:
+        return {"events": []}
+    try:
+        token = S.oauth.get_token("google")
+        if not token:
+            return {"events": []}
+        from integrations.google_calendar import list_events
+        result = list_events(token, days_ahead=1, max_results=15)
+        return {"events": result.get("events", [])} if result.get("ok") else {"events": []}
+    except Exception:
+        return {"events": []}
+
+
 @api.get("/api/debug")
 async def api_debug():
     """Debug info for troubleshooting."""

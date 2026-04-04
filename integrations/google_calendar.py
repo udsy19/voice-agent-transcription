@@ -92,8 +92,10 @@ def list_events(token_data: dict, days_ahead: int = 1, max_results: int = 10) ->
     service = _get_service(token_data)
 
     now = datetime.now(timezone.utc)
-    time_min = now.isoformat() + "Z"
-    time_max = (now + timedelta(days=max(1, days_ahead))).isoformat() + "Z"
+    # Start from beginning of today (not current time) to show full day
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    time_min = today_start.isoformat() + "Z"
+    time_max = (today_start + timedelta(days=max(1, days_ahead))).isoformat() + "Z"
 
     try:
         result = service.events().list(
