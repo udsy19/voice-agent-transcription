@@ -79,6 +79,10 @@ from conversation import ConversationTracker
 from exporter import export_json, export_txt, export_word, export_pdf, export_logs
 from assistant import Assistant
 from integrations.oauth_manager import OAuthManager
+from todos import TodoList
+from brain import Brain
+import quick_capture
+import briefing
 import tts
 PORT = 8528
 HANDS_FREE_SILENCE_SEC = 2.0
@@ -180,6 +184,8 @@ class State:
         self.conversation: ConversationTracker | None = None
         self.assistant: Assistant | None = None
         self.oauth: OAuthManager | None = None
+        self.todos: TodoList | None = None
+        self.brain: Brain | None = None
 
         # Runtime state
         self.status: str = "loading"
@@ -568,6 +574,74 @@ async def api_permissions():
 
     return result
 
+
+@api.get("/api/todos")
+async def api_todos():
+    return {"todos": S.todos.list_all() if S.todos else []}
+
+@api.post("/api/todos/add")
+async def api_add_todo(body: dict):
+    text = body.get("text", "").strip()
+    if not text or not S.todos:
+        return {"ok": False}
+    item = S.todos.add(text)
+    emit({"type": "todo_added", "item": item})
+    return {"ok": True, "item": item}
+
+@api.post("/api/todos/complete")
+async def api_complete_todo(body: dict):
+    tid = body.get("id", "")
+    if S.todos and S.todos.complete(tid):
+        emit({"type": "todo_completed", "id": tid})
+        return {"ok": True}
+    return {"ok": False}
+
+@api.post("/api/todos/remove")
+async def api_remove_todo(body: dict):
+    tid = body.get("id", "")
+    if S.todos and S.todos.remove(tid):
+        return {"ok": True}
+    return {"ok": False}
+
+@api.get("/api/briefing")
+async def api_briefing():
+    """Get today's briefing."""
+    events = []
+    try:
+        token = S.oauth.get_token("google") if S.oauth else None
+        if token:
+            from integrations.google_calendar import list_events
+            r = list_events(token, days_ahead=1)
+            events = r.get("events", []) if r.get("ok") else []
+    except Exception:
+        pass
+    todos = S.todos.list_pending() if S.todos else []
+    deadlines = S.brain.get_deadlines() if S.brain else []
+    facts = S.brain.facts[-5:] if S.brain else []
+    text = briefing.compose(events, todos, deadlines, facts)
+    return {"text": text}
+
+@api.post("/api/briefing/speak")
+async def api_speak_briefing():
+    """Speak the briefing aloud."""
+    events = []
+    try:
+        token = S.oauth.get_token("google") if S.oauth else None
+        if token:
+            from integrations.google_calendar import list_events
+            r = list_events(token, days_ahead=1)
+            events = r.get("events", []) if r.get("ok") else []
+    except Exception:
+        pass
+    todos = S.todos.list_pending() if S.todos else []
+    deadlines = S.brain.get_deadlines() if S.brain else []
+    text = briefing.compose(events, todos, deadlines, [])
+    emit({"type": "assistant_stream", "text": text, "done": True})
+    import safe_json
+    prefs = safe_json.load(str(DATA_DIR / "preferences.json"), {})
+    voice = prefs.get("voice", "af_heart")
+    threading.Thread(target=tts.speak_sync, args=(text, voice), daemon=True).start()
+    return {"ok": True, "text": text}
 
 @api.get("/api/today")
 async def api_today():
@@ -966,6 +1040,44 @@ def process_audio(audio):
             set_status("idle", f"Done ({dur:.1f}s)")
             return
 
+        # === Quick Capture (dictation mode only) ===
+        if S.recording_mode == "dictation":
+            capture = quick_capture.detect(raw_text)
+            if capture:
+                intent, extracted = capture
+                if intent == "todo" and S.todos:
+                    item = S.todos.add(extracted)
+                    emit({"type": "todo_added", "item": item})
+                    _play_sound("done")
+                    set_status("idle", f"Todo added: {extracted[:40]}")
+                    entry = {"raw": raw_text, "cleaned": f"[todo] {extracted}", "app": app_name,
+                             "duration": round(time.time() - t0, 2), "ts": time.strftime("%H:%M:%S")}
+                    add_history(entry)
+                    emit({"type": "result", **entry})
+                    return
+                elif intent == "memory" and S.brain:
+                    S.brain.remember(extracted)
+                    _play_sound("done")
+                    set_status("idle", f"Noted: {extracted[:40]}")
+                    entry = {"raw": raw_text, "cleaned": f"[note] {extracted}", "app": app_name,
+                             "duration": round(time.time() - t0, 2), "ts": time.strftime("%H:%M:%S")}
+                    add_history(entry)
+                    emit({"type": "result", **entry})
+                    return
+                elif intent == "meeting_notes" and S.brain:
+                    # Extract action items via simple split
+                    S.brain.add_meeting_notes("Voice note", time.strftime("%Y-%m-%d"), extracted, [])
+                    _play_sound("done")
+                    set_status("idle", "Meeting notes saved")
+                    entry = {"raw": raw_text, "cleaned": f"[meeting] {extracted}", "app": app_name,
+                             "duration": round(time.time() - t0, 2), "ts": time.strftime("%H:%M:%S")}
+                    add_history(entry)
+                    emit({"type": "result", **entry})
+                    return
+                elif intent == "calendar" and S.assistant:
+                    # Route to assistant for calendar handling
+                    S.recording_mode = "assistant"  # temporarily switch
+
         # === Smart Undo ===
         raw_lower = raw_text.lower().strip()
         if raw_lower in UNDO_PHRASES and S.last_paste_text and (time.time() - S.last_paste_time) < 10:
@@ -1096,9 +1208,15 @@ def process_audio(audio):
         _play_sound("done")
         set_status("idle", f"Done ({dur:.1f}s)")
 
-        # Auto-learn: extract notable terms in background (only for substantial text)
-        if cleaned and len(cleaned.split()) >= 8 and S.dictionary and S.cleaner:
-            threading.Thread(target=_auto_learn_terms, args=(cleaned,), daemon=True).start()
+        # Auto-learn terms + detect deadlines in background
+        if cleaned and len(cleaned.split()) >= 8:
+            if S.dictionary and S.cleaner:
+                threading.Thread(target=_auto_learn_terms, args=(cleaned,), daemon=True).start()
+            if S.brain:
+                dl = S.brain.detect_deadline_in_text(cleaned)
+                if dl:
+                    S.brain.add_deadline(dl["text"][:100], dl["due_hint"])
+                    log.info("Deadline detected: %s", dl["due_hint"])
 
     except Exception as e:
         log.error("Processing error: %s", e, exc_info=True)
@@ -1229,7 +1347,9 @@ def load_engine():
     S.macros = MacroEngine()
     S.conversation = ConversationTracker()
     S.oauth = OAuthManager()
-    S.assistant = Assistant(S.cleaner._client, S.oauth, emit)
+    S.todos = TodoList()
+    S.brain = Brain()
+    S.assistant = Assistant(S.cleaner._client, S.oauth, emit, S.todos, S.brain)
     set_status("idle", "Ready — hold ⌥R to dictate")
 
 

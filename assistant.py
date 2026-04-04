@@ -125,6 +125,42 @@ TOOLS = [
             "parameters": {"type": "object", "properties": {}},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_todo",
+            "description": "Add a task to the todo list. Use for reminders, tasks, things to do.",
+            "parameters": {
+                "type": "object",
+                "properties": {"text": {"type": "string", "description": "The task description."}},
+                "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_todos",
+            "description": "List pending tasks/todos.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "save_meeting_notes",
+            "description": "Save meeting notes with action items. Use when user says 'meeting notes' or describes what happened in a meeting.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "summary": {"type": "string", "description": "Meeting title or who it was with."},
+                    "notes": {"type": "string", "description": "Key points discussed."},
+                    "action_items": {"type": "string", "description": "Comma-separated action items."},
+                },
+                "required": ["summary", "notes"],
+            },
+        },
+    },
 ]
 
 
@@ -151,10 +187,12 @@ def _speak(text: str):
 class Assistant:
     """Voice-controlled AI assistant with tool calling and multi-turn memory."""
 
-    def __init__(self, groq_client: Groq, oauth_manager, emit_fn):
+    def __init__(self, groq_client: Groq, oauth_manager, emit_fn, todos=None, brain=None):
         self._client = groq_client
         self._oauth = oauth_manager
         self._emit = emit_fn
+        self._todos = todos
+        self._brain = brain
         # Multi-turn conversation history (persists across recordings)
         self._conversation: list[dict] = []
         self._conversation_expires: float = 0
@@ -187,7 +225,9 @@ class Assistant:
 
         accounts = self._oauth.list_accounts() if self._oauth else []
         today_context = self._prefetch_today()
-        system_prompt = self._build_system_prompt(accounts, today_context)
+        brain_context = self._brain.get_context_for_llm() if self._brain else ""
+        todos_context = self._todos.summary_for_llm() if self._todos else ""
+        system_prompt = self._build_system_prompt(accounts, today_context + brain_context + todos_context)
 
         # Build messages: system + conversation history + new user message
         messages = [{"role": "system", "content": system_prompt}]
@@ -350,6 +390,36 @@ class Assistant:
             if result.get("ok"):
                 self._oauth._last_draft_id = None
             return result
+
+        elif name == "add_todo":
+            if self._todos:
+                item = self._todos.add(args["text"])
+                self._emit({"type": "todo_added", "item": item})
+                return {"ok": True, "text": args["text"]}
+            return {"error": "Todos not available."}
+
+        elif name == "list_todos":
+            if self._todos:
+                pending = self._todos.list_pending()
+                if not pending:
+                    return {"result": "No pending tasks."}
+                return {"result": [t["text"] for t in pending]}
+            return {"result": "Todos not available."}
+
+        elif name == "save_meeting_notes":
+            if self._brain:
+                actions = [a.strip() for a in args.get("action_items", "").split(",") if a.strip()]
+                self._brain.add_meeting_notes(
+                    args["summary"], time.strftime("%Y-%m-%d"),
+                    args["notes"], actions,
+                )
+                # Auto-create todos from action items
+                if actions and self._todos:
+                    for a in actions:
+                        item = self._todos.add(a)
+                        self._emit({"type": "todo_added", "item": item})
+                return {"ok": True, "summary": args["summary"], "action_items": actions}
+            return {"error": "Brain not available."}
 
         return {"error": f"Unknown tool: {name}"}
 

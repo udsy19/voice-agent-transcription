@@ -166,6 +166,20 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
 .vc-name{font-size:12px;font-weight:500}
 .vc-desc{font-size:10px;color:var(--text3)}
 
+/* Todos */
+.todo-item{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px}
+.todo-item+.todo-item{border-top:1px solid var(--border)}
+.todo-item.done{opacity:.35;text-decoration:line-through}
+.todo-check{width:15px;height:15px;border-radius:4px;border:1.5px solid var(--text3);background:none;cursor:pointer;flex-shrink:0;transition:all .1s;display:flex;align-items:center;justify-content:center;padding:0}
+.todo-check:hover{border-color:var(--blue)}
+.todo-check.checked{background:var(--blue);border-color:var(--blue)}
+.todo-check.checked::after{content:'✓';font-size:9px;color:#fff}
+.todo-text{flex:1}
+.todo-add{display:flex;gap:4px;margin-top:6px}
+.todo-add input{flex:1;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font:12px var(--font);color:var(--text);outline:none}
+.todo-add input:focus{border-color:var(--blue)}
+.todo-add input::placeholder{color:var(--text3)}
+
 .empty{text-align:center;padding:64px 16px;color:var(--text3);font-size:14px;line-height:1.8}
 
 /* Status bar — barely there */
@@ -221,6 +235,7 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
     <div class="pg on" id="pg-home">
       <div class="desc" style="margin-top:4px"><span style="font-family:var(--mono);font-size:11px;background:var(--hover);padding:2px 6px;border-radius:3px">⌥L</span> dictate &nbsp;&nbsp; <span style="font-family:var(--mono);font-size:11px;background:var(--hover);padding:2px 6px;border-radius:3px">⌥R</span> assistant</div>
       <div id="todayCard"></div>
+      <div id="todoCard" style="margin-bottom:16px"></div>
       <div id="hist"><div class="empty">Hold Left Option and speak.<br>Your dictations will appear here.</div></div>
     </div>
 
@@ -324,6 +339,7 @@ function onMsg(m){
   if(m.type==='hands_free')document.getElementById('togHF').classList.toggle('on',m.on);
   if(m.type==='whisper')document.getElementById('togW').classList.toggle('on',m.on);
   if(m.type==='oauth_complete')gLoad();
+  if(m.type==='todo_added')loadTodos();
 }
 function updStatus(s,d){const c={loading:'loading',idle:'',recording:'recording',processing:'processing',hands_free:''};document.getElementById('sDot').className='d '+(c[s]||'');document.getElementById('logoDot').className='dot '+(c[s]||'');document.getElementById('sTxt').textContent=d||s}
 
@@ -433,10 +449,24 @@ async function previewVoice(id){
   await fetch(`${API}/api/voices/preview`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({voice:id})}).catch(()=>{});
 }
 
+// Todos
+async function loadTodos(){
+  try{
+    const r=await fetch(`${API}/api/todos`);const d=await r.json();
+    const el=document.getElementById('todoCard');
+    const items=d.todos||[];
+    const pending=items.filter(t=>!t.done);
+    if(!pending.length&&!items.length){el.innerHTML='';return}
+    el.innerHTML=`<div class="today"><div class="today-head"><svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:var(--text3);fill:none;stroke-width:1.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Tasks${pending.length?' ('+pending.length+')':''}</div>${pending.map(t=>`<div class="todo-item"><button class="todo-check" onclick="completeTodo('${t.id}')"></button><span class="todo-text">${esc(t.text)}</span></div>`).join('')}<div class="todo-add"><input placeholder="Add a task..." onkeydown="if(event.key==='Enter')addTodoInline(this)"></div></div>`;
+  }catch{}
+}
+async function completeTodo(id){await apiPost('todos/complete',{id});loadTodos()}
+async function addTodoInline(el){const t=el.value.trim();if(!t)return;await apiPost('todos/add',{text:t});el.value='';loadTodos()}
+
 chkGroq();chkBackend();setupListeners();
-setInterval(()=>{if(connected)refresh()},10e3);
+setInterval(()=>{if(connected){refresh();loadTodos()}},10e3);
 setInterval(()=>{if(connected)loadToday()},60e3); // calendar every 60s, not 10s
-function waitAndLoadToday(){if(connected){loadToday()}else{setTimeout(waitAndLoadToday,2e3)}}
+function waitAndLoadToday(){if(connected){loadToday();loadTodos()}else{setTimeout(waitAndLoadToday,2e3)}}
 setTimeout(waitAndLoadToday,2e3);
 
 // Check permissions only after backend is confirmed up
