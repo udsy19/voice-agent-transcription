@@ -276,15 +276,38 @@ class Assistant:
                 )
             except Exception as tool_err:
                 if "tool_use_failed" in str(tool_err) or "400" in str(tool_err):
-                    # Groq/Llama tool format error — retry without tools
-                    log.warning("Tool call failed, retrying without tools: %s", str(tool_err)[:80])
-                    response = self._client.chat.completions.create(
-                        model=ASSISTANT_MODEL,
-                        messages=messages,
-                        temperature=0.3,
-                        max_tokens=512,
-                        timeout=15,
-                    )
+                    log.warning("Tool call failed, executing manually: %s", str(tool_err)[:80])
+                    # Parse the failed_generation to extract what the LLM tried to do
+                    err_str = str(tool_err)
+                    import re as _re
+                    fn_match = _re.search(r'<function=(\w+)', err_str)
+                    if fn_match:
+                        fn_name = fn_match.group(1)
+                        # Extract JSON args
+                        json_match = _re.search(r'\{[^}]+\}', err_str)
+                        try:
+                            args = json.loads(json_match.group(0)) if json_match else {}
+                        except Exception:
+                            args = {}
+                        log.info("Manual tool exec: %s(%s)", fn_name, args)
+                        result = self._execute_tool(fn_name, args)
+                        # Generate response about what we did
+                        messages.append({"role": "user", "content": f"I executed {fn_name} with result: {json.dumps(result)[:200]}. Summarize what happened in 1 sentence."})
+                        response = self._client.chat.completions.create(
+                            model="llama-3.1-8b-instant",
+                            messages=messages,
+                            temperature=0.3,
+                            max_tokens=100,
+                            timeout=10,
+                        )
+                    else:
+                        response = self._client.chat.completions.create(
+                            model=ASSISTANT_MODEL,
+                            messages=messages,
+                            temperature=0.3,
+                            max_tokens=512,
+                            timeout=15,
+                        )
                 else:
                     raise
 
