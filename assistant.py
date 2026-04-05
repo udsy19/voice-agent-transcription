@@ -197,6 +197,35 @@ TOOLS = [
             },
         },
     },
+    # ── iMessage ──
+    {
+        "type": "function",
+        "function": {
+            "name": "check_messages",
+            "description": "Check recent text messages (iMessage). Use for 'who texted me', 'check my texts', 'last message'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "contact": {"type": "string", "description": "Specific contact name to check. Leave empty for all recent."},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "send_text",
+            "description": "Send an iMessage/text. Use for 'text X saying Y', 'message X that Y'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "to": {"type": "string", "description": "Contact name, phone number, or email."},
+                    "message": {"type": "string", "description": "The message to send."},
+                },
+                "required": ["to", "message"],
+            },
+        },
+    },
     # ── Power features ──
     {
         "type": "function",
@@ -715,6 +744,23 @@ class Assistant:
             if result.get("ok"):
                 self._oauth._last_draft_id = None
             return result
+
+        # ── iMessage ──
+
+        elif name == "check_messages":
+            import imessage
+            contact = args.get("contact", "")
+            if contact:
+                return imessage.get_messages_from(contact)
+            return imessage.get_recent_messages()
+
+        elif name == "send_text":
+            import imessage
+            to = args.get("to", "")
+            message = args.get("message", "")
+            if not to or not message:
+                return {"error": "Need both recipient and message."}
+            return imessage.send_message(to, message)
 
         # ── Power features (no Google token needed) ──
 
