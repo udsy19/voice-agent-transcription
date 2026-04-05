@@ -262,7 +262,8 @@ api = FastAPI()
 from fastapi.middleware.cors import CORSMiddleware
 api.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:*", "http://127.0.0.1:*", "file://"],
+    allow_origins=["http://localhost:8528", "http://127.0.0.1:8528", "file://"],
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
@@ -725,18 +726,7 @@ async def api_voices():
     return {"voices": voices, "current": current, "kokoro_available": tts.is_available()}
 
 
-@api.post("/api/elevenlabs-key")
-async def api_set_elevenlabs_key(body: dict):
-    """Set ElevenLabs API key."""
-    key = body.get("key", "").strip()
-    if not key:
-        return {"ok": False, "error": "Empty key"}
-    from config import _keychain_set
-    _keychain_set("Muse", "elevenlabs_api_key", key)
-    import config
-    config.ELEVENLABS_API_KEY = key
-    tts.ELEVENLABS_KEY = key
-    return {"ok": True}
+    # ElevenLabs removed — Kokoro only
 
 
 @api.post("/api/voices/set")
@@ -827,14 +817,9 @@ async def api_set_hotkey(body: dict):
     TRIGGER_KEY = _HOTKEY_MAP[key_name]
     TRIGGER_KEY_NAME = key_name
     # Save to config
-    import json
     from config import DATA_DIR
-    hk_path = os.path.join(str(DATA_DIR), "hotkey.json")
-    try:
-        with open(hk_path, "w") as f:
-            json.dump({"key": key_name}, f)
-    except Exception as e:
-        log.error("Failed to save hotkey: %s", e)
+    import safe_json
+    safe_json.save(os.path.join(str(DATA_DIR), "hotkey.json"), {"key": key_name})
     log.info("Hotkey changed to: %s", key_name)
     return {"ok": True, "key": key_name}
 
@@ -908,7 +893,7 @@ def on_key_press(key):
 
         if S.key_held or S.hands_free:
             return
-        if not S.recorder:
+        if not S.is_ready:
             return
 
         S.key_held = True

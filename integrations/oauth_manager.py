@@ -177,7 +177,10 @@ class OAuthManager:
                 if '"acct"' in line and "oauth:" in line:
                     for p in line.split('"'):
                         if p.startswith("oauth:"):
-                            _, svc, em = p.split(":", 2)
+                            parts = p.split(":", 2)
+                            if len(parts) != 3:
+                                continue
+                            _, svc, em = parts
                             if not service or svc == service:
                                 accounts.append({"service": svc, "email": em})
         except: pass

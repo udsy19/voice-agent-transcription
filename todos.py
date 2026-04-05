@@ -2,6 +2,7 @@
 
 import time
 import uuid
+import threading
 import safe_json
 from config import DATA_DIR
 from logger import get_logger
@@ -15,9 +16,11 @@ class TodoList:
     def __init__(self):
         data = safe_json.load(TODOS_PATH, {"items": []})
         self._items: list[dict] = data.get("items", [])
+        self._lock = threading.Lock()
 
     def _save(self):
-        safe_json.save(TODOS_PATH, {"items": self._items})
+        with self._lock:
+            safe_json.save(TODOS_PATH, {"items": self._items})
 
     def add(self, text: str) -> dict:
         item = {

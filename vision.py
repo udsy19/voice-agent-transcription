@@ -50,6 +50,7 @@ def analyze_screen(instruction: str) -> dict:
         response = client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=512,
+            timeout=30,
             messages=[{
                 "role": "user",
                 "content": [

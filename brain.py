@@ -2,6 +2,7 @@
 
 import time
 import re
+import threading
 import safe_json
 from config import DATA_DIR
 from logger import get_logger
@@ -13,6 +14,7 @@ BRAIN_PATH = str(DATA_DIR / "brain.json")
 
 class Brain:
     def __init__(self):
+        self._lock = threading.Lock()
         data = safe_json.load(BRAIN_PATH, {"facts": [], "deadlines": [], "meetings": [], "habits": {}})
         self.facts: list[dict] = data.get("facts", [])
         self.deadlines: list[dict] = data.get("deadlines", [])
@@ -20,12 +22,13 @@ class Brain:
         self.habits: dict = data.get("habits", {})
 
     def _save(self):
-        safe_json.save(BRAIN_PATH, {
-            "facts": self.facts[-200:],  # cap at 200 facts
-            "deadlines": self.deadlines[-50:],
-            "meetings": self.meetings[-50:],
-            "habits": self.habits,
-        })
+        with self._lock:
+            safe_json.save(BRAIN_PATH, {
+                "facts": self.facts[-200:],
+                "deadlines": self.deadlines[-50:],
+                "meetings": self.meetings[-50:],
+                "habits": self.habits,
+            })
 
     def remember(self, text: str, category: str = "general"):
         """Store a fact/note in long-term memory."""

@@ -9,6 +9,9 @@ log = get_logger("system")
 
 def open_app(name: str) -> dict:
     """Open a macOS app by name."""
+    name = _sanitize_app_name(name)
+    if not name:
+        return {"ok": False, "error": "No app name provided."}
     try:
         subprocess.run(["open", "-a", name], capture_output=True, timeout=5)
         log.info("Opened: %s", name)
@@ -17,8 +20,15 @@ def open_app(name: str) -> dict:
         return {"ok": False, "error": str(e)}
 
 
+def _sanitize_app_name(name: str) -> str:
+    """Sanitize app name to prevent AppleScript injection."""
+    import re
+    return re.sub(r'[^a-zA-Z0-9 \-.]', '', name)[:50]
+
+
 def quit_app(name: str) -> dict:
     """Quit a macOS app."""
+    name = _sanitize_app_name(name)
     try:
         subprocess.run(["osascript", "-e", f'tell application "{name}" to quit'],
                        capture_output=True, timeout=5)
@@ -74,5 +84,5 @@ def set_brightness(level: int) -> dict:
                        f'tell application "System Events" to set value of slider 1 of group 1 of window "Display" of application process "System Preferences" to {brightness}'],
                        capture_output=True, timeout=5)
         return {"ok": True, "brightness": level}
-    except Exception:
-        return {"ok": True, "note": "Brightness control may need accessibility"}
+    except Exception as e:
+        return {"ok": False, "error": f"Brightness control not available: {e}"}

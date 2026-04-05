@@ -511,8 +511,8 @@ class Assistant:
 
             self._conversation.append({"role": "assistant", "content": text})
             self._conversation_expires = time.time() + 600
-            if len(self._conversation) > 20:
-                self._conversation = self._conversation[-20:]
+            if len(self._conversation) > 10:
+                self._conversation = self._conversation[-10:]
 
             # Don't auto-save — memory is saved explicitly via remember_fact tool
 
@@ -561,10 +561,12 @@ class Assistant:
         # Non-Google tools first (don't need OAuth token)
         if name == "remember_fact":
             import memory as mem_module
-            fact_text = args["fact"]
+            fact_text = args.get("fact", "")
+            if not fact_text:
+                return {"error": "No fact provided."}
             existing = mem_module.recall(fact_text, limit=3)
             for ex in existing:
-                if ex.get("score", 0) > 0.5:
+                if ex.get("score", 0) > 0.8:  # high threshold to avoid deleting unrelated memories
                     mem_module.delete(ex["id"])
                     log.info("Replacing similar memory: %s", ex.get("memory", "")[:40])
             m = mem_module._get_mem0()
@@ -588,7 +590,10 @@ class Assistant:
 
         elif name == "forget_fact":
             import memory as mem_module
-            results = mem_module.recall(args["query"], limit=3)
+            query = args.get("query", "")
+            if not query:
+                return {"error": "No query provided."}
+            results = mem_module.recall(query, limit=3)
             if results:
                 deleted = []
                 for r in results:
@@ -600,15 +605,20 @@ class Assistant:
             return {"ok": False, "error": "No matching memory found."}
 
         elif name == "add_todo":
+            text = args.get("text", "")
+            if not text:
+                return {"error": "No task text provided."}
             if self._todos:
-                item = self._todos.add(args["text"])
+                item = self._todos.add(text)
                 self._emit({"type": "todo_added", "item": item})
                 return {"ok": True, "text": args["text"]}
             return {"error": "Todos not available."}
 
         elif name == "complete_todo":
             if self._todos:
-                search = args["text"].lower()
+                search = args.get("text", "").lower()
+                if not search:
+                    return {"error": "No task specified."}
                 for item in self._todos.list_pending():
                     if search in item["text"].lower() or item["text"].lower() in search:
                         self._todos.complete(item["id"])
@@ -625,8 +635,10 @@ class Assistant:
 
         elif name == "save_meeting_notes":
             if self._brain:
+                summary = args.get("summary", "Meeting")
+                notes = args.get("notes", "")
                 actions = [a.strip() for a in args.get("action_items", "").split(",") if a.strip()]
-                self._brain.add_meeting_notes(args["summary"], time.strftime("%Y-%m-%d"), args["notes"], actions)
+                self._brain.add_meeting_notes(summary, time.strftime("%Y-%m-%d"), notes, actions)
                 if actions and self._todos:
                     for a in actions:
                         item = self._todos.add(a)
@@ -703,7 +715,9 @@ class Assistant:
 
         elif name == "transform_clipboard":
             from injector import get_selected_text, inject_text
-            from cleaner import Cleaner
+            instruction = args.get("instruction", "")
+            if not instruction:
+                return {"error": "No instruction provided."}
             selected = get_selected_text()
             if not selected:
                 # Try clipboard
@@ -721,7 +735,7 @@ class Assistant:
                     model="llama-3.1-8b-instant",
                     messages=[
                         {"role": "system", "content": "Transform the text as instructed. Return ONLY the result."},
-                        {"role": "user", "content": f"Text:\n{selected[:3000]}\n\nInstruction: {args['instruction']}"},
+                        {"role": "user", "content": f"Text:\n{selected[:3000]}\n\nInstruction: {instruction}"},
                     ],
                     temperature=0.3, max_tokens=2048, timeout=15,
                 )
@@ -732,14 +746,18 @@ class Assistant:
 
         elif name == "open_app":
             import system_control
-            return system_control.open_app(args["app_name"])
+            return system_control.open_app(args.get("app_name", ""))
 
         elif name == "system_command":
             import system_control
             action = args.get("action", "")
             value = args.get("value", "")
             if action == "set_volume":
-                return system_control.set_volume(int(value) if value else 50)
+                try:
+                    vol = int(float(value)) if value else 50
+                except (ValueError, TypeError):
+                    vol = 50
+                return system_control.set_volume(vol)
             elif action == "toggle_dnd":
                 return system_control.toggle_dnd()
             elif action == "quit_app":
@@ -764,7 +782,7 @@ class Assistant:
 
         elif name == "analyze_screen":
             import vision
-            return vision.analyze_screen(args["instruction"])
+            return vision.analyze_screen(args.get("instruction", "describe what you see"))
 
         return {"error": f"Unknown tool: {name}"}
 
