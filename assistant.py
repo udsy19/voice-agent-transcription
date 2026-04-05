@@ -345,8 +345,9 @@ class Assistant:
         if any(w in cmd_lower for w in ['todo','task','list','remind','grocery','shopping','buy']):
             extra_context += self._todos.summary_for_llm() if self._todos else ""
 
-        # Memory context — only for questions about people/preferences/facts
-        if any(w in cmd_lower for w in ['who','what','my','favorite','prefer','remember','know','friend','girlfriend']):
+        # Memory context — only for questions about people/preferences/facts (NOT screen analysis)
+        if any(w in cmd_lower for w in ['who','what','my','favorite','prefer','remember','know','friend','girlfriend']) \
+           and not any(w in cmd_lower for w in ['screen','looking at','page','see','summarize this']):
             import memory as mem
             extra_context += mem.get_context_for_llm(command)
 
@@ -358,52 +359,50 @@ class Assistant:
         messages.append({"role": "user", "content": command})
 
         try:
-            try:
-                response = self._client.chat.completions.create(
-                    model=ASSISTANT_MODEL,
-                    messages=messages,
-                    tools=TOOLS,
-                    tool_choice="auto",
-                    temperature=0.2,
-                    max_tokens=512,
-                    timeout=15,
-                )
-            except Exception as tool_err:
-                if "tool_use_failed" in str(tool_err) or "400" in str(tool_err):
-                    log.warning("Tool call failed, executing manually: %s", str(tool_err)[:80])
-                    # Parse the failed_generation to extract what the LLM tried to do
-                    err_str = str(tool_err)
-                    import re as _re
-                    fn_match = _re.search(r'<function=(\w+)', err_str)
-                    if fn_match:
-                        fn_name = fn_match.group(1)
-                        # Extract JSON args
-                        json_match = _re.search(r'\{[^}]+\}', err_str)
-                        try:
-                            args = json.loads(json_match.group(0)) if json_match else {}
-                        except Exception:
-                            args = {}
-                        log.info("Manual tool exec: %s(%s)", fn_name, args)
-                        result = self._execute_tool(fn_name, args)
-                        # Generate response about what we did
-                        messages.append({"role": "user", "content": f"I executed {fn_name} with result: {json.dumps(result)[:200]}. Summarize what happened in 1 sentence."})
-                        response = self._client.chat.completions.create(
-                            model="llama-3.1-8b-instant",
-                            messages=messages,
-                            temperature=0.3,
-                            max_tokens=100,
-                            timeout=10,
-                        )
+            # Try 70b first, fall back to 8b on rate limit, manual exec on tool format error
+            response = None
+            for model in [ASSISTANT_MODEL, "llama-3.1-8b-instant"]:
+                try:
+                    response = self._client.chat.completions.create(
+                        model=model, messages=messages, tools=TOOLS,
+                        tool_choice="auto", temperature=0.2, max_tokens=512, timeout=15,
+                    )
+                    break  # success
+                except Exception as e:
+                    err = str(e)
+                    if "429" in err or "rate_limit" in err:
+                        log.warning("%s rate limited, trying next model", model)
+                        continue
+                    elif "tool_use_failed" in err or "400" in err:
+                        # Parse failed tool call and execute manually
+                        log.warning("Tool format error, executing manually")
+                        import re as _re
+                        fn_match = _re.search(r'<function=(\w+)', err)
+                        if fn_match:
+                            json_match = _re.search(r'\{[^}]+\}', err)
+                            try:
+                                args = json.loads(json_match.group(0)) if json_match else {}
+                            except Exception:
+                                args = {}
+                            result = self._execute_tool(fn_match.group(1), args)
+                            messages.append({"role": "user", "content": f"Result: {json.dumps(result)[:200]}. Summarize in 1 sentence."})
+                            response = self._client.chat.completions.create(
+                                model="llama-3.1-8b-instant", messages=messages,
+                                temperature=0.3, max_tokens=100, timeout=10,
+                            )
+                        else:
+                            response = self._client.chat.completions.create(
+                                model="llama-3.1-8b-instant", messages=messages,
+                                temperature=0.3, max_tokens=256, timeout=10,
+                            )
+                        break
                     else:
-                        response = self._client.chat.completions.create(
-                            model=ASSISTANT_MODEL,
-                            messages=messages,
-                            temperature=0.3,
-                            max_tokens=512,
-                            timeout=15,
-                        )
-                else:
-                    raise
+                        raise
+
+            if not response:
+                self._stream("I'm being rate limited right now. Try again in a minute.")
+                _speak("I'm being rate limited. Try again in a minute.")
+                return "Rate limited. Try again shortly."
 
             choice = response.choices[0]
             tool_calls = choice.message.tool_calls
