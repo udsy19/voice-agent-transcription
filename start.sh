@@ -11,20 +11,28 @@ command -v npx &>/dev/null || { echo "ERROR: npx not found"; exit 1; }
 
 # ── Kill everything first ────────────────────────────────────────────────────
 echo "Cleaning up..."
+# Kill by process name AND port — belt and suspenders
 pkill -9 -f "python3.*app.py" 2>/dev/null || true
+pkill -9 -f "uvicorn" 2>/dev/null || true
 pkill -9 -f "Muse" 2>/dev/null || true
 pkill -9 -f "Electron.*muse" 2>/dev/null || true
 lsof -ti :8528 | xargs kill -9 2>/dev/null || true
 lsof -ti :8529 | xargs kill -9 2>/dev/null || true
 sleep 2
 
-# Keep trying until port is free
-for i in 1 2 3; do
+# Keep trying until port is free (up to 5 attempts)
+for i in 1 2 3 4 5; do
     if ! lsof -i :8528 -sTCP:LISTEN &>/dev/null; then break; fi
-    echo "Port 8528 still held — retry $i..."
+    echo "Port 8528 still held — attempt $i..."
     lsof -ti :8528 | xargs kill -9 2>/dev/null || true
     sleep 2
 done
+
+# Final check
+if lsof -i :8528 -sTCP:LISTEN &>/dev/null; then
+    echo "ERROR: Cannot free port 8528. Try: sudo lsof -ti :8528 | xargs kill -9"
+    exit 1
+fi
 
 # ── Load env ─────────────────────────────────────────────────────────────────
 [ -f "$DIR/.env" ] && { set -a; source "$DIR/.env"; set +a; }

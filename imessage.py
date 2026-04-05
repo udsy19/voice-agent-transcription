@@ -31,7 +31,7 @@ def _resolve_contact(phone_or_email: str) -> str:
                 SELECT ZFIRSTNAME, ZLASTNAME FROM ZABCDRECORD
                 WHERE ZFIRSTNAME IS NOT NULL
                 AND ROWID IN (
-                    SELECT ZOWNER FROM ZABCDPHONENUMBER WHERE ZFULLNUMBER LIKE ?
+                    SELECT ZOWNER FROM ZABCDPHONENUMBER WHERE REPLACE(REPLACE(REPLACE(REPLACE(ZFULLNUMBER,' ',''),'-',''),'(',''),')','') LIKE ?
                     UNION SELECT ZOWNER FROM ZABCDEMAILADDRESS WHERE ZADDRESS LIKE ?
                 )
             """, (f"%{clean_num}%", f"%{phone_or_email}%"))
@@ -105,6 +105,35 @@ def get_recent_messages(count: int = 5) -> dict:
         return {"ok": False, "error": str(e)}
 
 
+def _find_phone_for_contact(name: str) -> list[str]:
+    """Look up phone numbers for a contact name from AddressBook."""
+    import glob
+    phones = []
+    try:
+        ab_files = glob.glob(os.path.expanduser("~/Library/Application Support/AddressBook/Sources/*/AddressBook-v22.abcddb"))
+        for ab in ab_files:
+            conn = sqlite3.connect(f"file:{ab}?mode=ro", uri=True)
+            cur = conn.cursor()
+            # Case-insensitive + partial match (first 4 chars minimum)
+            short = name[:4].lower() if len(name) > 3 else name.lower()
+            cur.execute("""
+                SELECT p.ZFULLNUMBER FROM ZABCDRECORD r
+                JOIN ZABCDPHONENUMBER p ON p.ZOWNER = r.ROWID
+                WHERE LOWER(r.ZFIRSTNAME) LIKE ? OR LOWER(r.ZLASTNAME) LIKE ?
+                   OR LOWER(r.ZFIRSTNAME) LIKE ?
+            """, (f"%{name.lower()}%", f"%{name.lower()}%", f"%{short}%"))
+            for row in cur.fetchall():
+                if row[0]:
+                    # Normalize: strip spaces, parens, dashes
+                    import re
+                    clean = re.sub(r'[\s()\-]', '', row[0])
+                    phones.append(clean)
+            conn.close()
+    except Exception:
+        pass
+    return phones
+
+
 def get_messages_from(contact: str, count: int = 5) -> dict:
     """Get recent messages from a specific contact."""
     if not os.path.exists(IMESSAGE_DB):
@@ -114,7 +143,26 @@ def get_messages_from(contact: str, count: int = 5) -> dict:
         conn = sqlite3.connect(f"file:{IMESSAGE_DB}?mode=ro", uri=True)
         cursor = conn.cursor()
 
-        cursor.execute("""
+        # Build search: contact name in chat display_name + phone numbers from AddressBook
+        search_terms = [f"%{contact}%"]
+        if len(contact) > 3:
+            search_terms.append(f"%{contact[:4]}%")
+
+        # Look up actual phone numbers from contacts
+        phones = _find_phone_for_contact(contact)
+        for p in phones:
+            search_terms.append(f"%{p[-10:]}%")  # last 10 digits
+
+        where_parts = []
+        params = []
+        for term in search_terms:
+            where_parts.append("h.id LIKE ?")
+            params.append(term)
+            where_parts.append("c.display_name LIKE ?")
+            params.append(term)
+        params.append(count)
+
+        cursor.execute(f"""
             SELECT
                 COALESCE(h.id, 'Unknown') as sender,
                 m.text,
@@ -125,10 +173,10 @@ def get_messages_from(contact: str, count: int = 5) -> dict:
             LEFT JOIN chat_message_join cmj ON m.ROWID = cmj.message_id
             LEFT JOIN chat c ON cmj.chat_id = c.ROWID
             WHERE m.text IS NOT NULL AND m.text != ''
-              AND (h.id LIKE ? OR c.display_name LIKE ?)
+              AND ({' OR '.join(where_parts)})
             ORDER BY m.date DESC
             LIMIT ?
-        """, (f"%{contact}%", f"%{contact}%", count))
+        """, params)
 
         messages = []
         for row in cursor.fetchall():
