@@ -456,92 +456,118 @@ class Assistant:
                     return text
                 return None
 
-            # Execute tool calls with agentic retry
+            # ── Agentic tool execution loop ──
+            # The LLM sees tool results (including errors) and can adapt.
+            # Max 3 iterations to prevent infinite loops.
+            # Total timeout: 30s for the entire loop.
+
+            MAX_ITERATIONS = 3
+            LOOP_TIMEOUT = 30
+            loop_start = time.time()
+            text = None  # will be set by the loop or final generation
+
             self._conversation.append({"role": "user", "content": command})
             messages.append(choice.message)
 
-            for tc in tool_calls:
-                fn_name = tc.function.name
+            iteration = 0
+            while tool_calls and iteration < MAX_ITERATIONS:
+                iteration += 1
+
+                if time.time() - loop_start > LOOP_TIMEOUT:
+                    log.warning("Agentic loop timeout after %ds", LOOP_TIMEOUT)
+                    break
+
+                for tc in tool_calls:
+                    fn_name = tc.function.name
+                    try:
+                        args = json.loads(tc.function.arguments)
+                    except json.JSONDecodeError:
+                        args = {}
+
+                    self._emit({"type": "assistant_stream",
+                                "text": f"{'Retrying' if iteration > 1 else 'Running'} {fn_name.replace('_', ' ')}...",
+                                "done": False})
+
+                    # Pre-execution fixes
+                    if "401" in str(args) or (iteration > 1 and self._oauth):
+                        self._oauth._token_cache.clear()  # refresh stale tokens
+
+                    result = self._execute_tool(fn_name, args)
+
+                    # Emit calendar view if applicable
+                    if fn_name == "list_calendar_events" and isinstance(result, dict) and result.get("ok"):
+                        events = result.get("events", [])
+                        if events:
+                            self._emit({"type": "calendar_view", "events": events[:8]})
+
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": json.dumps(result)[:2000],
+                    })
+
+                # Check if any tool failed
+                last_result = messages[-1].get("content", "{}")
                 try:
-                    args = json.loads(tc.function.arguments)
-                except json.JSONDecodeError:
-                    args = {}
-
-                self._emit({"type": "assistant_stream",
-                            "text": f"Running {fn_name.replace('_', ' ')}...", "done": False})
-
-                # Agentic execution: try, and if it fails, adapt
-                result = self._execute_tool(fn_name, args)
-
-                if isinstance(result, dict) and result.get("error"):
-                    error_msg = result["error"]
-                    log.warning("Tool %s failed: %s — trying to recover", fn_name, error_msg[:60])
-
-                    # Strategy 1: If it's a missing arg, ask the LLM to fix it
-                    if "missing" in error_msg.lower() or "required" in error_msg.lower():
-                        messages.append({"role": "tool", "tool_call_id": tc.id,
-                                         "content": json.dumps(result)})
-                        recovery = self._client.chat.completions.create(
-                            model="llama-3.1-8b-instant", messages=messages,
-                            tools=TOOLS, tool_choice="auto",
-                            temperature=0.2, max_tokens=256, timeout=10,
-                        )
-                        if recovery.choices[0].message.tool_calls:
-                            rtc = recovery.choices[0].message.tool_calls[0]
-                            try:
-                                rargs = json.loads(rtc.function.arguments)
-                            except Exception:
-                                rargs = {}
-                            result = self._execute_tool(rtc.function.name, rargs)
-                            log.info("Recovery succeeded: %s", rtc.function.name)
-                        continue
-
-                    # Strategy 2: If it's an API/network error, retry once after 2s
-                    if any(w in error_msg.lower() for w in ["timeout", "connection", "429", "rate"]):
-                        self._emit({"type": "assistant_stream",
-                                    "text": "Retrying...", "done": False})
-                        time.sleep(2)
-                        result = self._execute_tool(fn_name, args)
-                        if isinstance(result, dict) and result.get("error"):
-                            log.warning("Retry also failed: %s", result["error"][:60])
-
-                    # Strategy 3: If Google token expired, refresh and retry
-                    if "401" in error_msg or "expired" in error_msg.lower():
-                        if self._oauth:
-                            self._oauth._token_cache.clear()
-                            result = self._execute_tool(fn_name, args)
-
-                # Calendar view
-                if fn_name == "list_calendar_events" and isinstance(result, dict) and result.get("ok"):
-                    events = result.get("events", [])
-                    if events:
-                        self._emit({"type": "calendar_view", "events": events[:8]})
-
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": json.dumps(result)[:2000],
-                })
-
-            # Fast model for summarizing tool results into speech
-            try:
-                final = self._client.chat.completions.create(
-                    model="llama-3.1-8b-instant",
-                    messages=messages,
-                    temperature=0.3,
-                    max_tokens=200,
-                    timeout=10,
-                )
-                text = final.choices[0].message.content or "Done."
-            except Exception as sum_err:
-                log.warning("Summary failed: %s — using raw result", sum_err)
-                # Fallback: use the last tool result as text
-                last_result = messages[-1].get("content", "Done.") if messages else "Done."
-                try:
-                    r = json.loads(last_result)
-                    text = r.get("summary", r.get("analysis", r.get("fact", str(r.get("ok", "Done.")))))
+                    last_parsed = json.loads(last_result)
                 except Exception:
-                    text = "Done."
+                    last_parsed = {}
+
+                has_error = isinstance(last_parsed, dict) and last_parsed.get("error")
+
+                if has_error and iteration < MAX_ITERATIONS:
+                    error_msg = last_parsed["error"]
+                    log.info("Iteration %d: tool failed with '%s' — asking LLM to adapt", iteration, error_msg[:60])
+
+                    # Give LLM the error and let it decide what to do next
+                    try:
+                        recovery = self._client.chat.completions.create(
+                            model="llama-3.1-8b-instant",
+                            messages=messages,
+                            tools=TOOLS,
+                            tool_choice="auto",
+                            temperature=0.3,
+                            max_tokens=512,
+                            timeout=10,
+                        )
+                        recovery_choice = recovery.choices[0]
+                        tool_calls = recovery_choice.message.tool_calls
+
+                        if tool_calls:
+                            # LLM wants to try a different approach — continue the loop
+                            messages.append(recovery_choice.message)
+                            log.info("LLM adapting: trying %s", tool_calls[0].function.name)
+                            continue
+                        else:
+                            # LLM gave up and wants to respond with text
+                            text = recovery_choice.message.content or f"I couldn't complete that: {error_msg}"
+                            break
+                    except Exception as re:
+                        log.warning("Recovery LLM call failed: %s", re)
+                        text = f"I ran into an issue: {error_msg}"
+                        break
+                else:
+                    # Success or max iterations — generate final response
+                    tool_calls = None  # exit loop
+
+            # Generate human-readable response from results
+            if not text:
+                try:
+                    final = self._client.chat.completions.create(
+                        model="llama-3.1-8b-instant",
+                        messages=messages,
+                        temperature=0.3,
+                        max_tokens=200,
+                        timeout=10,
+                    )
+                    text = final.choices[0].message.content or "Done."
+                except Exception as sum_err:
+                    log.warning("Summary failed: %s", sum_err)
+                    try:
+                        r = json.loads(messages[-1].get("content", "{}"))
+                        text = r.get("summary", r.get("analysis", r.get("fact", "Done.")))
+                    except Exception:
+                        text = "Done."
 
             self._conversation.append({"role": "assistant", "content": text})
             self._conversation_expires = time.time() + 600
