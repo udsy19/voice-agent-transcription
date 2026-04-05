@@ -10,6 +10,56 @@ log = get_logger("imessage")
 
 # iMessage database path
 IMESSAGE_DB = os.path.expanduser("~/Library/Messages/chat.db")
+CONTACTS_DB = os.path.expanduser("~/Library/Application Support/AddressBook/Sources")
+
+
+def _resolve_contact(phone_or_email: str) -> str:
+    """Try to resolve a phone number/email to a contact name."""
+    if not phone_or_email or phone_or_email == "Unknown":
+        return "Unknown"
+
+    # Try AddressBook database
+    try:
+        import glob
+        db_files = glob.glob(os.path.join(CONTACTS_DB, "*/AddressBook-v22.abcddb"))
+        for db_path in db_files:
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            cursor = conn.cursor()
+            # Strip + and country code for matching
+            clean_num = phone_or_email.replace("+1", "").replace("+", "").replace("-", "").replace(" ", "")[-10:]
+            cursor.execute("""
+                SELECT ZFIRSTNAME, ZLASTNAME FROM ZABCDRECORD
+                WHERE ZFIRSTNAME IS NOT NULL
+                AND ROWID IN (
+                    SELECT ZOWNER FROM ZABCDPHONENUMBER WHERE ZFULLNUMBER LIKE ?
+                    UNION SELECT ZOWNER FROM ZABCDEMAILADDRESS WHERE ZADDRESS LIKE ?
+                )
+            """, (f"%{clean_num}%", f"%{phone_or_email}%"))
+            row = cursor.fetchone()
+            conn.close()
+            if row:
+                name = f"{row[0] or ''} {row[1] or ''}".strip()
+                if name:
+                    return name
+    except Exception:
+        pass
+
+    # Fallback: return last 4 digits
+    if phone_or_email.startswith("+") and len(phone_or_email) > 6:
+        return f"...{phone_or_email[-4:]}"
+    return phone_or_email
+
+
+def _clean_message_text(text: str) -> str:
+    """Clean message text for speech — remove emojis, URLs, special chars."""
+    import re
+    # Remove emojis
+    text = re.sub(r'[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF\U0001F1E0-\U0001F1FF\U00002702-\U000027B0\U0000FE00-\U0000FEFF\U0001F900-\U0001F9FF\U0001FA00-\U0001FA6F\U0001FA70-\U0001FAFF\U00002600-\U000026FF]', '', text)
+    # Remove URLs
+    text = re.sub(r'https?://\S+', '', text)
+    # Remove multiple spaces
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text[:200]
 
 
 def get_recent_messages(count: int = 5) -> dict:
@@ -36,9 +86,10 @@ def get_recent_messages(count: int = 5) -> dict:
 
         messages = []
         for row in cursor.fetchall():
+            sender = "me" if row[3] else _resolve_contact(row[0])
             messages.append({
-                "from": "me" if row[3] else row[0],
-                "text": row[1][:200],
+                "from": sender,
+                "text": _clean_message_text(row[1]),
                 "time": row[2] or "",
             })
 
@@ -81,9 +132,10 @@ def get_messages_from(contact: str, count: int = 5) -> dict:
 
         messages = []
         for row in cursor.fetchall():
+            sender = "me" if row[3] else _resolve_contact(row[0])
             messages.append({
-                "from": "me" if row[3] else row[0],
-                "text": row[1][:200],
+                "from": sender,
+                "text": _clean_message_text(row[1]),
                 "time": row[2] or "",
             })
 
