@@ -89,11 +89,12 @@ def list_events(token_data: dict, days_ahead: int = 1, max_results: int = 15) ->
     """List events with full details."""
     service = _get_service(token_data)
 
-    # Use local midnight, format with timezone offset for Google API
-    now = datetime.now()
+    # Google API needs RFC3339 with timezone. Use UTC with Z suffix.
+    from datetime import timezone
+    now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    time_min = today_start.isoformat()
-    time_max = (today_start + timedelta(days=max(1, days_ahead))).isoformat()
+    time_min = today_start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    time_max = (today_start + timedelta(days=max(1, days_ahead))).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
     try:
         result = service.events().list(

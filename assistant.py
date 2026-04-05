@@ -379,11 +379,16 @@ class Assistant:
                         import re as _re
                         fn_match = _re.search(r'<function=(\w+)', err)
                         if fn_match:
-                            json_match = _re.search(r'\{[^}]+\}', err)
-                            try:
-                                args = json.loads(json_match.group(0)) if json_match else {}
-                            except Exception:
-                                args = {}
+                            # Extract JSON — try multiple patterns
+                            args = {}
+                            json_match = _re.search(r'\{.*?\}', err)
+                            if json_match:
+                                try:
+                                    args = json.loads(json_match.group(0))
+                                except Exception:
+                                    # Try extracting key-value pairs manually
+                                    kv_matches = _re.findall(r'"(\w+)":\s*"([^"]*)"', err)
+                                    args = dict(kv_matches) if kv_matches else {}
                             result = self._execute_tool(fn_match.group(1), args)
                             messages.append({"role": "user", "content": f"Result: {json.dumps(result)[:200]}. Summarize in 1 sentence."})
                             response = self._client.chat.completions.create(
@@ -768,7 +773,10 @@ class Assistant:
 
         elif name == "search_history":
             import memory as mem_module
-            results = mem_module.recall(args["query"], limit=5)
+            query = args.get("query", "")
+            if not query:
+                return {"ok": True, "results": [], "message": "No query provided."}
+            results = mem_module.recall(query, limit=5)
             if results:
                 return {"ok": True, "results": [{"text": r["memory"], "score": round(r.get("score", 0), 2)} for r in results]}
             return {"ok": True, "results": [], "message": "Nothing found matching that query."}
