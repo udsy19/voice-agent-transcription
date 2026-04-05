@@ -423,7 +423,7 @@ class Assistant:
                     return text
                 return None
 
-            # Execute tool calls
+            # Execute tool calls with agentic retry
             self._conversation.append({"role": "user", "content": command})
             messages.append(choice.message)
 
@@ -437,29 +437,78 @@ class Assistant:
                 self._emit({"type": "assistant_stream",
                             "text": f"Running {fn_name.replace('_', ' ')}...", "done": False})
 
+                # Agentic execution: try, and if it fails, adapt
                 result = self._execute_tool(fn_name, args)
 
-                # If this was a calendar list, emit events for pill calendar view
+                if isinstance(result, dict) and result.get("error"):
+                    error_msg = result["error"]
+                    log.warning("Tool %s failed: %s — trying to recover", fn_name, error_msg[:60])
+
+                    # Strategy 1: If it's a missing arg, ask the LLM to fix it
+                    if "missing" in error_msg.lower() or "required" in error_msg.lower():
+                        messages.append({"role": "tool", "tool_call_id": tc.id,
+                                         "content": json.dumps(result)})
+                        recovery = self._client.chat.completions.create(
+                            model="llama-3.1-8b-instant", messages=messages,
+                            tools=TOOLS, tool_choice="auto",
+                            temperature=0.2, max_tokens=256, timeout=10,
+                        )
+                        if recovery.choices[0].message.tool_calls:
+                            rtc = recovery.choices[0].message.tool_calls[0]
+                            try:
+                                rargs = json.loads(rtc.function.arguments)
+                            except Exception:
+                                rargs = {}
+                            result = self._execute_tool(rtc.function.name, rargs)
+                            log.info("Recovery succeeded: %s", rtc.function.name)
+                        continue
+
+                    # Strategy 2: If it's an API/network error, retry once after 2s
+                    if any(w in error_msg.lower() for w in ["timeout", "connection", "429", "rate"]):
+                        self._emit({"type": "assistant_stream",
+                                    "text": "Retrying...", "done": False})
+                        time.sleep(2)
+                        result = self._execute_tool(fn_name, args)
+                        if isinstance(result, dict) and result.get("error"):
+                            log.warning("Retry also failed: %s", result["error"][:60])
+
+                    # Strategy 3: If Google token expired, refresh and retry
+                    if "401" in error_msg or "expired" in error_msg.lower():
+                        if self._oauth:
+                            self._oauth._token_cache.clear()
+                            result = self._execute_tool(fn_name, args)
+
+                # Calendar view
                 if fn_name == "list_calendar_events" and isinstance(result, dict) and result.get("ok"):
                     events = result.get("events", [])
                     if events:
                         self._emit({"type": "calendar_view", "events": events[:8]})
+
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
-                    "content": json.dumps(result),
+                    "content": json.dumps(result)[:2000],
                 })
 
             # Fast model for summarizing tool results into speech
-            final = self._client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=messages,
-                temperature=0.3,
-                max_tokens=200,
-                timeout=10,
-            )
-
-            text = final.choices[0].message.content or "Done."
+            try:
+                final = self._client.chat.completions.create(
+                    model="llama-3.1-8b-instant",
+                    messages=messages,
+                    temperature=0.3,
+                    max_tokens=200,
+                    timeout=10,
+                )
+                text = final.choices[0].message.content or "Done."
+            except Exception as sum_err:
+                log.warning("Summary failed: %s — using raw result", sum_err)
+                # Fallback: use the last tool result as text
+                last_result = messages[-1].get("content", "Done.") if messages else "Done."
+                try:
+                    r = json.loads(last_result)
+                    text = r.get("summary", r.get("analysis", r.get("fact", str(r.get("ok", "Done.")))))
+                except Exception:
+                    text = "Done."
 
             self._conversation.append({"role": "assistant", "content": text})
             self._conversation_expires = time.time() + 600
@@ -475,7 +524,19 @@ class Assistant:
 
         except Exception as e:
             log.error("Assistant error: %s", e, exc_info=True)
-            msg = f"Sorry, something went wrong."
+            err = str(e).lower()
+            if "rate_limit" in err or "429" in err:
+                msg = "I'm being rate limited right now. Give me a few seconds and try again."
+            elif "timeout" in err or "timed out" in err:
+                msg = "That took too long. Let me try a simpler approach — could you rephrase?"
+            elif "connection" in err or "network" in err:
+                msg = "I can't reach the server right now. Check your internet connection."
+            elif "not found" in err or "not available" in err:
+                msg = "That feature isn't available right now. Try something else."
+            elif "tool_use_failed" in err:
+                msg = "I had trouble executing that. Let me try differently — could you rephrase?"
+            else:
+                msg = f"Something went wrong. Try again in a moment."
             self._stream(msg)
             _speak(msg)
             return msg
