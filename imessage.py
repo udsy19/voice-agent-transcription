@@ -1,66 +1,107 @@
-"""iMessage integration via AppleScript — read and send texts."""
+"""iMessage integration via AppleScript + SQLite — read and send texts."""
 
 import subprocess
+import os
+import sqlite3
+from datetime import datetime
 from logger import get_logger
 
 log = get_logger("imessage")
 
+# iMessage database path
+IMESSAGE_DB = os.path.expanduser("~/Library/Messages/chat.db")
+
 
 def get_recent_messages(count: int = 5) -> dict:
-    """Get the most recent iMessages."""
-    script = f'''
-        tell application "Messages"
-            set msgList to {{}}
-            set chatList to chats
-            repeat with c in chatList
-                if (count of messages of c) > 0 then
-                    set lastMsg to last message of c
-                    set senderName to name of c
-                    set msgText to text of lastMsg
-                    set msgDate to date of lastMsg
-                    set end of msgList to senderName & " | " & msgText & " | " & (msgDate as string)
-                end if
-                if (count of msgList) >= {count} then exit repeat
-            end repeat
-            return msgList
-        end tell
-    '''
-    try:
-        result = subprocess.run(["osascript", "-e", script],
-                               capture_output=True, text=True, timeout=10)
-        if result.returncode != 0:
-            return {"ok": False, "error": result.stderr.strip() or "Messages app may not be running"}
+    """Get recent iMessages by reading the Messages database directly."""
+    if not os.path.exists(IMESSAGE_DB):
+        return {"ok": False, "error": "Messages database not found. Is Messages.app configured?"}
 
-        raw = result.stdout.strip()
-        if not raw:
-            return {"ok": True, "messages": []}
+    try:
+        conn = sqlite3.connect(f"file:{IMESSAGE_DB}?mode=ro", uri=True)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT
+                COALESCE(h.id, 'Unknown') as sender,
+                m.text,
+                datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as msg_date,
+                m.is_from_me
+            FROM message m
+            LEFT JOIN handle h ON m.handle_id = h.ROWID
+            WHERE m.text IS NOT NULL AND m.text != ''
+            ORDER BY m.date DESC
+            LIMIT ?
+        """, (count,))
 
         messages = []
-        for line in raw.split(", "):
-            parts = line.split(" | ", 2)
-            if len(parts) >= 2:
-                messages.append({
-                    "from": parts[0].strip(),
-                    "text": parts[1].strip(),
-                    "time": parts[2].strip() if len(parts) > 2 else "",
-                })
+        for row in cursor.fetchall():
+            messages.append({
+                "from": "me" if row[3] else row[0],
+                "text": row[1][:200],
+                "time": row[2] or "",
+            })
+
+        conn.close()
         log.info("Got %d recent messages", len(messages))
         return {"ok": True, "messages": messages}
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "error": "Messages app took too long to respond"}
+
+    except sqlite3.OperationalError as e:
+        if "unable to open" in str(e).lower() or "permission" in str(e).lower():
+            return {"ok": False, "error": "Can't access Messages database. Grant Full Disk Access to Terminal in System Settings > Privacy."}
+        return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def get_messages_from(contact: str, count: int = 5) -> dict:
+    """Get recent messages from a specific contact."""
+    if not os.path.exists(IMESSAGE_DB):
+        return {"ok": False, "error": "Messages database not found."}
+
+    try:
+        conn = sqlite3.connect(f"file:{IMESSAGE_DB}?mode=ro", uri=True)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT
+                COALESCE(h.id, 'Unknown') as sender,
+                m.text,
+                datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as msg_date,
+                m.is_from_me
+            FROM message m
+            LEFT JOIN handle h ON m.handle_id = h.ROWID
+            LEFT JOIN chat_message_join cmj ON m.ROWID = cmj.message_id
+            LEFT JOIN chat c ON cmj.chat_id = c.ROWID
+            WHERE m.text IS NOT NULL AND m.text != ''
+              AND (h.id LIKE ? OR c.display_name LIKE ?)
+            ORDER BY m.date DESC
+            LIMIT ?
+        """, (f"%{contact}%", f"%{contact}%", count))
+
+        messages = []
+        for row in cursor.fetchall():
+            messages.append({
+                "from": "me" if row[3] else row[0],
+                "text": row[1][:200],
+                "time": row[2] or "",
+            })
+
+        conn.close()
+        return {"ok": True, "contact": contact, "messages": messages}
+
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
 def send_message(to: str, text: str) -> dict:
-    """Send an iMessage to a phone number or email."""
+    """Send an iMessage via AppleScript."""
     if not to or not text:
-        return {"ok": False, "error": "Need both recipient and message text."}
+        return {"ok": False, "error": "Need both recipient and message."}
 
-    # Sanitize to prevent AppleScript injection
     import re
     to_clean = re.sub(r'[^a-zA-Z0-9@.+\- ]', '', to)
-    text_clean = text.replace('"', '\\"').replace('\n', '\\n')
+    text_clean = text.replace('"', '\\"').replace("'", "\\'")
 
     script = f'''
         tell application "Messages"
@@ -76,53 +117,6 @@ def send_message(to: str, text: str) -> dict:
             log.info("Sent iMessage to %s", to_clean)
             return {"ok": True, "to": to_clean}
         else:
-            return {"ok": False, "error": result.stderr.strip() or "Failed to send"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-
-def get_messages_from(contact: str, count: int = 5) -> dict:
-    """Get recent messages from a specific contact."""
-    script = f'''
-        tell application "Messages"
-            set msgList to {{}}
-            set chatList to chats
-            repeat with c in chatList
-                if name of c contains "{contact}" then
-                    set msgs to messages of c
-                    set msgCount to count of msgs
-                    set startIdx to msgCount - {count} + 1
-                    if startIdx < 1 then set startIdx to 1
-                    repeat with i from startIdx to msgCount
-                        set m to item i of msgs
-                        set msgText to text of m
-                        set msgDate to date of m
-                        set sender to "them"
-                        if (is_from_me of m) then set sender to "me"
-                        set end of msgList to sender & " | " & msgText & " | " & (msgDate as string)
-                    end repeat
-                    exit repeat
-                end if
-            end repeat
-            return msgList
-        end tell
-    '''
-    try:
-        result = subprocess.run(["osascript", "-e", script],
-                               capture_output=True, text=True, timeout=10)
-        if result.returncode != 0:
-            return {"ok": False, "error": result.stderr.strip()}
-
-        raw = result.stdout.strip()
-        messages = []
-        for line in raw.split(", "):
-            parts = line.split(" | ", 2)
-            if len(parts) >= 2:
-                messages.append({
-                    "from": parts[0].strip(),
-                    "text": parts[1].strip(),
-                    "time": parts[2].strip() if len(parts) > 2 else "",
-                })
-        return {"ok": True, "contact": contact, "messages": messages}
+            return {"ok": False, "error": result.stderr.strip()[:100] or "Failed to send. Is Messages.app open?"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
