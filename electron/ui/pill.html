@@ -61,6 +61,16 @@ html,body{background:transparent;overflow:hidden;width:320px;height:200px}
 .atxt .cur{display:inline-block;width:1.5px;height:12px;background:rgba(255,255,255,.5);margin-left:2px;vertical-align:text-bottom;animation:bk .8s step-end infinite}
 @keyframes bk{0%,100%{opacity:1}50%{opacity:0}}
 
+/* Messages mini-view */
+.msg-mini{padding:6px 12px 8px;width:100%;border-top:1px solid rgba(255,255,255,.06);max-height:140px;overflow-y:auto}
+.msg-mini::-webkit-scrollbar{width:3px}
+.msg-mini::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px}
+.msg-bubble{margin:3px 0;max-width:85%;padding:4px 8px;border-radius:8px;font-size:10px;line-height:1.4;word-wrap:break-word}
+.msg-them{background:rgba(255,255,255,.08);color:rgba(255,255,255,.8);border-bottom-left-radius:3px}
+.msg-me{background:rgba(59,130,246,.25);color:rgba(255,255,255,.85);margin-left:auto;border-bottom-right-radius:3px}
+.msg-sender{font-size:8px;color:rgba(255,255,255,.35);margin-bottom:1px;font-weight:500}
+.msg-time{font-size:7px;color:rgba(255,255,255,.2);margin-top:1px}
+
 /* Calendar mini-view */
 .cal-mini{padding:6px 12px 8px;width:100%;border-top:1px solid rgba(255,255,255,.06);max-height:140px;overflow-y:auto}
 .cal-mini::-webkit-scrollbar{width:3px}
@@ -80,6 +90,7 @@ html,body{background:transparent;overflow:hidden;width:320px;height:200px}
   </div>
   <div class="dots"><span></span><span></span><span></span></div>
   <div class="atxt" id="atxt"></div>
+  <div class="msg-mini" id="msgMini" style="display:none"></div>
   <div class="cal-mini" id="calMini" style="display:none"></div>
 </div>
 <script>
@@ -145,13 +156,28 @@ function go(s){
   pill.style.width='';pill.style.height=''; // reset inline styles
   if(s==='rec'&&triggerMode==='toggle')pill.classList.add('wide');
   if(s==='done')setTimeout(()=>{if(st==='done'){st='hidden';pill.className='pill'}},700);
-  if(s!=='assist'){atxt.innerHTML='';document.getElementById('calMini').style.display='none';document.getElementById('calMini').innerHTML='';}
+  if(s!=='assist'){atxt.innerHTML='';document.getElementById('calMini').style.display='none';document.getElementById('calMini').innerHTML='';document.getElementById('msgMini').style.display='none';document.getElementById('msgMini').innerHTML='';}
 }
 
 if(window.electronAPI){
   window.electronAPI.onWsMessage(m=>{
     if(m.type==='audio_level'){audioLevel=Math.min(1,m.rms*25)}
     if(m.type==='trigger_mode'){triggerMode=m.mode}
+    if(m.type==='messages_view'&&m.messages){
+      const msg=document.getElementById('msgMini');
+      msg.style.display='block';
+      // Group by sender for clean display
+      let lastSender='';
+      msg.innerHTML=m.messages.map(m=>{
+        const isMe=m.from==='me';
+        const showSender=!isMe&&m.from!==lastSender;
+        lastSender=m.from;
+        const sender=showSender?`<div class="msg-sender">${m.from}</div>`:'';
+        const time=m.time?`<div class="msg-time">${m.time.split(' ').pop()||''}</div>`:'';
+        return`<div>${sender}<div class="msg-bubble ${isMe?'msg-me':'msg-them'}">${m.text}${time}</div></div>`;
+      }).join('');
+      msg.scrollTop=msg.scrollHeight;
+    }
     if(m.type==='calendar_view'&&m.events){
       const cal=document.getElementById('calMini');
       cal.style.display='block';
@@ -172,11 +198,12 @@ if(window.electronAPI){
     if(m.type==='assistant_stream'){
       if(st!=='assist')go('assist');
       atxt.innerHTML=m.text+(m.done?'':'<span class="cur"></span>');
-      // Size pill — account for calendar view if present
+      // Size pill — account for calendar/message views
       const calH=document.getElementById('calMini').offsetHeight||0;
+      const msgH=document.getElementById('msgMini').offsetHeight||0;
       measure.textContent=m.text;
-      const w=Math.min(310,Math.max(140,measure.offsetWidth+8));
-      const h=Math.min(280,Math.max(36,measure.offsetHeight+calH+8));
+      const w=Math.min(310,Math.max(160,measure.offsetWidth+8));
+      const h=Math.min(300,Math.max(36,measure.offsetHeight+calH+msgH+8));
       pill.style.width=w+'px';
       pill.style.height=h+'px';
       if(m.done){

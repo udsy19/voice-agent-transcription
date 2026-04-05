@@ -777,8 +777,13 @@ class Assistant:
             import imessage
             contact = args.get("contact", "")
             if contact:
-                return imessage.get_messages_from(contact)
-            return imessage.get_recent_messages()
+                result = imessage.get_messages_from(contact)
+            else:
+                result = imessage.get_recent_messages()
+            # Emit structured message data for pill UI
+            if result.get("ok") and result.get("messages"):
+                self._emit({"type": "messages_view", "messages": result["messages"][:6]})
+            return result
 
         elif name == "send_text":
             import imessage
