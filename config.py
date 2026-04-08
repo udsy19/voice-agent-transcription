@@ -40,6 +40,9 @@ ANTHROPIC_API_KEY = _keychain_get("Muse", "anthropic_api_key") or os.getenv("ANT
 # ELEVENLABS_API_KEY removed — using Kokoro only
 GROQ_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 
+# LLM provider: "hybrid" (local + cloud), "local" (offline only), "groq" (cloud only)
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "hybrid")
+
 # ── Whisper ──────────────────────────────────────────────────────────────────
 WHISPER_MODEL = "distil-large-v3"
 WHISPER_DEVICE = "cpu"

@@ -1,20 +1,17 @@
 """Muse AI Assistant — voice-controlled tool-calling agent.
 
 Handles commands like "add an event to my calendar" or "draft an email to John".
-Uses Groq LLM with tool calling. Supports multi-turn conversations — if info
-is missing (e.g., no date for a calendar event), it asks back via TTS and waits
-for the user's next voice input to continue.
+Uses LLM (local mlx-lm or cloud Groq) with tool calling. Supports multi-turn
+conversations — if info is missing, it asks back via TTS and waits for the
+user's next voice input to continue.
 """
 
 import json
 import time
 import subprocess
-from groq import Groq
 from logger import get_logger
 
 log = get_logger("assistant")
-
-ASSISTANT_MODEL = "llama-3.3-70b-versatile"
 
 TOOLS = [
     {
@@ -327,11 +324,12 @@ TOOLS = [
 ]
 
 
-def _web_search(client: Groq, query: str) -> dict:
+def _web_search(client, query: str) -> dict:
     """Search the web using Groq's Compound AI system.
-    Tries compound-beta first (full web search), falls back to compound-beta-mini."""
+    Requires Groq API key (compound-beta is cloud-only)."""
     if not client:
-        return {"error": "No Groq client available."}
+        return {"ok": False, "error": "Web search requires a Groq API key. Add one in Settings.",
+                "non_retryable": True}
 
     # Try mini first (works on free tier), then full compound-beta
     for model in ["compound-beta-mini", "compound-beta"]:
@@ -390,8 +388,8 @@ def _speak(text: str):
 class Assistant:
     """Voice-controlled AI assistant with tool calling and multi-turn memory."""
 
-    def __init__(self, groq_client: Groq, oauth_manager, emit_fn, todos=None, brain=None):
-        self._client = groq_client
+    def __init__(self, llm_client, oauth_manager, emit_fn, todos=None, brain=None):
+        self._client = llm_client
         self._oauth = oauth_manager
         self._emit = emit_fn
         self._todos = todos
@@ -461,67 +459,50 @@ class Assistant:
         messages.append({"role": "user", "content": command})
 
         try:
-            # Try 70b first, fall back to 8b on rate limit, manual exec on tool format error
-            response = None
-            for model in [ASSISTANT_MODEL, "llama-3.1-8b-instant"]:
-                try:
-                    response = self._client.chat.completions.create(
-                        model=model, messages=messages, tools=TOOLS,
-                        tool_choice="auto", temperature=0.2, max_tokens=512, timeout=15,
+            # Call LLM with tools — the client handles model selection and fallback
+            try:
+                response = self._client.chat(
+                    messages=messages, tools=TOOLS, tool_choice="auto",
+                    model_tier="large", temperature=0.2, max_tokens=512, timeout=15,
+                )
+            except Exception as e:
+                err = str(e)
+                if "tool_use_failed" in err or "400" in err:
+                    # Parse failed tool call and execute manually
+                    log.warning("Tool format error, executing manually")
+                    import re as _re
+                    fn_match = _re.search(r'<function=(\w+)', err)
+                    if fn_match:
+                        args = {}
+                        json_match = _re.search(r'\{.*?\}', err)
+                        if json_match:
+                            try:
+                                args = json.loads(json_match.group(0))
+                            except Exception:
+                                kv_matches = _re.findall(r'"(\w+)":\s*"([^"]*)"', err)
+                                args = dict(kv_matches) if kv_matches else {}
+                        result = self._execute_tool(fn_match.group(1), args)
+                        messages.append({"role": "user", "content": f"Result: {json.dumps(result)[:200]}. Summarize in 1 sentence."})
+                    response = self._client.chat(
+                        messages=messages, model_tier="small",
+                        temperature=0.3, max_tokens=256, timeout=10,
                     )
-                    break  # success
-                except Exception as e:
-                    err = str(e)
-                    if "429" in err or "rate_limit" in err:
-                        log.warning("%s rate limited, trying next model", model)
-                        continue
-                    elif "tool_use_failed" in err or "400" in err:
-                        # Parse failed tool call and execute manually
-                        log.warning("Tool format error, executing manually")
-                        import re as _re
-                        fn_match = _re.search(r'<function=(\w+)', err)
-                        if fn_match:
-                            # Extract JSON — try multiple patterns
-                            args = {}
-                            json_match = _re.search(r'\{.*?\}', err)
-                            if json_match:
-                                try:
-                                    args = json.loads(json_match.group(0))
-                                except Exception:
-                                    # Try extracting key-value pairs manually
-                                    kv_matches = _re.findall(r'"(\w+)":\s*"([^"]*)"', err)
-                                    args = dict(kv_matches) if kv_matches else {}
-                            result = self._execute_tool(fn_match.group(1), args)
-                            messages.append({"role": "user", "content": f"Result: {json.dumps(result)[:200]}. Summarize in 1 sentence."})
-                            response = self._client.chat.completions.create(
-                                model="llama-3.1-8b-instant", messages=messages,
-                                temperature=0.3, max_tokens=100, timeout=10,
-                            )
-                        else:
-                            response = self._client.chat.completions.create(
-                                model="llama-3.1-8b-instant", messages=messages,
-                                temperature=0.3, max_tokens=256, timeout=10,
-                            )
-                        break
-                    else:
-                        raise
+                elif "429" in err or "rate_limit" in err:
+                    self._stream("I'm being rate limited right now. Try again in a minute.")
+                    _speak("I'm being rate limited. Try again in a minute.")
+                    return "Rate limited. Try again shortly."
+                else:
+                    raise
 
-            if not response:
-                self._stream("I'm being rate limited right now. Try again in a minute.")
-                _speak("I'm being rate limited. Try again in a minute.")
-                return "Rate limited. Try again shortly."
-
-            choice = response.choices[0]
-            tool_calls = choice.message.tool_calls
+            tool_calls = response.tool_calls
 
             # No tool calls — LLM is asking a question or responding with text
             if not tool_calls:
-                text = choice.message.content or ""
+                text = response.text or ""
                 if text:
                     self._conversation.append({"role": "user", "content": command})
                     self._conversation.append({"role": "assistant", "content": text})
                     self._conversation_expires = time.time() + 600
-                    # Don't auto-save — memory is saved explicitly via remember_fact tool
 
                     self._stream(text)
                     import threading
@@ -540,7 +521,15 @@ class Assistant:
             text = None  # will be set by the loop or final generation
 
             self._conversation.append({"role": "user", "content": command})
-            messages.append(choice.message)
+            # Append raw assistant message for Groq, or synthesize for local
+            if response.raw and hasattr(response.raw, 'choices'):
+                messages.append(response.raw.choices[0].message)
+            else:
+                messages.append({"role": "assistant", "content": "",
+                                 "tool_calls": [{"id": tc.id, "type": "function",
+                                                  "function": {"name": tc.function.name,
+                                                               "arguments": tc.function.arguments}}
+                                                 for tc in tool_calls]})
 
             iteration = 0
             while tool_calls and iteration < MAX_ITERATIONS:
@@ -602,26 +591,25 @@ class Assistant:
 
                     # Give LLM the error and let it decide what to do next
                     try:
-                        recovery = self._client.chat.completions.create(
-                            model="llama-3.1-8b-instant",
-                            messages=messages,
-                            tools=TOOLS,
-                            tool_choice="auto",
-                            temperature=0.3,
-                            max_tokens=512,
-                            timeout=10,
+                        recovery = self._client.chat(
+                            messages=messages, tools=TOOLS, tool_choice="auto",
+                            model_tier="small", temperature=0.3, max_tokens=512, timeout=10,
                         )
-                        recovery_choice = recovery.choices[0]
-                        tool_calls = recovery_choice.message.tool_calls
+                        tool_calls = recovery.tool_calls
 
                         if tool_calls:
-                            # LLM wants to try a different approach — continue the loop
-                            messages.append(recovery_choice.message)
+                            if recovery.raw and hasattr(recovery.raw, 'choices'):
+                                messages.append(recovery.raw.choices[0].message)
+                            else:
+                                messages.append({"role": "assistant", "content": "",
+                                                 "tool_calls": [{"id": tc.id, "type": "function",
+                                                                  "function": {"name": tc.function.name,
+                                                                               "arguments": tc.function.arguments}}
+                                                                 for tc in tool_calls]})
                             log.info("LLM adapting: trying %s", tool_calls[0].function.name)
                             continue
                         else:
-                            # LLM gave up and wants to respond with text
-                            text = recovery_choice.message.content or f"I couldn't complete that: {error_msg}"
+                            text = recovery.text or f"I couldn't complete that: {error_msg}"
                             break
                     except Exception as re:
                         log.warning("Recovery LLM call failed: %s", re)
@@ -634,14 +622,11 @@ class Assistant:
             # Generate human-readable response from results
             if not text:
                 try:
-                    final = self._client.chat.completions.create(
-                        model="llama-3.1-8b-instant",
-                        messages=messages,
-                        temperature=0.3,
-                        max_tokens=200,
-                        timeout=10,
+                    final = self._client.chat(
+                        messages=messages, model_tier="small",
+                        temperature=0.3, max_tokens=200, timeout=10,
                     )
-                    text = final.choices[0].message.content or "Done."
+                    text = final.text or "Done."
                 except Exception as sum_err:
                     log.warning("Summary failed: %s", sum_err)
                     try:
@@ -999,19 +984,18 @@ class Assistant:
                     pass
             if not selected:
                 return {"error": "No text selected or in clipboard."}
-            client = self._client
-            if client:
-                resp = client.chat.completions.create(
-                    model="llama-3.1-8b-instant",
+            if self._client:
+                resp = self._client.chat(
                     messages=[
                         {"role": "system", "content": "Transform the text as instructed. Return ONLY the result."},
                         {"role": "user", "content": f"Text:\n{selected[:3000]}\n\nInstruction: {instruction}"},
                     ],
-                    temperature=0.3, max_tokens=2048, timeout=15,
+                    model_tier="small", temperature=0.3, max_tokens=2048, timeout=15,
                 )
-                result = resp.choices[0].message.content.strip()
-                inject_text(result)
-                return {"ok": True, "chars": len(result)}
+                result = resp.text.strip()
+                if result:
+                    inject_text(result)
+                    return {"ok": True, "chars": len(result)}
             return {"error": "No LLM available."}
 
         elif name == "open_app":
@@ -1072,7 +1056,9 @@ class Assistant:
                         query = f"{query} in {city}"
                 except Exception:
                     pass
-            return _web_search(self._client, query)
+            # Web search needs raw Groq client (compound-beta is cloud-only)
+            from llm import get_raw_groq
+            return _web_search(get_raw_groq(), query)
 
         return {"error": f"Unknown tool: {name}"}
 

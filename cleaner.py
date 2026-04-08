@@ -12,7 +12,6 @@ import re
 import subprocess
 import hashlib
 from collections import OrderedDict
-from groq import Groq
 from config import GROQ_API_KEY, GROQ_MODEL
 from logger import get_logger
 
@@ -126,11 +125,12 @@ def _get_tone_for_app(app_name: str) -> str | None:
 
 class Cleaner:
     def __init__(self):
-        if not GROQ_API_KEY:
-            log.warning("GROQ_API_KEY not set, LLM cleanup disabled")
+        try:
+            from llm import get_client
+            self._client = get_client()
+        except Exception as e:
+            log.warning("LLM not available: %s", e)
             self._client = None
-        else:
-            self._client = Groq(api_key=GROQ_API_KEY)
         self._cache: OrderedDict[str, str] = OrderedDict()
 
     def _cache_key(self, text: str, tone: str | None, style: str | None) -> str:
@@ -192,19 +192,19 @@ class Cleaner:
             system += f"\nContext: {context[:300]}"
 
         try:
-            response = self._client.chat.completions.create(
-                model=GROQ_MODEL,
+            response = self._client.chat(
                 messages=[
                     {"role": "system", "content": system},
                     {"role": "user", "content": f"[DICTATION]: {cleaned}"},
                 ],
+                model_tier="medium",
                 temperature=0,
                 max_tokens=2048,
                 timeout=15,
             )
-            if not response.choices or not response.choices[0].message.content:
+            result = response.text.strip()
+            if not result:
                 return cleaned
-            result = response.choices[0].message.content.strip()
 
             # Post-validation: reject hallucinations
             if len(result) > len(cleaned) * 3 and len(cleaned) > 20:
@@ -223,19 +223,19 @@ class Cleaner:
         if not self._client:
             return selected_text
         try:
-            response = self._client.chat.completions.create(
-                model=GROQ_MODEL,
+            response = self._client.chat(
                 messages=[
                     {"role": "system", "content": "Transform the text as instructed. Return ONLY the result."},
                     {"role": "user", "content": f"Text:\n{selected_text}\n\nInstruction: {command}"},
                 ],
+                model_tier="medium",
                 temperature=0.3,
                 max_tokens=4096,
                 timeout=15,
             )
-            if not response.choices or not response.choices[0].message.content:
+            result = response.text.strip()
+            if not result:
                 return selected_text
-            result = response.choices[0].message.content.strip()
             log.info("Transform: '%s' -> %d chars", command[:40], len(result))
             return result
         except Exception as e:
@@ -247,8 +247,7 @@ class Cleaner:
         if not self._client or not text or len(text.split()) < 5:
             return []
         try:
-            response = self._client.chat.completions.create(
-                model=GROQ_MODEL,
+            response = self._client.chat(
                 messages=[
                     {"role": "system", "content": (
                         "Extract ONLY proper nouns (people, companies, products, places) "
@@ -262,11 +261,12 @@ class Cleaner:
                     )},
                     {"role": "user", "content": text},
                 ],
+                model_tier="small",
                 temperature=0,
                 max_tokens=128,
                 timeout=10,
             )
-            content = response.choices[0].message.content.strip()
+            content = response.text.strip()
             terms = self._parse_terms(content)
             return [t for t in terms if self._is_valid_term(t)]
         except Exception as e:

@@ -1428,7 +1428,8 @@ def load_engine():
     S.oauth = OAuthManager()
     S.todos = TodoList()
     S.brain = Brain()
-    S.assistant = Assistant(S.cleaner._client, S.oauth, emit, S.todos, S.brain)
+    from llm import get_client as get_llm
+    S.assistant = Assistant(get_llm(), S.oauth, emit, S.todos, S.brain)
     set_status("idle", "Ready — hold ⌥R to dictate")
 
 
