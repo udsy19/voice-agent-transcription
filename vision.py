@@ -11,17 +11,22 @@ log = get_logger("vision")
 
 def take_screenshot() -> bytes | None:
     """Capture the active screen to PNG bytes."""
+    tmp = os.path.join(tempfile.gettempdir(), "muse_screenshot.png")
     try:
-        tmp = os.path.join(tempfile.gettempdir(), "muse_screenshot.png")
         subprocess.run(["screencapture", "-x", "-C", tmp], capture_output=True, timeout=5)
         if os.path.exists(tmp):
             with open(tmp, "rb") as f:
                 data = f.read()
-            os.remove(tmp)
             return data
     except Exception as e:
         log.error("Screenshot failed: %s", e)
-    return None
+        return None
+    finally:
+        try:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+        except OSError:
+            pass
 
 
 def analyze_screen(instruction: str) -> dict:

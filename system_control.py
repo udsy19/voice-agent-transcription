@@ -76,13 +76,24 @@ def run_shortcut(name: str) -> dict:
 
 
 def set_brightness(level: int) -> dict:
-    """Set display brightness (0-100)."""
+    """Set display brightness (0-100). Uses brightness CLI if available, else AppleScript."""
     level = max(0, min(100, level))
     brightness = level / 100.0
+    # Method 1: brightness CLI (brew install brightness)
+    try:
+        result = subprocess.run(["brightness", str(brightness)],
+                               capture_output=True, timeout=5)
+        if result.returncode == 0:
+            return {"ok": True, "brightness": level}
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+    # Method 2: AppleScript via System Settings (macOS 13+)
     try:
         subprocess.run(["osascript", "-e",
-                       f'tell application "System Events" to set value of slider 1 of group 1 of window "Display" of application process "System Preferences" to {brightness}'],
+                       f'do shell script "brightness {brightness}" '],
                        capture_output=True, timeout=5)
         return {"ok": True, "brightness": level}
     except Exception as e:
-        return {"ok": False, "error": f"Brightness control not available: {e}"}
+        return {"ok": False, "error": f"Brightness control not available. Install: brew install brightness"}

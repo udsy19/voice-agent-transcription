@@ -202,7 +202,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "check_messages",
-            "description": "Check recent text messages (iMessage). Use for 'who texted me', 'check my texts', 'last message'.",
+            "description": "Check recent text messages (iMessage). Use for 'who texted me', 'check my texts', 'last message from X'.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -214,13 +214,27 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "send_text",
-            "description": "Send an iMessage/text. Use for 'text X saying Y', 'message X that Y'.",
+            "name": "find_contacts",
+            "description": "Search contacts by name. ALWAYS call this BEFORE send_text if you're not sure who the user means (e.g. 'text purdue', 'message teng'). Returns matching contacts so you can ask the user to pick.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "to": {"type": "string", "description": "Contact name, phone number, or email."},
-                    "message": {"type": "string", "description": "The message to send."},
+                    "name": {"type": "string", "description": "Name to search for."},
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "send_text",
+            "description": "Send an iMessage/text. ONLY call this when you have the user's EXACT words to send. The 'message' field must contain ONLY what the user explicitly said to send — never add greetings, questions, or your own text.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "to": {"type": "string", "description": "Contact name or phone number. Must be a specific person, not ambiguous."},
+                    "message": {"type": "string", "description": "The EXACT message the user wants to send. Must be the user's own words, not yours."},
                 },
                 "required": ["to", "message"],
             },
@@ -298,7 +312,64 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Search the web for current information. Use for: weather, news, scores, stock prices, 'Google X', 'search for X', 'what is X', facts you don't know, anything requiring up-to-date info.",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string", "description": "The search query."}},
+                "required": ["query"],
+            },
+        },
+    },
 ]
+
+
+def _web_search(client: Groq, query: str) -> dict:
+    """Search the web using Groq's Compound AI system.
+    Tries compound-beta first (full web search), falls back to compound-beta-mini."""
+    if not client:
+        return {"error": "No Groq client available."}
+
+    # Try mini first (works on free tier), then full compound-beta
+    for model in ["compound-beta-mini", "compound-beta"]:
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "user", "content": f"Search the web and answer concisely (2-3 sentences): {query}"},
+                ],
+                max_tokens=300,
+                timeout=15,
+            )
+            text = response.choices[0].message.content or ""
+            # Extract citations if available
+            citations = []
+            executed_tools = getattr(response.choices[0].message, 'executed_tools', None)
+            if executed_tools:
+                for tool in executed_tools:
+                    if hasattr(tool, 'outputs'):
+                        for output in tool.outputs:
+                            if hasattr(output, 'url'):
+                                citations.append(output.url)
+            log.info("Web search [%s]: '%s' → %s", model, query[:40], text[:60])
+            result = {"ok": True, "answer": text, "query": query}
+            if citations:
+                result["sources"] = citations[:3]
+            return result
+        except Exception as e:
+            err = str(e).lower()
+            if "429" in err or "rate_limit" in err or "413" in err:
+                log.warning("Web search unavailable on %s: %s", model, str(e)[:60])
+                continue
+            log.error("Web search failed on %s: %s", model, e)
+            return {"ok": False, "error": f"Web search failed: {str(e)[:80]}"}
+
+    # CRITICAL: return a non-retryable error so the agentic loop doesn't waste iterations
+    return {"ok": False, "error": "I can't search the web right now — Groq rate limit. Upgrade to Dev tier at console.groq.com for web search.",
+            "non_retryable": True}
 
 
 def _speak(text: str):
@@ -328,6 +399,7 @@ class Assistant:
         # Multi-turn conversation history (persists across recordings)
         self._conversation: list[dict] = []
         self._conversation_expires: float = 0
+        self._current_command: str = ""  # the raw user command, for message validation
 
     _cached_today: str = ""
     _cached_today_ts: float = 0
@@ -356,6 +428,7 @@ class Assistant:
         """Process a voice command. Supports multi-turn follow-ups."""
         if not self._client:
             return None
+        self._current_command = command
 
         if time.time() > self._conversation_expires:
             self._conversation.clear()
@@ -514,6 +587,14 @@ class Assistant:
                     last_parsed = {}
 
                 has_error = isinstance(last_parsed, dict) and last_parsed.get("error")
+                non_retryable = isinstance(last_parsed, dict) and last_parsed.get("non_retryable")
+
+                # If tool explicitly says don't retry, break immediately
+                if non_retryable:
+                    error_msg = last_parsed["error"]
+                    log.info("Tool returned non-retryable error: %s", error_msg[:60])
+                    text = error_msg
+                    break
 
                 if has_error and iteration < MAX_ITERATIONS:
                     error_msg = last_parsed["error"]
@@ -583,6 +664,9 @@ class Assistant:
 
         except Exception as e:
             log.error("Assistant error: %s", e, exc_info=True)
+            # Clear stale conversation context on errors to prevent context pollution
+            if len(self._conversation) > 2:
+                self._conversation = self._conversation[-2:]  # keep last exchange only
             err = str(e).lower()
             if "rate_limit" in err or "429" in err:
                 msg = "I'm being rate limited right now. Give me a few seconds and try again."
@@ -595,7 +679,7 @@ class Assistant:
             elif "tool_use_failed" in err:
                 msg = "I had trouble executing that. Let me try differently — could you rephrase?"
             else:
-                msg = f"Something went wrong. Try again in a moment."
+                msg = "Something went wrong. Try again in a moment."
             self._stream(msg)
             _speak(msg)
             return msg
@@ -671,7 +755,7 @@ class Assistant:
             if self._todos:
                 item = self._todos.add(text)
                 self._emit({"type": "todo_added", "item": item})
-                return {"ok": True, "text": args["text"]}
+                return {"ok": True, "text": text}
             return {"error": "Todos not available."}
 
         elif name == "complete_todo":
@@ -703,7 +787,7 @@ class Assistant:
                     for a in actions:
                         item = self._todos.add(a)
                         self._emit({"type": "todo_added", "item": item})
-                return {"ok": True, "summary": args["summary"], "action_items": actions}
+                return {"ok": True, "summary": summary, "action_items": actions}
             return {"error": "Brain not available."}
 
         # Google tools — need OAuth token
@@ -713,10 +797,14 @@ class Assistant:
 
         if name == "create_calendar_event":
             from integrations.google_calendar import create_event
+            summary = args.get("summary", "")
+            start_time = args.get("start_time", "")
+            if not summary or not start_time:
+                return {"error": "Missing event title or start time."}
             att_str = args.get("attendees", "")
             attendees = [e.strip() for e in att_str.split(",") if e.strip()] if att_str else None
             return create_event(
-                token, args["summary"], args["start_time"],
+                token, summary, start_time,
                 end_time=args.get("end_time", ""),
                 description=args.get("description", ""),
                 location=args.get("location", ""),
@@ -735,31 +823,47 @@ class Assistant:
 
         elif name == "update_calendar_event":
             from integrations.google_calendar import update_event
+            event_id = args.get("event_id", "")
+            if not event_id:
+                return {"error": "Missing event ID."}
             fields = {}
             for k in ["summary", "description", "location", "start_time", "end_time"]:
                 if args.get(k):
                     fields[k] = args[k]
             if args.get("attendees"):
                 fields["attendees"] = [e.strip() for e in args["attendees"].split(",") if e.strip()]
-            return update_event(token, args["event_id"], **fields)
+            return update_event(token, event_id, **fields)
 
         elif name == "delete_calendar_event":
             from integrations.google_calendar import delete_event
-            return delete_event(token, args["event_id"])
+            event_id = args.get("event_id", "")
+            if not event_id:
+                return {"error": "Missing event ID."}
+            return delete_event(token, event_id)
 
         elif name == "draft_email":
             from integrations.gmail import draft_email
-            result = draft_email(token, args["to"], args["subject"], args["body"])
+            to = args.get("to", "")
+            subject = args.get("subject", "")
+            body = args.get("body", "")
+            if not to:
+                return {"error": "Missing recipient email."}
+            result = draft_email(token, to, subject or "(no subject)", body)
             if result.get("ok") and self._oauth:
                 self._oauth._last_draft_id = result["draft_id"]
             return result
 
         elif name == "send_email":
             from integrations.gmail import send_email
-            result = send_email(token, args["to"], args["subject"], args["body"])
+            to = args.get("to", "")
+            subject = args.get("subject", "")
+            body = args.get("body", "")
+            if not to:
+                return {"error": "Missing recipient email."}
+            result = send_email(token, to, subject or "(no subject)", body)
             if result.get("ok"):
                 import follow_ups
-                follow_ups.add(args["to"], args["subject"], result.get("message_id", ""))
+                follow_ups.add(to, subject, result.get("message_id", ""))
             return result
 
         elif name == "send_last_draft":
@@ -785,13 +889,97 @@ class Assistant:
                 self._emit({"type": "messages_view", "messages": result["messages"][:6]})
             return result
 
+        elif name == "find_contacts":
+            import imessage
+            query = args.get("name", "")
+            if not query:
+                return {"error": "No name provided."}
+            matches = imessage.find_contacts(query, limit=8)
+            if not matches:
+                return {"ok": True, "matches": [], "message": f"No contacts found matching '{query}'."}
+            # If there's exactly 1 high-confidence match, treat as unique
+            high = [m for m in matches if m["score"] in ("exact", "fuzzy")]
+            if len(high) == 1:
+                return {"ok": True, "matches": [high[0]], "unique": True,
+                        "message": f"Found {high[0]['name']}. You can send them a text now."}
+            if len(matches) == 1:
+                return {"ok": True, "matches": matches, "unique": True,
+                        "message": f"Found {matches[0]['name']}."}
+            names = [m["name"] for m in matches[:8]]
+            return {"ok": True, "matches": matches, "count": len(matches),
+                    "message": f"Multiple contacts match '{query}': {', '.join(names[:6])}{'...' if len(names) > 6 else ''}. Ask which one."}
+
         elif name == "send_text":
             import imessage
             to = args.get("to", "")
             message = args.get("message", "")
-            if not to or not message:
-                return {"error": "Need both recipient and message."}
-            return imessage.send_message(to, message)
+
+            # ── Guard 1: missing fields ──
+            if not to:
+                return {"error": "STOP. Ask the user: 'Who do you want to text?'"}
+            if not message:
+                return {"error": f"STOP. Ask the user: 'What would you like to say to {to}?'"}
+
+            # ── Guard 2: LLM hallucinated a question/greeting as the message ──
+            msg_lower = message.lower().strip()
+            hallucination_signals = [
+                "what would you like", "what do you want", "who do you want",
+                "what should i", "would you like me", "please tell me",
+                "please enter", "what message", "who should",
+                "hello, how are you", "hi, how are you", "hey, how are you",
+                "let's focus on being", "i think", "let me",
+            ]
+            if any(p in msg_lower for p in hallucination_signals):
+                return {"error": f"STOP. That is NOT the user's message. Ask the user: 'What would you like to say to {to}?'"}
+
+            # ── Guard 2b: verify message comes from user's actual words ──
+            # The LLM loves to "improve" or rewrite messages. Check similarity.
+            cmd = self._current_command.lower()
+            # Extract the part after "saying/that/tell them/tell her/tell him"
+            import re as _re
+            msg_match = _re.search(r'(?:saying|say|that|tell (?:them|her|him|samyuktha|william|teng))\s+(.+)', cmd)
+            if msg_match:
+                user_words = msg_match.group(1).strip()
+                # Check if the LLM's message is significantly different from user's words
+                user_key_words = set(user_words.split())
+                msg_key_words = set(msg_lower.split())
+                if len(user_key_words) >= 3:
+                    overlap = user_key_words & msg_key_words
+                    # If less than 40% word overlap, LLM rewrote the message
+                    if len(overlap) / len(user_key_words) < 0.4:
+                        log.warning("LLM rewrote message. User: '%s' → LLM: '%s'", user_words[:60], message[:60])
+                        # Use user's original words instead
+                        message = user_words
+                        log.info("Using user's original words: '%s'", message[:60])
+
+            # ── Guard 3: recipient looks like gibberish or placeholder ──
+            to_lower = to.lower().strip()
+            if any(p in to_lower for p in ["who would", "what would", "please", "enter", "?", "unknown", "recipient", "someone"]):
+                return {"error": "STOP. Ask the user: 'Who do you want to text?'"}
+
+            # ── Guard 4: ambiguous recipient — find contacts first ──
+            matches = imessage.find_contacts(to, limit=5)
+            if len(matches) > 1:
+                # Check if there's a single exact/fuzzy match (higher confidence than substring)
+                high_confidence = [m for m in matches if m["score"] in ("exact", "fuzzy")]
+                if len(high_confidence) == 1:
+                    matches = high_confidence  # use the high-confidence match
+                elif len(high_confidence) > 1:
+                    names = [m["name"] for m in high_confidence[:5]]
+                    return {"error": f"Multiple contacts match '{to}': {', '.join(names)}. Ask the user which one."}
+                else:
+                    names = [m["name"] for m in matches[:5]]
+                    return {"error": f"Multiple contacts match '{to}': {', '.join(names)}. Ask the user which one."}
+
+            result = imessage.send_message(to, message)
+
+            # ── Start watching for reply after successful send ──
+            if result.get("ok"):
+                phone = result.get("to", to)
+                contact_name = matches[0]["name"] if matches else to
+                imessage.watch_for_reply(phone, contact_name)
+
+            return result
 
         # ── Power features (no Google token needed) ──
 
@@ -869,15 +1057,41 @@ class Assistant:
             import vision
             return vision.analyze_screen(args.get("instruction", "describe what you see"))
 
+        elif name == "web_search":
+            query = args.get("query", "")
+            if not query:
+                return {"error": "No search query provided."}
+            # Add location context for location-sensitive queries
+            loc_words = ["weather", "near", "nearby", "closest", "local", "restaurant",
+                         "store", "directions", "time zone", "temperature"]
+            if any(w in query.lower() for w in loc_words):
+                try:
+                    from location import get_city
+                    city = get_city()
+                    if city and city != "Unknown" and city.lower() not in query.lower():
+                        query = f"{query} in {city}"
+                except Exception:
+                    pass
+            return _web_search(self._client, query)
+
         return {"error": f"Unknown tool: {name}"}
 
     def _build_system_prompt(self, accounts: list[dict], today_context: str = "") -> str:
         now = time.strftime("%A, %B %d, %Y at %I:%M %p")
         acct_list = ", ".join(f"{a['service']}:{a['email']}" for a in accounts) if accounts else "None"
 
+        # Get location context
+        try:
+            from location import get_city
+            city = get_city()
+        except Exception:
+            city = "Unknown"
+        location_str = f"Location: {city}" if city != "Unknown" else ""
+
         return (
             f"You are a smart personal voice assistant. Right now: {now}\n"
             f"Connected accounts: {acct_list}\n"
+            f"{location_str}\n"
             f"{today_context}\n"
             "\n## How to respond\n"
             "- Your response will be SPOKEN ALOUD by a voice synthesizer.\n"
@@ -907,6 +1121,17 @@ class Assistant:
             "- When reading messages: say the person's NAME, never phone numbers.\n"
             "  Say 'Sarah said I'll be late' — natural, conversational.\n"
             "  Skip emojis, URLs, and special characters when speaking.\n"
+            "\n## Texting / iMessage — CRITICAL RULES\n"
+            "- The message field in send_text must contain ONLY the user's exact words. NEVER invent text.\n"
+            "- If the user says 'text Sam' without a message → respond 'What would you like to say to Sam?'\n"
+            "- If the user says 'send a text' without a name → respond 'Who do you want to text?'\n"
+            "- If the name is ambiguous (e.g. 'text purdue'), call find_contacts FIRST, then ask 'I found several Purdue contacts — did you mean William Teng, Ayush Kekede, or someone else?'\n"
+            "- 'Reply to her saying X' = use the contact from the previous check_messages result.\n"
+            "- 'Send it' / 'yes send' = send the message you just proposed or discussed.\n"
+            "- After sending: I'll watch for a reply and let you know when they respond.\n"
+            "- NEVER call send_text with a greeting or question you made up — that gets sent as a REAL text.\n"
+            "- NEVER rewrite, rephrase, or 'improve' the user's message. Send their EXACT words.\n"
+            "  If user says 'tell her I did not laugh' → message = 'I did not laugh', NOT 'I didn't find your jokes amusing'.\n"
             "\n## When confused — ASK, don't guess\n"
             "- If the request is ambiguous, ask ONE short clarifying question.\n"
             "- 'Which Ayush — Kekede or Kumar?' not guess the wrong one.\n"
@@ -917,4 +1142,8 @@ class Assistant:
             "- NEVER say 'I can't do that' if you have a tool that might work — try it.\n"
             "- If a tool fails, explain what happened and ask how to proceed.\n"
             "- For casual chat, respond briefly and warmly.\n"
+            "\n## Web search\n"
+            "- Use web_search for anything you don't know: weather, news, scores, stock prices, facts, current events.\n"
+            "- 'Google X', 'search for X', 'what's the weather', 'latest news on X' → call web_search.\n"
+            "- Summarize results in 1-2 natural sentences — don't read URLs or citations aloud.\n"
         )

@@ -91,9 +91,12 @@ class Recorder:
             if self._stream:
                 try:
                     self._stream.stop()
-                    self._stream.close()
                 except Exception as e:
                     log.warning("Error stopping stream: %s", e)
+                try:
+                    self._stream.close()
+                except Exception as e:
+                    log.warning("Error closing stream: %s", e)
                 finally:
                     self._stream = None
 
@@ -156,6 +159,8 @@ class Recorder:
         if not self._recording:
             return
         if self._total_samples / self._native_rate > MAX_RECORDING_SECONDS:
+            if self._total_samples / self._native_rate < MAX_RECORDING_SECONDS + 1:
+                log.warning("Recording hit %ds cap — stopping capture", MAX_RECORDING_SECONDS)
             return
         with self._lock:
             self._frames.append(indata.copy())

@@ -84,6 +84,7 @@ class Transcriber:
         self._backend_name = backend
         self._model = None
         self._groq_client = None
+        self._consecutive_failures = 0
         self._load_backend(backend)
 
     def _load_backend(self, backend: str):
@@ -214,7 +215,7 @@ class Transcriber:
         try:
             buf = _audio_to_wav_bytes(audio)
             kwargs = {
-                "model": "whisper-large-v3",
+                "model": "whisper-large-v3-turbo",
                 "file": ("audio.wav", buf, "audio/wav"),
                 "language": language or "en",
                 "response_format": "verbose_json",
@@ -289,6 +290,9 @@ class Transcriber:
             segments, _ = model.transcribe(audio, beam_size=3, best_of=1,
                                            vad_filter=True, without_timestamps=True)
             return " ".join(seg.text.strip() for seg in segments).strip()
+        except ImportError:
+            log.error("faster-whisper not installed — no fallback available")
+            return "[transcription failed — no fallback engine]"
         except Exception as e:
-            log.error("Fallback also failed: %s", e)
-            return ""
+            log.error("All transcription backends failed: %s", e)
+            return "[transcription failed]"

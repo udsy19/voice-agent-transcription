@@ -282,7 +282,7 @@ function createMainWindow() {
   });
 }
 
-const PILL_W = 320, PILL_H = 200;
+const PILL_W = 340, PILL_H = 320;
 
 function getPillPosition() {
   const display = screen.getPrimaryDisplay();

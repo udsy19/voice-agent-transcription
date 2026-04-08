@@ -43,10 +43,35 @@ class Brain:
         log.info("Deadline: %s by %s", text[:40], due)
 
     def get_deadlines(self, upcoming_days: int = 7) -> list[dict]:
-        """Get upcoming deadlines."""
-        now = time.time()
-        cutoff = now + upcoming_days * 86400
-        return [d for d in self.deadlines if not d.get("reminded") and d["created"] < cutoff]
+        """Get upcoming, non-reminded deadlines."""
+        results = []
+        for d in self.deadlines:
+            if d.get("reminded"):
+                continue
+            # Try to parse the due date; fall back to including it
+            due = d.get("due", "")
+            if due:
+                try:
+                    from datetime import datetime, timedelta
+                    # Try common date formats
+                    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%m/%d/%Y", "%B %d, %Y", "%b %d, %Y"):
+                        try:
+                            due_dt = datetime.strptime(due, fmt)
+                            # Include if due date is in the future or within the window
+                            if due_dt <= datetime.now() + timedelta(days=upcoming_days):
+                                results.append(d)
+                            break
+                        except ValueError:
+                            continue
+                    else:
+                        # Unparseable due date — include it anyway (user set it)
+                        results.append(d)
+                except Exception:
+                    results.append(d)
+            else:
+                # No due date — include if created recently
+                results.append(d)
+        return results
 
     def add_meeting_notes(self, summary: str, date: str, notes: str, action_items: list[str]):
         """Store meeting notes + action items."""

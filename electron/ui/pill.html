@@ -4,30 +4,31 @@
 <meta charset="UTF-8">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{background:transparent;overflow:hidden;width:320px;height:200px}
+html,body{background:transparent;overflow:hidden;width:340px;height:320px}
 
 .pill{
   position:absolute;top:4px;left:50%;transform:translateX(-50%);
   display:flex;align-items:center;justify-content:center;
-  background:#000;
+  background:rgba(0,0,0,.92);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
   border-radius:15px;
   overflow:hidden;
-  box-shadow:0 0 0 0.5px rgba(0,0,0,0.6),0 2px 12px rgba(0,0,0,0.35);
+  box-shadow:0 0 0 0.5px rgba(255,255,255,.08),0 4px 16px rgba(0,0,0,0.45);
   width:0;height:0;opacity:0;
   pointer-events:none;
   transition:width .22s ease-in-out,height .22s ease-in-out,opacity .15s ease,border-radius .22s;
 }
 .pill.rec{width:72px;height:30px;opacity:1;pointer-events:auto}
 .pill.rec.wide{width:136px;height:30px}
-.pill.proc{width:40px;height:20px;opacity:1;pointer-events:auto;border-radius:10px}
-.pill.done{width:40px;height:20px;opacity:0;pointer-events:none;border-radius:10px;transition:opacity .2s linear}
+.pill.proc{width:44px;height:22px;opacity:1;pointer-events:auto;border-radius:11px}
+.pill.done{width:44px;height:22px;opacity:0;pointer-events:none;border-radius:11px;transition:opacity .2s linear}
 
-/* ── Assistant — dynamic width/height based on text ── */
+/* ── Assistant — expands to show content ── */
 .pill.assist{
   opacity:1;pointer-events:auto;
-  border-radius:12px;
-  flex-direction:column;align-items:flex-start;justify-content:flex-start;
-  /* width/height set dynamically by JS */
+  border-radius:14px;
+  flex-direction:column;align-items:stretch;justify-content:flex-start;
+  overflow:hidden;
 }
 
 /* ── Recording ── */
@@ -51,34 +52,58 @@ html,body{background:transparent;overflow:hidden;width:320px;height:200px}
 
 /* ── Assistant text ── */
 .atxt{
-  display:none;padding:10px 14px;
-  font:400 12px/1.5 -apple-system,'SF Pro Text',system-ui,sans-serif;
-  color:rgba(255,255,255,.88);
+  display:none;padding:10px 14px 8px;
+  font:400 13px/1.5 -apple-system,'SF Pro Text',system-ui,sans-serif;
+  color:#fff;
   width:100%;word-wrap:break-word;
+  flex-shrink:0;min-height:0;
 }
+.atxt.tool{color:rgba(255,255,255,.45);font-size:11px;padding:6px 12px 4px}
 .pill.assist .atxt{display:block}
 .pill.assist .rec-ui,.pill.assist .dots{display:none}
-.atxt .cur{display:inline-block;width:1.5px;height:12px;background:rgba(255,255,255,.5);margin-left:2px;vertical-align:text-bottom;animation:bk .8s step-end infinite}
+.atxt .cur{display:inline-block;width:1.5px;height:13px;background:rgba(255,255,255,.5);margin-left:2px;vertical-align:text-bottom;animation:bk .8s step-end infinite}
 @keyframes bk{0%,100%{opacity:1}50%{opacity:0}}
 
-/* Messages mini-view */
-.msg-mini{padding:6px 12px 8px;width:100%;border-top:1px solid rgba(255,255,255,.06);max-height:140px;overflow-y:auto}
-.msg-mini::-webkit-scrollbar{width:3px}
-.msg-mini::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px}
-.msg-bubble{margin:3px 0;max-width:85%;padding:4px 8px;border-radius:8px;font-size:10px;line-height:1.4;word-wrap:break-word}
-.msg-them{background:rgba(255,255,255,.08);color:rgba(255,255,255,.8);border-bottom-left-radius:3px}
-.msg-me{background:rgba(59,130,246,.25);color:rgba(255,255,255,.85);margin-left:auto;border-bottom-right-radius:3px}
-.msg-sender{font-size:8px;color:rgba(255,255,255,.35);margin-bottom:1px;font-weight:500}
-.msg-time{font-size:7px;color:rgba(255,255,255,.2);margin-top:1px}
+/* ── Sent confirmation ── */
+.sent-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  background:rgba(52,199,89,.15);color:rgba(52,199,89,.9);
+  font:500 11px/1 -apple-system,system-ui,sans-serif;
+  padding:3px 8px;border-radius:6px;margin-top:4px;
+}
+.sent-badge svg{width:10px;height:10px;fill:currentColor}
 
-/* Calendar mini-view */
-.cal-mini{padding:6px 12px 8px;width:100%;border-top:1px solid rgba(255,255,255,.06);max-height:140px;overflow-y:auto}
+/* ── Messages mini-view ── */
+.msg-mini{
+  padding:8px 12px 10px;width:100%;
+  border-top:1px solid rgba(255,255,255,.08);
+  max-height:180px;overflow-y:auto;flex-shrink:0;
+}
+.msg-mini::-webkit-scrollbar{width:3px}
+.msg-mini::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:2px}
+.msg-bubble{
+  margin:3px 0;max-width:85%;padding:5px 9px;
+  border-radius:12px;font-size:11px;line-height:1.4;word-wrap:break-word;
+  clear:both;
+}
+.msg-them{background:rgba(255,255,255,.1);color:rgba(255,255,255,.88);float:left;border-bottom-left-radius:4px}
+.msg-me{background:rgba(59,130,246,.35);color:#fff;float:right;border-bottom-right-radius:4px}
+.msg-sender{font-size:9px;color:rgba(255,255,255,.4);margin-bottom:2px;font-weight:600;clear:both}
+.msg-time{font-size:8px;color:rgba(255,255,255,.2);margin-top:1px}
+.msg-clear{clear:both;height:0}
+
+/* ── Calendar mini-view ── */
+.cal-mini{
+  padding:8px 12px 10px;width:100%;
+  border-top:1px solid rgba(255,255,255,.08);
+  max-height:180px;overflow-y:auto;flex-shrink:0;
+}
 .cal-mini::-webkit-scrollbar{width:3px}
-.cal-mini::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px}
+.cal-mini::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:2px}
 .pill.assist .cal-mini{display:block}
-.cal-ev{display:flex;gap:8px;padding:3px 0;font-size:10px;color:rgba(255,255,255,.7)}
+.cal-ev{display:flex;gap:8px;padding:3px 0;font-size:11px;color:rgba(255,255,255,.8)}
 .cal-ev+.cal-ev{border-top:1px solid rgba(255,255,255,.04)}
-.cal-time{font-family:'SF Mono',monospace;color:rgba(255,255,255,.4);min-width:42px;flex-shrink:0}
+.cal-time{font-family:'SF Mono',monospace;font-size:10px;color:rgba(255,255,255,.45);min-width:50px;flex-shrink:0}
 .cal-title{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
 </head>
@@ -95,53 +120,35 @@ html,body{background:transparent;overflow:hidden;width:320px;height:200px}
 </div>
 <script>
 const pill=document.getElementById('pill'),wvEl=document.getElementById('wv'),atxt=document.getElementById('atxt');
+const msgMini=document.getElementById('msgMini'),calMini=document.getElementById('calMini');
 const MULTS=[.35,.55,.75,.9,1,.9,.75,.55,.35],MIN_H=2,MAX_H=16,bars=[];
 for(let i=0;i<9;i++){const b=document.createElement('div');b.className='bar';wvEl.appendChild(b);bars.push(b)}
 
 let audioLevel=0,smoothLevel=0,st='hidden',triggerMode='hold',assistTimer=null;
 
-// Measure helper to size pill to fit text
+// Measure helper
 const measure=document.createElement('div');
-measure.style.cssText='position:absolute;visibility:hidden;font:400 12px/1.5 -apple-system,system-ui,sans-serif;padding:10px 14px;max-width:300px;word-wrap:break-word;white-space:pre-wrap';
+measure.style.cssText='position:absolute;visibility:hidden;font:400 13px/1.5 -apple-system,system-ui,sans-serif;padding:10px 14px;max-width:320px;word-wrap:break-word;white-space:pre-wrap';
 document.body.appendChild(measure);
 
-function sizePillToText(text){
-  measure.textContent=text;
-  const w=Math.min(310,Math.max(140,measure.offsetWidth+8));
-  const h=Math.min(190,Math.max(36,measure.offsetHeight+8));
-  pill.style.width=w+'px';
-  pill.style.height=h+'px';
-}
-
-// Per-bar state for organic movement
-const barVel=new Float32Array(9);   // velocity for springy motion
-const barCur=new Float32Array(9);   // current height
-const barPhase=[];                  // random phase offset per bar
+// Per-bar state
+const barVel=new Float32Array(9),barCur=new Float32Array(9),barPhase=[];
 for(let i=0;i<9;i++) barPhase.push(Math.random()*Math.PI*2);
 
 function updateWaveform(){
   if(st==='rec'){
-    // Fast attack, medium release
     if(audioLevel>smoothLevel)smoothLevel=smoothLevel*.2+audioLevel*.8;
     else smoothLevel=smoothLevel*.85+audioLevel*.15;
-
     const t=performance.now()/1000;
     for(let i=0;i<9;i++){
-      // Target height from audio level
       const base=smoothLevel*MULTS[i];
-      // Add organic wave motion (multiple frequencies)
       const wave1=Math.sin(t*3.2+barPhase[i])*0.08;
       const wave2=Math.sin(t*5.7+barPhase[i]*1.6)*0.05;
-      const wave3=Math.sin(t*1.8+i*0.9)*0.04;
-      // Idle breathing even when quiet
       const idle=Math.sin(t*1.5+barPhase[i])*0.03+0.03;
-      const target=MIN_H+(MAX_H-MIN_H)*Math.max(idle,base+wave1+wave2+wave3);
-      // Spring physics for smooth, bouncy motion
+      const target=MIN_H+(MAX_H-MIN_H)*Math.max(idle,base+wave1+wave2);
       const diff=target-barCur[i];
-      barVel[i]+=diff*0.35;       // spring force
-      barVel[i]*=0.65;            // damping
-      barCur[i]+=barVel[i];
-      barCur[i]=Math.max(MIN_H,Math.min(MAX_H,barCur[i]));
+      barVel[i]+=diff*0.35;barVel[i]*=0.65;
+      barCur[i]=Math.max(MIN_H,Math.min(MAX_H,barCur[i]+barVel[i]));
       bars[i].style.height=barCur[i]+'px';
     }
   }
@@ -149,41 +156,67 @@ function updateWaveform(){
 }
 requestAnimationFrame(updateWaveform);
 
+function resizePill(){
+  // Measure visible content and size pill snugly
+  let totalH=0,maxW=0;
+
+  if(atxt.style.display!=='none'&&atxt.textContent){
+    measure.textContent=atxt.textContent;
+    maxW=measure.offsetWidth+28;
+    totalH+=measure.offsetHeight+4;
+  }
+  if(msgMini.style.display!=='none'&&msgMini.innerHTML){
+    totalH+=Math.min(160,msgMini.scrollHeight);
+    maxW=Math.max(maxW,200);
+  }
+  if(calMini.style.display!=='none'&&calMini.innerHTML){
+    totalH+=Math.min(160,calMini.scrollHeight);
+    maxW=Math.max(maxW,220);
+  }
+
+  // Tight fit — snug around content
+  const w=Math.min(310,Math.max(100,maxW));
+  const h=Math.min(300,Math.max(28,totalH));
+  pill.style.width=w+'px';
+  pill.style.height=h+'px';
+}
+
 function go(s){
   if(assistTimer){clearTimeout(assistTimer);assistTimer=null}
   st=s;
   pill.className='pill'+(s==='hidden'?'':' '+s);
-  pill.style.width='';pill.style.height=''; // reset inline styles
+  pill.style.width='';pill.style.height='';
   if(s==='rec'&&triggerMode==='toggle')pill.classList.add('wide');
   if(s==='done')setTimeout(()=>{if(st==='done'){st='hidden';pill.className='pill'}},700);
-  if(s!=='assist'){atxt.innerHTML='';document.getElementById('calMini').style.display='none';document.getElementById('calMini').innerHTML='';document.getElementById('msgMini').style.display='none';document.getElementById('msgMini').innerHTML='';}
+  if(s!=='assist'){atxt.innerHTML='';atxt.className='atxt';calMini.style.display='none';calMini.innerHTML='';msgMini.style.display='none';msgMini.innerHTML='';}
 }
 
 if(window.electronAPI){
   window.electronAPI.onWsMessage(m=>{
     if(m.type==='audio_level'){audioLevel=Math.min(1,m.rms*25)}
     if(m.type==='trigger_mode'){triggerMode=m.mode}
+
     if(m.type==='messages_view'&&m.messages){
-      const msg=document.getElementById('msgMini');
-      msg.style.display='block';
-      // Group by sender for clean display
+      if(st!=='assist')go('assist');
+      msgMini.style.display='block';
       let lastSender='';
-      msg.innerHTML=m.messages.map(m=>{
-        const isMe=m.from==='me';
-        const showSender=!isMe&&m.from!==lastSender;
-        lastSender=m.from;
-        const sender=showSender?`<div class="msg-sender">${m.from}</div>`:'';
-        const time=m.time?`<div class="msg-time">${m.time.split(' ').pop()||''}</div>`:'';
-        return`<div>${sender}<div class="msg-bubble ${isMe?'msg-me':'msg-them'}">${m.text}${time}</div></div>`;
+      msgMini.innerHTML=m.messages.map(msg=>{
+        const isMe=msg.from==='me';
+        const showSender=!isMe&&msg.from!==lastSender;
+        lastSender=msg.from;
+        const sender=showSender?`<div class="msg-sender">${msg.from}</div>`:'';
+        const time=msg.time?`<div class="msg-time">${msg.time.split(' ').pop()||''}</div>`:'';
+        return`<div>${sender}<div class="msg-bubble ${isMe?'msg-me':'msg-them'}">${msg.text}${time}</div><div class="msg-clear"></div></div>`;
       }).join('');
-      msg.scrollTop=msg.scrollHeight;
+      msgMini.scrollTop=msgMini.scrollHeight;
+      requestAnimationFrame(resizePill);
     }
+
     if(m.type==='calendar_view'&&m.events){
-      const cal=document.getElementById('calMini');
-      cal.style.display='block';
-      // Group events by day for week view
+      if(st!=='assist')go('assist');
+      calMini.style.display='block';
       let lastDay='';
-      cal.innerHTML=m.events.map(e=>{
+      calMini.innerHTML=m.events.map(e=>{
         let t='',day='';
         try{
           const d=new Date(e.start);
@@ -194,26 +227,27 @@ if(window.electronAPI){
         if(day!==lastDay){header=`<div style="font-size:9px;color:rgba(255,255,255,.35);padding:4px 0 1px;font-weight:600;${lastDay?'margin-top:4px;border-top:1px solid rgba(255,255,255,.06)':''}">${day}</div>`;lastDay=day}
         return header+`<div class="cal-ev"><span class="cal-time">${t}</span><span class="cal-title">${e.summary||'(no title)'}</span></div>`;
       }).join('');
+      requestAnimationFrame(resizePill);
     }
+
     if(m.type==='assistant_stream'){
       if(st!=='assist')go('assist');
+      // Detect tool-running messages (dim them)
+      const isToolMsg=!m.done&&(m.text.startsWith('Running ')||m.text.startsWith('Retrying '));
+      atxt.className=isToolMsg?'atxt tool':'atxt';
       atxt.innerHTML=m.text+(m.done?'':'<span class="cur"></span>');
-      // Size pill — account for calendar/message views
-      const calH=document.getElementById('calMini').offsetHeight||0;
-      const msgH=document.getElementById('msgMini').offsetHeight||0;
-      measure.textContent=m.text;
-      const w=Math.min(310,Math.max(160,measure.offsetWidth+8));
-      const h=Math.min(300,Math.max(36,measure.offsetHeight+calH+msgH+8));
-      pill.style.width=w+'px';
-      pill.style.height=h+'px';
+      requestAnimationFrame(resizePill);
+
       if(m.done){
         if(assistTimer)clearTimeout(assistTimer);
-        // Keep visible longer — estimate TTS duration from word count (~3 words/sec)
         const words=(m.text||'').split(' ').length;
         const ttsDuration=Math.max(5000,words*350+3000);
-        assistTimer=setTimeout(()=>{if(st==='assist'){st='hidden';pill.className='pill';pill.style.width='';pill.style.height=''}},ttsDuration);
+        assistTimer=setTimeout(()=>{
+          if(st==='assist'){st='hidden';pill.className='pill';pill.style.width='';pill.style.height=''}
+        },ttsDuration);
       }
     }
+
     if(m.type==='status'){
       if(m.status==='recording')go('rec');
       else if(m.status==='processing')go('proc');
@@ -227,25 +261,13 @@ if(window.electronAPI){
 
 document.getElementById('bst').onclick=e=>{e.stopPropagation();fetch('http://127.0.0.1:8528/api/stop-recording',{method:'POST'}).catch(()=>{})};
 
-// Mouse event forwarding — let clicks pass through transparent areas
-// When mouse enters the visible pill, enable mouse events; otherwise pass through
-if(window.electronAPI && window.electronAPI.setIgnoreMouseEvents){
-  document.addEventListener('mouseenter',()=>{
-    if(st!=='hidden')window.electronAPI.setIgnoreMouseEvents(false);
-  });
-  document.addEventListener('mouseleave',()=>{
-    window.electronAPI.setIgnoreMouseEvents(true,{forward:true});
-  });
+// Mouse event forwarding
+if(window.electronAPI&&window.electronAPI.setIgnoreMouseEvents){
+  document.addEventListener('mouseenter',()=>{if(st!=='hidden')window.electronAPI.setIgnoreMouseEvents(false)});
+  document.addEventListener('mouseleave',()=>{window.electronAPI.setIgnoreMouseEvents(true,{forward:true})});
 }
-// Also handle via CSS — transparent areas don't catch events
-pill.addEventListener('mouseenter',()=>{
-  if(window.electronAPI&&window.electronAPI.setIgnoreMouseEvents)
-    window.electronAPI.setIgnoreMouseEvents(false);
-});
-pill.addEventListener('mouseleave',()=>{
-  if(window.electronAPI&&window.electronAPI.setIgnoreMouseEvents)
-    window.electronAPI.setIgnoreMouseEvents(true,{forward:true});
-});
+pill.addEventListener('mouseenter',()=>{if(window.electronAPI&&window.electronAPI.setIgnoreMouseEvents)window.electronAPI.setIgnoreMouseEvents(false)});
+pill.addEventListener('mouseleave',()=>{if(window.electronAPI&&window.electronAPI.setIgnoreMouseEvents)window.electronAPI.setIgnoreMouseEvents(true,{forward:true})});
 </script>
 </body>
 </html>

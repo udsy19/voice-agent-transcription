@@ -222,15 +222,17 @@ S = State()
 
 async def broadcast(msg: dict):
     dead = []
-    for ws in S.ws_clients:
+    for ws in list(S.ws_clients):  # iterate copy to avoid mutation during iteration
         try:
             await ws.send_json(msg)
         except Exception as e:
             log.debug("WebSocket send failed: %s", e)
             dead.append(ws)
     for ws in dead:
-        if ws in S.ws_clients:
+        try:
             S.ws_clients.remove(ws)
+        except ValueError:
+            pass  # already removed
 
 
 def emit(msg: dict):
@@ -318,7 +320,7 @@ async def get_state():
         "history": S.history[-20:],
         "terms": S.dictionary.terms if S.dictionary else [],
         "corrections": S.dictionary.corrections if S.dictionary else {},
-        "snippets": {k: v for k, v in ((k, v["text"]) for k, v in S.snippets._snippets.items())} if S.snippets else {},
+        "snippets": {k: v.get("text", "") for k, v in S.snippets._snippets.items()} if S.snippets else {},
         "role": S.styles._user_role if S.styles else "",
         "default_style": S.styles._default_style if S.styles else "",
         "app_overrides": S.styles._app_overrides if S.styles else {},
@@ -878,9 +880,13 @@ def on_key_press(key):
         return
 
     with _key_lock:
-        # Safety: reset stuck key_held after 30s
+        # Safety: reset stuck states after 30s
         if S.key_held and (time.time() - _key_held_since) > 30:
+            log.warning("Resetting stuck key_held state")
             S.key_held = False
+        if S.processing and (time.time() - _key_held_since) > 120:
+            log.warning("Resetting stuck processing state")
+            S.processing = False
 
         if S.processing:
             return
@@ -991,6 +997,7 @@ def stop_and_process():
     except Exception as e:
         log.error("Recorder stop failed: %s", e)
         set_status("idle", "Recording error")
+        S.key_held = False
         return
     if audio is None:
         set_status("idle", "Too short or silent")
@@ -1000,10 +1007,26 @@ def stop_and_process():
     def process_with_timeout():
         try:
             process_audio(audio)
+        except Exception as e:
+            log.error("process_audio crashed: %s", e, exc_info=True)
+            set_status("idle", "Error processing audio")
         finally:
-            S.processing = False  # guaranteed reset
+            S.processing = False
+            S.recording_mode = "dictation"  # reset mode
 
-    threading.Thread(target=process_with_timeout, daemon=True).start()
+    t = threading.Thread(target=process_with_timeout, daemon=True)
+    t.start()
+
+    # Safety watchdog: if processing takes >90s, force reset
+    def watchdog():
+        t.join(timeout=90)
+        if t.is_alive():
+            log.error("Processing stuck for >90s — force resetting state")
+            S.processing = False
+            S.recording_mode = "dictation"
+            S.key_held = False
+            set_status("idle", "Timed out — try again")
+    threading.Thread(target=watchdog, daemon=True).start()
 
 
 
@@ -1150,7 +1173,7 @@ def process_audio(audio):
                     return
                 elif intent == "calendar" and S.assistant:
                     # Route to assistant for calendar handling
-                    S.recording_mode = "assistant"  # temporarily switch
+                    pass  # fall through to assistant handling below
 
         # === Smart Undo ===
         raw_lower = raw_text.lower().strip()
@@ -1502,6 +1525,29 @@ if __name__ == "__main__":
             except Exception:
                 pass
     threading.Thread(target=memory_flusher, daemon=True).start()
+
+    # Reply watcher — checks for iMessage replies every 15s
+    def reply_watcher():
+        import imessage
+        while True:
+            time.sleep(15)
+            try:
+                replies = imessage.check_for_replies()
+                for r in replies:
+                    msg = f"{r['contact']} replied: \"{r['text']}\""
+                    emit({"type": "assistant_stream", "text": msg, "done": True})
+                    emit({"type": "messages_view", "messages": [
+                        {"from": r["contact"], "text": r["text"], "time": r["time"]}
+                    ]})
+                    # Speak the notification
+                    try:
+                        tts.speak(f"{r['contact']} responded. They said: {r['text']}")
+                    except Exception:
+                        pass
+                    log.info("Reply notification: %s", msg)
+            except Exception as e:
+                log.debug("Reply watcher: %s", e)
+    threading.Thread(target=reply_watcher, daemon=True).start()
 
     if "--no-browser" not in sys.argv:
         def open_browser():

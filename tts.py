@@ -40,6 +40,7 @@ PREVIEW_TEXT = "Hi, I'm your voice assistant. How can I help you today?"
 _kokoro = None
 _kokoro_lock = threading.Lock()
 _playing = False
+_playing_lock = threading.Lock()
 
 
 def _get_kokoro():
@@ -64,9 +65,9 @@ def _get_kokoro():
 
 def speak(text: str, voice: str = "af_heart"):
     """Speak text. Preprocesses for natural speech, then Kokoro → macOS say."""
-    global _playing
-    if _playing:
-        stop()
+    with _playing_lock:
+        if _playing:
+            stop()
 
     # Preprocess text for natural speech
     from speech_prep import prepare_for_speech
@@ -74,12 +75,15 @@ def speak(text: str, voice: str = "af_heart"):
 
     def run():
         global _playing
-        _playing = True
+        with _playing_lock:
+            _playing = True
         try:
             kokoro = _get_kokoro()
             if kokoro:
                 audio, sr = kokoro.create(spoken_text, voice=voice, speed=1.05)
                 if audio is not None and len(audio) > 0:
+                    # Calculate max duration (audio length + 2s buffer)
+                    max_wait = len(audio) / sr + 2.0
                     try:
                         sd.play(audio, samplerate=sr)
                         sd.wait()
@@ -95,7 +99,8 @@ def speak(text: str, voice: str = "af_heart"):
             log.warning("TTS failed: %s", e)
             _speak_macos(spoken_text)
         finally:
-            _playing = False
+            with _playing_lock:
+                _playing = False
 
     threading.Thread(target=run, daemon=True).start()
 
@@ -121,7 +126,8 @@ def stop():
         sd.stop()
     except Exception:
         pass
-    _playing = False
+    with _playing_lock:
+        _playing = False
 
 
 def _speak_macos(text: str):

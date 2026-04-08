@@ -92,12 +92,12 @@ def remember(text: str, user_id: str = "user", metadata: dict = None) -> list:
     if now - _last_write_ts < RATE_LIMIT_INTERVAL:
         _queue_pending(text)
         return []
-    _last_write_ts = now
 
     m = _get_mem0()
     if not m:
         _queue_pending(text)
         return []
+    _last_write_ts = time.time()  # set AFTER confirming mem0 is ready
     try:
         result = m.add(text, user_id=user_id, metadata=metadata or {})
         entries = result.get("results", [])
@@ -199,15 +199,16 @@ def _queue_pending(text: str):
 
 
 def flush_pending(user_id: str = "user"):
-    """Process queued memories (call periodically)."""
+    """Process queued memories (call periodically). Processes at most 3 per flush to avoid blocking."""
     global _last_write_ts
     with _queue_lock:
-        items = _pending_queue.copy()
-        _pending_queue.clear()
+        # Take at most 3 items per flush cycle
+        items = _pending_queue[:3]
+        del _pending_queue[:3]
     for text in items:
         now = time.time()
         if now - _last_write_ts < RATE_LIMIT_INTERVAL:
-            time.sleep(RATE_LIMIT_INTERVAL)
+            return  # stop — will process more next cycle (30s later)
         remember(text, user_id=user_id)
 
 
