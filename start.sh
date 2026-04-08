@@ -11,26 +11,27 @@ command -v npx &>/dev/null || { echo "ERROR: npx not found"; exit 1; }
 
 # ── Kill everything first ────────────────────────────────────────────────────
 echo "Cleaning up..."
-# Kill by process name AND port — belt and suspenders
-pkill -9 -f "python3.*app.py" 2>/dev/null || true
+# Kill ALL python processes running app.py (match broadly)
+pkill -9 -f "python.*app.py" 2>/dev/null || true
 pkill -9 -f "uvicorn" 2>/dev/null || true
-pkill -9 -f "Muse" 2>/dev/null || true
 pkill -9 -f "Electron.*muse" 2>/dev/null || true
-lsof -ti :8528 | xargs kill -9 2>/dev/null || true
-lsof -ti :8529 | xargs kill -9 2>/dev/null || true
-sleep 2
+# Kill anything on our ports
+lsof -ti :8528 2>/dev/null | xargs kill -9 2>/dev/null || true
+lsof -ti :8529 2>/dev/null | xargs kill -9 2>/dev/null || true
+sleep 1
 
-# Keep trying until port is free (up to 5 attempts)
-for i in 1 2 3 4 5; do
+# Keep trying until port is free (up to 8 attempts, faster)
+for i in 1 2 3 4 5 6 7 8; do
     if ! lsof -i :8528 -sTCP:LISTEN &>/dev/null; then break; fi
     echo "Port 8528 still held — attempt $i..."
-    lsof -ti :8528 | xargs kill -9 2>/dev/null || true
-    sleep 2
+    lsof -ti :8528 2>/dev/null | xargs kill -9 2>/dev/null || true
+    sleep 1
 done
 
 # Final check
 if lsof -i :8528 -sTCP:LISTEN &>/dev/null; then
-    echo "ERROR: Cannot free port 8528. Try: sudo lsof -ti :8528 | xargs kill -9"
+    echo "  ERROR: Port 8528 is already in use."
+    echo "  Kill the existing process: pkill -f 'app.py'"
     exit 1
 fi
 

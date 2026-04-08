@@ -543,7 +543,9 @@ class Assistant:
                     fn_name = tc.function.name
                     try:
                         args = json.loads(tc.function.arguments)
-                    except json.JSONDecodeError:
+                        if not isinstance(args, dict):
+                            args = {}  # json.loads("null") returns None
+                    except (json.JSONDecodeError, TypeError):
                         args = {}
 
                     self._emit({"type": "assistant_stream",
