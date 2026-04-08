@@ -154,18 +154,30 @@ class LocalClient(LLMClient):
             raise RuntimeError("Local LLM not available. Download models first.")
 
         from mlx_lm import generate
+        from mlx_lm.sample_utils import make_sampler
 
         # Build prompt from messages
         prompt = self._build_prompt(messages, tools)
 
-        # Generate
+        # Generate with sampler for temperature control
         t0 = time.time()
-        output = generate(
-            model, tokenizer, prompt=prompt,
-            max_tokens=max_tokens, temp=temperature,
-            verbose=False,
-        )
-        log.info("Local LLM (%.1fs, %d tokens): %s", time.time() - t0, len(output.split()), output[:60])
+        sampler = make_sampler(temp=max(temperature, 0.01))  # 0 = greedy breaks some versions
+        try:
+            output = generate(
+                model, tokenizer, prompt=prompt,
+                max_tokens=min(max_tokens, 1024),  # cap to avoid slow generation
+                sampler=sampler,
+                verbose=False,
+            )
+        except TypeError:
+            # Fallback: older mlx-lm versions without sampler param
+            output = generate(
+                model, tokenizer, prompt=prompt,
+                max_tokens=min(max_tokens, 1024),
+                verbose=False,
+            )
+        duration = time.time() - t0
+        log.info("Local LLM (%.1fs): %s", duration, output[:80])
 
         # Parse tool calls from output if tools were provided
         if tools:
@@ -176,24 +188,55 @@ class LocalClient(LLMClient):
         return ChatResponse(text=output.strip())
 
     def _build_prompt(self, messages, tools=None):
-        """Build a chat prompt string from messages list."""
+        """Build a chat prompt from messages. Uses tokenizer template if available."""
+        model, tokenizer = _load_local_model()
+
+        # Inject tool definitions into the system message if tools provided
+        if tools:
+            tool_desc = self._format_tools(tools)
+            # Prepend to first system message, or add as system message
+            injected = False
+            for msg in messages:
+                if msg.get("role") == "system" and not injected:
+                    msg = dict(msg)  # don't mutate original
+                    msg["content"] = msg["content"] + "\n\n" + tool_desc
+                    injected = True
+                    break
+            if not injected:
+                messages = [{"role": "system", "content": tool_desc}] + list(messages)
+
+        # Try tokenizer's chat template (Mistral v0.3 has one)
+        try:
+            if hasattr(tokenizer, 'apply_chat_template'):
+                # Filter out tool role messages — not all templates support them
+                clean_msgs = []
+                for msg in messages:
+                    role = msg.get("role", "user")
+                    content = msg.get("content", "")
+                    if role == "tool":
+                        clean_msgs.append({"role": "user", "content": f"[Tool result]: {content}"})
+                    elif role in ("system", "user", "assistant"):
+                        clean_msgs.append({"role": role, "content": content})
+                return tokenizer.apply_chat_template(clean_msgs, tokenize=False, add_generation_prompt=True)
+        except Exception as e:
+            log.debug("Chat template failed: %s — using manual format", e)
+
+        # Manual fallback (Mistral format)
         parts = []
+        sys_content = ""
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
             if role == "system":
-                parts.append(f"[INST] <<SYS>>\n{content}\n<</SYS>>\n")
+                sys_content = content
             elif role == "user":
-                if tools and not any("Available tools:" in p for p in parts):
-                    # Inject tool definitions into the first user message
-                    tool_desc = self._format_tools(tools)
-                    parts.append(f"[INST] {tool_desc}\n\n{content} [/INST]")
-                else:
-                    parts.append(f"[INST] {content} [/INST]")
+                prefix = f"{sys_content}\n\n" if sys_content else ""
+                sys_content = ""
+                parts.append(f"[INST] {prefix}{content} [/INST]")
             elif role == "assistant":
-                parts.append(content)
+                parts.append(content + "</s>")
             elif role == "tool":
-                parts.append(f"[Tool result: {content}]")
+                parts.append(f"[INST] Tool result: {content} [/INST]")
         return "\n".join(parts)
 
     def _format_tools(self, tools):

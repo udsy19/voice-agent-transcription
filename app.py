@@ -432,10 +432,55 @@ async def api_set_groq_key(body: GroqKeyRequest):
 async def api_groq_status():
     from config import GROQ_API_KEY
     has_key = bool(GROQ_API_KEY)
-    has_client = bool(S.cleaner and S.cleaner._client)
-    # Mask key for display (show first 8 chars)
     masked = GROQ_API_KEY[:4] + "***" + GROQ_API_KEY[-4:] if GROQ_API_KEY and len(GROQ_API_KEY) > 12 else "***" if GROQ_API_KEY else ""
-    return {"configured": has_key or has_client, "masked_key": masked}
+    return {"configured": has_key, "masked_key": masked}
+
+
+@api.get("/api/llm-mode")
+async def api_llm_mode():
+    """Get current LLM mode and local model status."""
+    import llm as llm_mod
+    from model_manager import is_model_downloaded
+    provider = os.getenv("LLM_PROVIDER", "hybrid")
+    local_ready = is_model_downloaded("llm")
+    return {
+        "mode": provider,
+        "local_model_ready": local_ready,
+        "local_model_name": llm_mod.LOCAL_MODEL.split("/")[-1] if local_ready else "",
+    }
+
+
+class LlmModeRequest(BaseModel):
+    mode: str
+
+@api.post("/api/set-llm-mode")
+async def api_set_llm_mode(body: LlmModeRequest):
+    """Switch LLM provider mode."""
+    mode = body.mode.strip()
+    if mode not in ("local", "groq", "hybrid"):
+        return {"ok": False, "reason": "invalid mode"}
+    os.environ["LLM_PROVIDER"] = mode
+    # Reset the client singleton so it reinitializes
+    import llm as llm_mod
+    llm_mod._client = None
+    log.info("LLM mode switched to: %s", mode)
+    return {"ok": True, "mode": mode}
+
+
+@api.get("/api/models/status")
+async def api_models_status():
+    from model_manager import get_models_status
+    return {"models": get_models_status()}
+
+
+class ModelDownloadRequest(BaseModel):
+    model: str = "llm"
+
+@api.post("/api/models/download")
+async def api_models_download(body: ModelDownloadRequest):
+    from model_manager import download_model_async
+    download_model_async(body.model, emit_fn=emit)
+    return {"ok": True, "model": body.model, "status": "downloading"}
 
 
 @api.get("/api/export/{fmt}")

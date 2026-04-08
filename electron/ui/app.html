@@ -342,11 +342,23 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
     <div class="pg" id="pg-settings">
       <h1>Settings</h1>
 
-      <div class="label">API Keys</div>
+      <div class="label">AI Engine</div>
       <div class="block">
         <div class="row">
-          <div style="flex:1"><div class="row-label">Groq</div><div class="row-sub" id="groqStatus">Checking...</div></div>
+          <div><div class="row-label">LLM Mode</div><div class="row-sub" id="llmModeStatus">Loading...</div></div>
+          <select class="inp" id="llmModeSelect" onchange="setLlmMode(this.value)" style="width:160px;font-size:12px">
+            <option value="hybrid">Hybrid (local + cloud)</option>
+            <option value="local">Local Only (offline)</option>
+            <option value="groq">Cloud Only (Groq)</option>
+          </select>
+        </div>
+        <div class="row">
+          <div style="flex:1"><div class="row-label">Groq API Key</div><div class="row-sub" id="groqStatus">Optional — enables cloud models</div></div>
           <div style="display:flex;gap:6px"><input class="inp" id="groqKeyInput" type="password" placeholder="gsk_..." style="width:140px;font-size:11px"><button class="btn btn-p" onclick="setGroqKey()">Save</button></div>
+        </div>
+        <div class="row">
+          <div><div class="row-label">Local Model</div><div class="row-sub" id="localModelStatus">Checking...</div></div>
+          <button class="btn btn-g" id="downloadModelBtn" onclick="downloadModel()" style="font-size:11px;padding:4px 10px;display:none">Download</button>
         </div>
       </div>
 
@@ -401,7 +413,7 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
 const API='http://127.0.0.1:8528';let hist=[],connected=false;
 function esc(s){return s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):''}
 
-function nav(el){document.querySelectorAll('.sb a').forEach(a=>a.classList.remove('on'));el.classList.add('on');document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));document.getElementById('pg-'+el.dataset.pg).classList.add('on');if(el.dataset.pg==='integrations')gLoad();if(el.dataset.pg==='settings')loadVoices();if(el.dataset.pg==='memories')loadMemories();if(el.dataset.pg==='history')renderHist()}
+function nav(el){document.querySelectorAll('.sb a').forEach(a=>a.classList.remove('on'));el.classList.add('on');document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));document.getElementById('pg-'+el.dataset.pg).classList.add('on');if(el.dataset.pg==='integrations')gLoad();if(el.dataset.pg==='settings'){loadVoices();chkLlmMode()}if(el.dataset.pg==='memories')loadMemories();if(el.dataset.pg==='history')renderHist()}
 
 function setupListeners(){if(window.electronAPI){window.electronAPI.onWsMessage(onMsg);window.electronAPI.onBackendReady(()=>{document.getElementById('setup').classList.add('hidden');connected=true;refresh()});poll()}else{connectWS()}}
 function poll(){fetch(`${API}/api/health`).then(r=>r.json()).then(d=>{if(d.ok){document.getElementById('setup').classList.add('hidden');connected=true;refresh()}else setTimeout(poll,1e3)}).catch(()=>setTimeout(poll,1e3))}
@@ -496,7 +508,10 @@ async function rmSnip(t){await apiPost('snippets/remove',{trigger:t})}
 async function setGroqKey(){const k=document.getElementById('groqKeyInput').value.trim();if(!k)return;const r=await fetch(`${API}/api/set-groq-key`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})});const d=await r.json();if(d.ok){document.getElementById('groqKeyInput').value='';document.getElementById('groqStatus').textContent='Configured';document.getElementById('groqStatus').style.color='var(--green)'}}
 async function setBackend(b){document.getElementById('backendStatus').textContent='Switching...';await apiPost('transcription-backend',{backend:b});setTimeout(chkBackend,1e3)}
 async function chkBackend(){try{const r=await fetch(`${API}/api/transcription-backend`);const d=await r.json();document.getElementById('backendSelect').value=d.backend;document.getElementById('backendStatus').textContent=d.backend;document.getElementById('backendStatus').style.color=d.backend==='groq'?'var(--green)':'var(--text3)'}catch{}}
-async function chkGroq(){try{const r=await fetch(`${API}/api/groq-status`);const d=await r.json();const el=document.getElementById('groqStatus');if(d.configured){el.textContent=d.masked_key||'Configured';el.style.color='var(--green)'}else{el.textContent='Not set';el.style.color='var(--red)'}}catch{}}
+async function chkGroq(){try{const r=await fetch(`${API}/api/groq-status`);const d=await r.json();const el=document.getElementById('groqStatus');if(d.configured){el.textContent=d.masked_key?'Key: '+d.masked_key:'Configured';el.style.color='var(--green)'}else{el.textContent='Optional — enables cloud models';el.style.color='var(--text3)'}}catch{}}
+async function setLlmMode(mode){try{await fetch(`${API}/api/set-llm-mode`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})});chkLlmMode()}catch{}}
+async function chkLlmMode(){try{const r=await fetch(`${API}/api/llm-mode`);const d=await r.json();document.getElementById('llmModeSelect').value=d.mode||'hybrid';const labels={hybrid:'Local + Cloud',local:'Offline Only',groq:'Cloud Only'};document.getElementById('llmModeStatus').textContent=labels[d.mode]||d.mode;document.getElementById('llmModeStatus').style.color=d.mode==='local'?'var(--blue)':d.mode==='groq'?'var(--green)':'var(--text2)';const lm=document.getElementById('localModelStatus');if(d.local_model_ready){lm.textContent=d.local_model_name||'Ready';lm.style.color='var(--green)';document.getElementById('downloadModelBtn').style.display='none'}else{lm.textContent='Not downloaded';lm.style.color='var(--text3)';document.getElementById('downloadModelBtn').style.display='block'}}catch{}}
+async function downloadModel(){document.getElementById('downloadModelBtn').textContent='Downloading...';document.getElementById('downloadModelBtn').disabled=true;try{await fetch(`${API}/api/models/download`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'llm'})});setTimeout(chkLlmMode,5000)}catch{document.getElementById('downloadModelBtn').textContent='Download';document.getElementById('downloadModelBtn').disabled=false}}
 
 async function refresh(){
   try{const r=await fetch(`${API}/api/state`);const d=await r.json();
