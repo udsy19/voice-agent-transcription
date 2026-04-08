@@ -3,107 +3,111 @@
 <head>
 <meta charset="UTF-8">
 <style>
+/* ── Base reset + shared font ── */
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{background:transparent;overflow:hidden;width:340px;height:320px}
+:root{
+  --font:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',system-ui,sans-serif;
+  --mono:'SF Mono',SFMono-Regular,Menlo,monospace;
+  --text:rgba(255,255,255,.92);
+  --text2:rgba(255,255,255,.55);
+  --text3:rgba(255,255,255,.3);
+  --border:rgba(255,255,255,.08);
+  --blue:rgba(59,130,246,.4);
+  --surface:rgba(255,255,255,.08);
+}
+html,body{background:transparent;overflow:hidden;width:340px;height:320px;font-family:var(--font);-webkit-font-smoothing:antialiased}
 
+/* ── Pill container ── */
 .pill{
   position:absolute;top:4px;left:50%;transform:translateX(-50%);
   display:flex;align-items:center;justify-content:center;
   background:rgba(0,0,0,.92);
-  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
   border-radius:15px;
   overflow:hidden;
-  box-shadow:0 0 0 0.5px rgba(255,255,255,.08),0 4px 16px rgba(0,0,0,0.45);
+  box-shadow:0 0 0 0.5px rgba(255,255,255,.06),0 4px 20px rgba(0,0,0,0.5);
   width:0;height:0;opacity:0;
   pointer-events:none;
-  transition:width .22s ease-in-out,height .22s ease-in-out,opacity .15s ease,border-radius .22s;
+  transition:width .2s ease,height .2s ease,opacity .15s ease,border-radius .2s;
 }
+
+/* ── States ── */
 .pill.rec{width:72px;height:30px;opacity:1;pointer-events:auto}
 .pill.rec.wide{width:136px;height:30px}
 .pill.proc{width:44px;height:22px;opacity:1;pointer-events:auto;border-radius:11px}
-.pill.done{width:44px;height:22px;opacity:0;pointer-events:none;border-radius:11px;transition:opacity .2s linear}
-
-/* ── Assistant — expands to show content ── */
+.pill.done{width:44px;height:22px;opacity:0;pointer-events:none;border-radius:11px;transition:opacity .18s linear}
 .pill.assist{
-  opacity:1;pointer-events:auto;
-  border-radius:14px;
+  opacity:1;pointer-events:auto;border-radius:14px;
   flex-direction:column;align-items:stretch;justify-content:flex-start;
-  overflow:hidden;
 }
 
-/* ── Recording ── */
+/* ── Recording waveform ── */
 .rec-ui{display:none;align-items:center;justify-content:center;height:100%;width:100%}
 .pill.rec .rec-ui{display:flex}
 .wv{display:flex;align-items:center;justify-content:center;gap:2.5px;height:100%;flex:1}
 .wv .bar{width:3px;min-height:2px;max-height:16px;height:2px;background:#fff;border-radius:1.5px}
-.stop{display:none;align-items:center;gap:4px;background:rgba(220,50,47,.92);border:none;border-radius:999px;padding:4px 8px;margin-right:5px;cursor:pointer;flex-shrink:0}
+.stop{display:none;align-items:center;gap:4px;background:rgba(220,50,47,.9);border:none;border-radius:999px;padding:4px 8px;margin-right:5px;cursor:pointer;flex-shrink:0}
 .pill.rec.wide .stop{display:flex}
 .stop svg{width:8px;height:8px;fill:#fff}
-.stop span{font:600 10px/1 -apple-system,'SF Pro Rounded',system-ui,sans-serif;color:#fff}
+.stop span{font:600 10px/1 var(--font);color:#fff}
 
 /* ── Processing dots ── */
 .dots{display:none;align-items:center;justify-content:center;gap:3.5px}
 .pill.proc .dots{display:flex}
-.dots span{width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,.25);animation:breathe 1.4s ease-in-out infinite}
+.dots span{width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,.2);animation:breathe 1.4s ease-in-out infinite}
 .dots span:nth-child(1){animation-delay:0s}
 .dots span:nth-child(2){animation-delay:.2s}
 .dots span:nth-child(3){animation-delay:.4s}
-@keyframes breathe{0%,100%{background:rgba(255,255,255,.2);transform:scale(.85)}50%{background:rgba(255,255,255,.9);transform:scale(1.1)}}
+@keyframes breathe{0%,100%{background:rgba(255,255,255,.18);transform:scale(.85)}50%{background:rgba(255,255,255,.85);transform:scale(1.1)}}
 
 /* ── Assistant text ── */
 .atxt{
-  display:none;padding:10px 14px 8px;
-  font:400 13px/1.5 -apple-system,'SF Pro Text',system-ui,sans-serif;
-  color:#fff;
-  width:100%;word-wrap:break-word;
-  flex-shrink:0;min-height:0;
+  display:none;padding:10px 14px 6px;
+  font-size:13px;font-weight:400;line-height:1.5;
+  color:var(--text);
+  width:100%;word-wrap:break-word;white-space:pre-wrap;
+  flex-shrink:0;
 }
-.atxt.tool{color:rgba(255,255,255,.45);font-size:11px;padding:6px 12px 4px}
+.atxt.tool{color:var(--text2);font-size:11px;padding:7px 12px 5px;font-weight:400}
 .pill.assist .atxt{display:block}
 .pill.assist .rec-ui,.pill.assist .dots{display:none}
-.atxt .cur{display:inline-block;width:1.5px;height:13px;background:rgba(255,255,255,.5);margin-left:2px;vertical-align:text-bottom;animation:bk .8s step-end infinite}
+.atxt .cur{display:inline-block;width:1.5px;height:12px;background:rgba(255,255,255,.45);margin-left:2px;vertical-align:text-bottom;animation:bk .8s step-end infinite}
 @keyframes bk{0%,100%{opacity:1}50%{opacity:0}}
 
-/* ── Sent confirmation ── */
-.sent-badge{
-  display:inline-flex;align-items:center;gap:4px;
-  background:rgba(52,199,89,.15);color:rgba(52,199,89,.9);
-  font:500 11px/1 -apple-system,system-ui,sans-serif;
-  padding:3px 8px;border-radius:6px;margin-top:4px;
-}
-.sent-badge svg{width:10px;height:10px;fill:currentColor}
-
-/* ── Messages mini-view ── */
+/* ── Messages ── */
 .msg-mini{
-  padding:8px 12px 10px;width:100%;
-  border-top:1px solid rgba(255,255,255,.08);
-  max-height:180px;overflow-y:auto;flex-shrink:0;
+  padding:6px 10px 8px;width:100%;
+  border-top:1px solid var(--border);
+  max-height:160px;overflow-y:auto;flex-shrink:0;
 }
 .msg-mini::-webkit-scrollbar{width:3px}
-.msg-mini::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:2px}
+.msg-mini::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px}
+.msg-row{margin-bottom:4px}
+.msg-row::after{content:'';display:block;clear:both}
+.msg-sender{font-size:9px;font-weight:500;color:var(--text2);margin:6px 0 2px;letter-spacing:.01em}
 .msg-bubble{
-  margin:3px 0;max-width:85%;padding:5px 9px;
-  border-radius:12px;font-size:11px;line-height:1.4;word-wrap:break-word;
-  clear:both;
+  max-width:82%;padding:5px 9px;
+  border-radius:12px;font-size:12px;line-height:1.4;
+  word-wrap:break-word;
 }
-.msg-them{background:rgba(255,255,255,.1);color:rgba(255,255,255,.88);float:left;border-bottom-left-radius:4px}
-.msg-me{background:rgba(59,130,246,.35);color:#fff;float:right;border-bottom-right-radius:4px}
-.msg-sender{font-size:9px;color:rgba(255,255,255,.4);margin-bottom:2px;font-weight:600;clear:both}
-.msg-time{font-size:8px;color:rgba(255,255,255,.2);margin-top:1px}
-.msg-clear{clear:both;height:0}
+.msg-them{background:var(--surface);color:var(--text);float:left;border-bottom-left-radius:4px}
+.msg-me{background:var(--blue);color:#fff;float:right;border-bottom-right-radius:4px}
+.msg-time{font-size:8px;color:var(--text3);margin-top:2px}
 
-/* ── Calendar mini-view ── */
+/* ── Calendar ── */
 .cal-mini{
-  padding:8px 12px 10px;width:100%;
-  border-top:1px solid rgba(255,255,255,.08);
-  max-height:180px;overflow-y:auto;flex-shrink:0;
+  padding:6px 10px 8px;width:100%;
+  border-top:1px solid var(--border);
+  max-height:160px;overflow-y:auto;flex-shrink:0;
 }
 .cal-mini::-webkit-scrollbar{width:3px}
-.cal-mini::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:2px}
+.cal-mini::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px}
 .pill.assist .cal-mini{display:block}
-.cal-ev{display:flex;gap:8px;padding:3px 0;font-size:11px;color:rgba(255,255,255,.8)}
-.cal-ev+.cal-ev{border-top:1px solid rgba(255,255,255,.04)}
-.cal-time{font-family:'SF Mono',monospace;font-size:10px;color:rgba(255,255,255,.45);min-width:50px;flex-shrink:0}
+.cal-day{font-size:9px;font-weight:600;color:var(--text2);padding:5px 0 2px;letter-spacing:.01em}
+.cal-day+.cal-day{margin-top:2px;border-top:1px solid var(--border)}
+.cal-ev{display:flex;gap:8px;padding:3px 0;font-size:12px;color:var(--text)}
+.cal-ev+.cal-ev{border-top:1px solid rgba(255,255,255,.03)}
+.cal-time{font-family:var(--mono);font-size:10px;color:var(--text2);min-width:52px;flex-shrink:0}
 .cal-title{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
 </head>
@@ -126,12 +130,15 @@ for(let i=0;i<9;i++){const b=document.createElement('div');b.className='bar';wvE
 
 let audioLevel=0,smoothLevel=0,st='hidden',triggerMode='hold',assistTimer=null;
 
-// Measure helper
+// Measure div — MUST match .atxt font exactly
 const measure=document.createElement('div');
-measure.style.cssText='position:absolute;visibility:hidden;font:400 13px/1.5 -apple-system,system-ui,sans-serif;padding:10px 14px;max-width:320px;word-wrap:break-word;white-space:pre-wrap';
+measure.style.cssText=`position:absolute;visibility:hidden;
+  font:400 13px/1.5 -apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',system-ui,sans-serif;
+  padding:10px 14px;max-width:300px;word-wrap:break-word;white-space:pre-wrap;
+  -webkit-font-smoothing:antialiased`;
 document.body.appendChild(measure);
 
-// Per-bar state
+// Waveform
 const barVel=new Float32Array(9),barCur=new Float32Array(9),barPhase=[];
 for(let i=0;i<9;i++) barPhase.push(Math.random()*Math.PI*2);
 
@@ -157,24 +164,27 @@ function updateWaveform(){
 requestAnimationFrame(updateWaveform);
 
 function resizePill(){
-  // Measure visible content and size pill snugly
   let totalH=0,maxW=0;
 
+  // Text content
   if(atxt.style.display!=='none'&&atxt.textContent){
     measure.textContent=atxt.textContent;
     maxW=measure.offsetWidth+28;
-    totalH+=measure.offsetHeight+4;
+    totalH+=measure.offsetHeight+2;
   }
+  // Messages
   if(msgMini.style.display!=='none'&&msgMini.innerHTML){
-    totalH+=Math.min(160,msgMini.scrollHeight);
-    maxW=Math.max(maxW,200);
-  }
-  if(calMini.style.display!=='none'&&calMini.innerHTML){
-    totalH+=Math.min(160,calMini.scrollHeight);
+    const mh=Math.min(160,msgMini.scrollHeight);
+    totalH+=mh;
     maxW=Math.max(maxW,220);
   }
+  // Calendar
+  if(calMini.style.display!=='none'&&calMini.innerHTML){
+    const ch=Math.min(160,calMini.scrollHeight);
+    totalH+=ch;
+    maxW=Math.max(maxW,240);
+  }
 
-  // Tight fit — snug around content
   const w=Math.min(310,Math.max(100,maxW));
   const h=Math.min(300,Math.max(28,totalH));
   pill.style.width=w+'px';
@@ -196,6 +206,7 @@ if(window.electronAPI){
     if(m.type==='audio_level'){audioLevel=Math.min(1,m.rms*25)}
     if(m.type==='trigger_mode'){triggerMode=m.mode}
 
+    // ── Messages view ──
     if(m.type==='messages_view'&&m.messages){
       if(st!=='assist')go('assist');
       msgMini.style.display='block';
@@ -206,12 +217,13 @@ if(window.electronAPI){
         lastSender=msg.from;
         const sender=showSender?`<div class="msg-sender">${msg.from}</div>`:'';
         const time=msg.time?`<div class="msg-time">${msg.time.split(' ').pop()||''}</div>`:'';
-        return`<div>${sender}<div class="msg-bubble ${isMe?'msg-me':'msg-them'}">${msg.text}${time}</div><div class="msg-clear"></div></div>`;
+        return`<div class="msg-row">${sender}<div class="msg-bubble ${isMe?'msg-me':'msg-them'}">${msg.text}${time}</div></div>`;
       }).join('');
       msgMini.scrollTop=msgMini.scrollHeight;
       requestAnimationFrame(resizePill);
     }
 
+    // ── Calendar view ──
     if(m.type==='calendar_view'&&m.events){
       if(st!=='assist')go('assist');
       calMini.style.display='block';
@@ -222,17 +234,17 @@ if(window.electronAPI){
           const d=new Date(e.start);
           t=d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
           day=d.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'});
-        }catch{t=e.start}
+        }catch{t=e.start||''}
         let header='';
-        if(day!==lastDay){header=`<div style="font-size:9px;color:rgba(255,255,255,.35);padding:4px 0 1px;font-weight:600;${lastDay?'margin-top:4px;border-top:1px solid rgba(255,255,255,.06)':''}">${day}</div>`;lastDay=day}
+        if(day&&day!==lastDay){header=`<div class="cal-day">${day}</div>`;lastDay=day}
         return header+`<div class="cal-ev"><span class="cal-time">${t}</span><span class="cal-title">${e.summary||'(no title)'}</span></div>`;
       }).join('');
       requestAnimationFrame(resizePill);
     }
 
+    // ── Assistant stream ──
     if(m.type==='assistant_stream'){
       if(st!=='assist')go('assist');
-      // Detect tool-running messages (dim them)
       const isToolMsg=!m.done&&(m.text.startsWith('Running ')||m.text.startsWith('Retrying '));
       atxt.className=isToolMsg?'atxt tool':'atxt';
       atxt.innerHTML=m.text+(m.done?'':'<span class="cur"></span>');
@@ -248,6 +260,7 @@ if(window.electronAPI){
       }
     }
 
+    // ── Status ──
     if(m.type==='status'){
       if(m.status==='recording')go('rec');
       else if(m.status==='processing')go('proc');
@@ -261,7 +274,7 @@ if(window.electronAPI){
 
 document.getElementById('bst').onclick=e=>{e.stopPropagation();fetch('http://127.0.0.1:8528/api/stop-recording',{method:'POST'}).catch(()=>{})};
 
-// Mouse event forwarding
+// Mouse forwarding
 if(window.electronAPI&&window.electronAPI.setIgnoreMouseEvents){
   document.addEventListener('mouseenter',()=>{if(st!=='hidden')window.electronAPI.setIgnoreMouseEvents(false)});
   document.addEventListener('mouseleave',()=>{window.electronAPI.setIgnoreMouseEvents(true,{forward:true})});
