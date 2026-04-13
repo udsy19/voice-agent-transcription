@@ -17,8 +17,8 @@
 }
 html,body{background:transparent;overflow:hidden;width:340px;height:320px;font-family:var(--font);-webkit-font-smoothing:antialiased}
 
-html.light{--text:rgba(0,0,0,.88);--text2:rgba(0,0,0,.55);--text3:rgba(0,0,0,.35);--border:rgba(0,0,0,.08);--blue:rgba(37,99,235,.6)}
-html.light .pill{background:rgba(255,255,255,.95);box-shadow:0 0 0 0.5px rgba(0,0,0,.1),0 4px 20px rgba(0,0,0,.15)}
+html.light{--text:rgba(0,0,0,.88);--text2:rgba(0,0,0,.55);--text3:rgba(0,0,0,.3);--border:rgba(0,0,0,.06);--accent:rgba(99,102,241,.7)}
+html.light .pill{background:rgba(255,255,255,.85);backdrop-filter:blur(40px) saturate(1.3);box-shadow:0 0 0 0.5px rgba(0,0,0,.06),0 8px 30px rgba(0,0,0,.1)}
 html.light .wv .bar{background:#222}
 html.light .dots span{background:rgba(0,0,0,.2)}
 html.light .atxt{color:#1a1a1a}
@@ -28,11 +28,11 @@ html.light .stop{background:rgba(220,50,47,.85)}
 .pill{
   position:absolute;top:4px;left:50%;transform:translateX(-50%);
   display:flex;align-items:center;justify-content:center;
-  background:rgba(0,0,0,.88);
-  backdrop-filter:blur(30px) saturate(1.2);-webkit-backdrop-filter:blur(30px) saturate(1.2);
-  border-radius:16px;
+  background:rgba(8,8,8,.82);
+  backdrop-filter:blur(40px) saturate(1.3);-webkit-backdrop-filter:blur(40px) saturate(1.3);
+  border-radius:999px;
   overflow:hidden;
-  box-shadow:0 0 0 0.5px rgba(255,255,255,.05),0 8px 30px rgba(0,0,0,0.6);
+  box-shadow:0 0 0 0.5px rgba(255,255,255,.04),0 12px 40px rgba(0,0,0,0.5);
   width:0;height:0;opacity:0;
   pointer-events:none;
   transition:width .2s ease,height .2s ease,opacity .15s ease,border-radius .2s;
@@ -44,7 +44,7 @@ html.light .stop{background:rgba(220,50,47,.85)}
 .pill.proc{width:44px;height:22px;opacity:1;pointer-events:auto;border-radius:11px}
 .pill.done{width:44px;height:22px;opacity:0;pointer-events:none;border-radius:11px;transition:opacity .18s linear}
 .pill.assist{
-  opacity:1;pointer-events:auto;border-radius:14px;
+  opacity:1;pointer-events:auto;border-radius:18px;
   flex-direction:column;align-items:stretch;justify-content:flex-start;
 }
 .pill.notify{width:280px;height:36px;opacity:1;pointer-events:auto;border-radius:18px}
