@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, screen, nativeImage, ipcMain } = require('electron');
+const { app, BrowserWindow, Tray, Menu, screen, nativeImage, ipcMain, shell, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn, execSync } = require('child_process');
@@ -26,11 +26,15 @@ const PROJECT_DIR = IS_PACKAGED
 // Data directory (persistent, survives updates)
 const DATA_DIR = path.join(app.getPath('userData'));
 
-// Find Python binary
+// Find Python binary — prefer bundled venv in packaged app
+const BUNDLED_PYTHON = IS_PACKAGED
+  ? path.join(process.resourcesPath, 'python-env', 'bin', 'python3')
+  : null;
 const PYTHON_CANDIDATES = [
-  '/usr/local/bin/python3',
-  '/opt/homebrew/bin/python3',
-  '/usr/bin/python3',
+  ...(BUNDLED_PYTHON ? [BUNDLED_PYTHON] : []),
+  '/opt/homebrew/bin/python3',     // Homebrew Apple Silicon
+  '/usr/local/bin/python3',        // Homebrew Intel
+  '/usr/bin/python3',              // System Python
 ];
 const PYTHON = PYTHON_CANDIDATES.find(p => fs.existsSync(p)) || 'python3';
 
@@ -115,7 +119,7 @@ function actuallyStartPython() {
   // Kill anything holding our port before starting
   killPortHolder();
 
-  console.log(`[main] Starting Python (${IS_PACKAGED ? 'packaged' : 'dev'}) from ${PROJECT_DIR}`);
+  console.log(`[main] Starting Python (${IS_PACKAGED ? 'packaged' : 'dev'}) from ${PROJECT_DIR} using ${PYTHON}`);
   const env = loadEnv();
   env.PYTHONPATH = PROJECT_DIR;
   env.VOICE_AGENT_DATA_DIR = DATA_DIR;
@@ -404,10 +408,25 @@ function createOAuthWindow(url) {
 
 ipcMain.handle('get-port', () => PORT);
 ipcMain.handle('open-oauth', (_, url) => { createOAuthWindow(url); return true; });
+ipcMain.handle('open-external', (_, url) => {
+  // Only allow https: and x-apple.systempreferences: URLs
+  if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('x-apple.systempreferences:'))) {
+    shell.openExternal(url);
+    return true;
+  }
+  console.warn('[main] Blocked open-external for unsafe URL:', url);
+  return false;
+});
 ipcMain.handle('set-ignore-mouse', (_, ignore, opts) => {
   if (pillWindow && !pillWindow.isDestroyed()) {
     pillWindow.setIgnoreMouseEvents(ignore, opts || {});
   }
+});
+ipcMain.handle('set-theme', (_, theme) => {
+  if (pillWindow && !pillWindow.isDestroyed()) {
+    pillWindow.webContents.send('theme-change', { theme });
+  }
+  return true;
 });
 
 // ── App Lifecycle ───────────────────────────────────────────────────────────
@@ -417,6 +436,19 @@ app.on('ready', () => {
   createMainWindow();
   createPillWindow();
   startPython();
+
+  // Command palette shortcut
+  globalShortcut.register('CommandOrControl+K', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+      mainWindow.webContents.send('open-command-palette');
+    }
+  });
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });
 
 app.on('activate', () => {

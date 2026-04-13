@@ -19,12 +19,18 @@ def get_active_app() -> str:
         return ""
 
 
+def _escape_applescript(s: str) -> str:
+    """Escape a string for safe embedding in AppleScript double-quoted strings."""
+    return s.replace('\\', '\\\\').replace('"', '\\"')
+
+
 def activate_app(app_name: str) -> bool:
     """Bring an app to front using AppleScript."""
     if not app_name:
         return False
     try:
-        script = f'tell application "System Events" to set frontmost of process "{app_name}" to true'
+        safe_name = _escape_applescript(app_name)
+        script = f'tell application "System Events" to set frontmost of process "{safe_name}" to true'
         result = subprocess.run(["osascript", "-e", script],
                                 capture_output=True, text=True, timeout=3)
         return result.returncode == 0
@@ -66,3 +72,33 @@ def keychain_delete(service: str, account: str) -> bool:
         return r.returncode == 0
     except Exception:
         return False
+
+
+# ── Audio Devices ──────────────────────────────────────────────────────────
+
+def detect_blackhole():
+    """Return BlackHole device index and name if installed, else (None, None)."""
+    try:
+        import sounddevice as sd
+        for i, d in enumerate(sd.query_devices()):
+            if "blackhole" in d["name"].lower() and d["max_input_channels"] > 0:
+                return i, d["name"]
+    except Exception:
+        pass
+    return None, None
+
+
+def get_browser_url():
+    """Get the URL from the frontmost browser tab (Chrome or Safari)."""
+    for app, script in [
+        ("Google Chrome", 'tell application "Google Chrome" to get URL of active tab of front window'),
+        ("Safari", 'tell application "Safari" to get URL of front document'),
+    ]:
+        try:
+            r = subprocess.run(["osascript", "-e", script],
+                               capture_output=True, text=True, timeout=2)
+            if r.returncode == 0 and r.stdout.strip():
+                return r.stdout.strip()
+        except Exception:
+            pass
+    return ""

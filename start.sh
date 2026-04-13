@@ -9,20 +9,22 @@ command -v python3 &>/dev/null || { echo "ERROR: python3 not found"; exit 1; }
 command -v npx &>/dev/null || { echo "ERROR: npx not found"; exit 1; }
 [ -d "$DIR/electron/node_modules/electron" ] || { echo "Installing Electron..."; cd "$DIR/electron" && npm install; }
 
-# ── Kill everything first ────────────────────────────────────────────────────
+# ── Kill everything first (aggressive) ───────────────────────────────────────
 echo "Cleaning up..."
-# Kill ALL python processes running app.py (match broadly)
-pkill -9 -f "python.*app.py" 2>/dev/null || true
+# Kill every possible holder: python, uvicorn, Electron
+pkill -9 -f "python3.*app\.py" 2>/dev/null || true
 pkill -9 -f "uvicorn" 2>/dev/null || true
-pkill -9 -f "Electron.*muse" 2>/dev/null || true
-# Kill anything on our ports
-lsof -ti :8528 2>/dev/null | xargs kill -9 2>/dev/null || true
-lsof -ti :8529 2>/dev/null | xargs kill -9 2>/dev/null || true
+pkill -9 -f "Electron.*[Mm]use" 2>/dev/null || true
+pkill -9 -f "electron.*main\.js" 2>/dev/null || true
+# Nuke both ports by PID — try both TCP states
+for port in 8528 8529; do
+    lsof -ti :$port 2>/dev/null | xargs kill -9 2>/dev/null || true
+done
 sleep 1
 
-# Keep trying until port is free (up to 8 attempts, faster)
-for i in 1 2 3 4 5 6 7 8; do
-    if ! lsof -i :8528 -sTCP:LISTEN &>/dev/null; then break; fi
+# Retry loop — keep killing until port 8528 is free
+for i in 1 2 3 4 5 6 7 8 9 10; do
+    if ! lsof -i :8528 &>/dev/null; then break; fi
     echo "Port 8528 still held — attempt $i..."
     lsof -ti :8528 2>/dev/null | xargs kill -9 2>/dev/null || true
     sleep 1
@@ -30,8 +32,9 @@ done
 
 # Final check
 if lsof -i :8528 -sTCP:LISTEN &>/dev/null; then
-    echo "  ERROR: Port 8528 is already in use."
-    echo "  Kill the existing process: pkill -f 'app.py'"
+    echo "  ERROR: Port 8528 still in use. Holder:"
+    lsof -i :8528 2>/dev/null
+    echo "  Run: kill -9 \$(lsof -ti :8528)"
     exit 1
 fi
 

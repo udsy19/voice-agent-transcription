@@ -26,6 +26,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 import uvicorn
+import safe_json
 
 
 # ── Request Models ──────────────────────────────────────────────────────────
@@ -65,7 +66,7 @@ from logger import get_logger
 log = get_logger("app")
 
 from pynput import keyboard
-from config import SILENCE_THRESHOLD
+from config import SILENCE_THRESHOLD, DATA_DIR
 from recorder import Recorder
 from transcriber import Transcriber
 from cleaner import Cleaner, _get_active_app
@@ -76,7 +77,7 @@ from styles import StyleManager
 from domains import DomainManager
 from macros import MacroEngine
 from conversation import ConversationTracker
-from exporter import export_json, export_txt, export_word, export_pdf, export_logs
+from exporter import export_json, export_txt, export_word, export_pdf, export_logs, export_meeting_txt, export_meeting_pdf
 from assistant import Assistant
 from integrations.oauth_manager import OAuthManager
 from todos import TodoList
@@ -187,6 +188,8 @@ class State:
         self.oauth: OAuthManager | None = None
         self.todos: TodoList | None = None
         self.brain: Brain | None = None
+        self.meeting_recorder = None
+        self.meeting_detector = None
 
         # Runtime state
         self.status: str = "loading"
@@ -235,6 +238,11 @@ async def broadcast(msg: dict):
             pass  # already removed
 
 
+def pill_notify(text: str, icon: str = "info", duration_ms: int = 3500):
+    """Send a brief notification to the pill UI."""
+    emit({"type": "pill_notify", "text": text, "icon": icon, "duration_ms": duration_ms})
+
+
 def emit(msg: dict):
     loop = getattr(emit, '_loop', None)
     if loop and loop.is_running():
@@ -265,9 +273,10 @@ from fastapi.middleware.cors import CORSMiddleware
 api.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:8528", "http://127.0.0.1:8528", "file://"],
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
-    allow_methods=["GET", "POST"],
-    allow_headers=["*"],
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):852[89]",
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Content-Type", "Accept"],
+    allow_credentials=False,
 )
 
 
@@ -331,12 +340,27 @@ async def get_state():
     }
 
 
+@api.get("/api/domains")
+async def api_get_domains():
+    if not S.domains:
+        return {"domains": {}, "active": ""}
+    return {
+        "domains": {k: v.get("description", k) for k, v in S.domains._domains.items()},
+        "active": S.domains.get_active(),
+    }
+
+
 @api.post("/api/domains/set")
 async def api_set_domain(body: DomainRequest):
     d = body.domain.strip()
     if S.domains:
         S.domains.set_active(d)
-    return {"ok": True}
+    return {"ok": True, "active": d}
+
+
+@api.get("/api/macros")
+async def api_get_macros():
+    return {"macros": S.macros.list_all() if S.macros else {}}
 
 
 @api.post("/api/macros/add")
@@ -436,6 +460,35 @@ async def api_groq_status():
     return {"configured": has_key, "masked_key": masked}
 
 
+@api.post("/api/clear-groq-key")
+async def api_clear_groq_key():
+    """Remove the Groq API key from Keychain and .env files."""
+    from utils import keychain_delete
+    from pathlib import Path
+    from config import DATA_DIR
+    import config
+    try:
+        from dotenv import unset_key as _unset_key
+    except Exception:
+        _unset_key = None
+    keychain_delete("Muse", "groq_api_key")
+    for env_path in (DATA_DIR / ".env", Path(__file__).parent / ".env"):
+        if env_path.exists() and _unset_key is not None:
+            try:
+                _unset_key(str(env_path), "GROQ_API_KEY")
+            except Exception:
+                pass
+    config.GROQ_API_KEY = ""
+    os.environ.pop("GROQ_API_KEY", None)
+    # Reset cleaner's Groq client so it stops using the stale key
+    try:
+        S.cleaner._client = None
+    except Exception:
+        pass
+    log.info("Groq API key cleared")
+    return {"ok": True}
+
+
 @api.get("/api/llm-mode")
 async def api_llm_mode():
     """Get current LLM mode and local model status."""
@@ -453,18 +506,30 @@ async def api_llm_mode():
 class LlmModeRequest(BaseModel):
     mode: str
 
+_TRANSCRIPTION_FOR_MODE = {"local": "mlx", "groq": "groq", "hybrid": "groq"}
+
 @api.post("/api/set-llm-mode")
 async def api_set_llm_mode(body: LlmModeRequest):
-    """Switch LLM provider mode."""
+    """Switch LLM provider mode + auto-switch transcription to match."""
     mode = body.mode.strip()
     if mode not in ("local", "groq", "hybrid"):
         return {"ok": False, "reason": "invalid mode"}
     os.environ["LLM_PROVIDER"] = mode
-    # Reset the client singleton so it reinitializes
     import llm as llm_mod
     llm_mod._client = None
-    log.info("LLM mode switched to: %s", mode)
-    return {"ok": True, "mode": mode}
+    # Auto-switch transcription backend to match
+    suggested = _TRANSCRIPTION_FOR_MODE.get(mode, "groq")
+    actual = suggested
+    if S.transcriber:
+        S.transcriber.set_backend(suggested)
+        actual = S.transcriber.backend  # may differ if fallback occurred
+    # Persist both (use actual, not suggested)
+    prefs = safe_json.load(str(DATA_DIR / "preferences.json"), {})
+    prefs["llm_mode"] = mode
+    prefs["transcription_backend"] = actual
+    safe_json.save(str(DATA_DIR / "preferences.json"), prefs)
+    log.info("LLM mode: %s, transcription: %s", mode, actual)
+    return {"ok": True, "mode": mode, "transcription_backend": actual}
 
 
 @api.get("/api/models/status")
@@ -508,7 +573,22 @@ async def api_export(fmt: str):
         return {"ok": False, "reason": str(e)}
     except Exception as e:
         log.error("Export failed: %s", e)
-        return {"ok": False, "reason": f"export failed: {e}"}
+        return {"ok": False, "reason": "export failed — check logs"}
+
+
+@api.get("/api/search-history")
+async def api_search_history(q: str = "", app: str = ""):
+    """Search dictation history."""
+    q_lower = q.lower()
+    results = []
+    for entry in reversed(S.history):
+        text = (entry.get("cleaned", "") + " " + entry.get("raw", "")).lower()
+        if q_lower and q_lower not in text:
+            continue
+        if app and entry.get("app", "").lower() != app.lower():
+            continue
+        results.append(entry)
+    return {"results": results[:50], "total": len(results)}
 
 
 @api.post("/api/clear-history")
@@ -571,6 +651,20 @@ async def api_list_accounts():
     """List all connected OAuth accounts."""
     accounts = S.oauth.list_accounts() if S.oauth else []
     return {"accounts": accounts}
+
+
+@api.get("/api/oauth/status")
+async def api_oauth_status():
+    """Check OAuth connection status — used by frontend to detect expired tokens."""
+    if not S.oauth:
+        return {"connected": False, "email": "", "expired": False}
+    accts = S.oauth.list_accounts("google")
+    if not accts:
+        return {"connected": False, "email": "", "expired": False}
+    email = accts[0]["email"]
+    # Try to get a token — if it returns None, token is expired/revoked
+    token = S.oauth.get_token("google", email)
+    return {"connected": token is not None, "email": email, "expired": token is None}
 
 
 @api.delete("/api/accounts/{service}/{email}")
@@ -720,6 +814,44 @@ async def api_speak_briefing():
     threading.Thread(target=tts.speak_sync, args=(text, voice), daemon=True).start()
     return {"ok": True, "text": text}
 
+@api.get("/api/follow-ups")
+async def api_follow_ups():
+    """Get pending follow-up reminders."""
+    import follow_ups as fu
+    return {"pending": fu.get_pending_reminders(), "all": fu.get_all()}
+
+
+@api.get("/api/home/next-meeting")
+async def api_next_meeting():
+    """Get the next meeting starting within 30 minutes, with context."""
+    if not S.oauth:
+        return {"meeting": None}
+    try:
+        token = S.oauth.get_token("google")
+        if not token:
+            return {"meeting": None}
+        from integrations.google_calendar import list_events
+        from datetime import datetime, timezone
+        r = list_events(token, days_ahead=1, max_results=10)
+        if not r.get("ok"):
+            return {"meeting": None}
+        now = datetime.now(timezone.utc)
+        for ev in r.get("events", []):
+            try:
+                start = datetime.fromisoformat(ev["start"].replace("Z", "+00:00"))
+                diff = (start - now).total_seconds()
+                if 0 < diff <= 1800:  # within 30 min
+                    context = ""
+                    if S.brain:
+                        context = S.brain.get_meeting_context(ev.get("summary", "")) or ""
+                    return {"meeting": ev, "minutes_until": round(diff / 60), "past_context": context}
+            except (ValueError, KeyError):
+                continue
+    except Exception:
+        pass
+    return {"meeting": None}
+
+
 @api.get("/api/today")
 async def api_today():
     """Get today's calendar events for the home card."""
@@ -734,6 +866,207 @@ async def api_today():
         return {"events": result.get("events", [])} if result.get("ok") else {"events": []}
     except Exception:
         return {"events": []}
+
+
+# ── Meetings ──────────────────────────────────────────────────────────────
+
+@api.get("/api/meetings")
+async def api_list_meetings():
+    from meeting_recorder import list_meetings
+    return {"meetings": list_meetings()}
+
+
+@api.get("/api/meetings/status")
+async def api_meeting_status():
+    if S.meeting_recorder:
+        return S.meeting_recorder.get_status()
+    return {"recording": False}
+
+
+@api.get("/api/meetings/upcoming")
+async def api_meetings_upcoming():
+    """Calendar events with meeting links in the next 7 days."""
+    if not S.oauth:
+        return {"events": []}
+    try:
+        token = S.oauth.get_token("google")
+        if not token:
+            return {"events": []}
+        from integrations.google_calendar import list_events
+        result = list_events(token, days_ahead=7, max_results=20)
+        if not result.get("ok"):
+            return {"events": []}
+        events = [e for e in result.get("events", []) if e.get("meet_link") or "zoom" in (e.get("location", "") + e.get("description", "")).lower()]
+        return {"events": events}
+    except Exception:
+        return {"events": []}
+
+
+@api.post("/api/meetings/detect")
+async def api_toggle_detection(body: dict):
+    """Enable/disable meeting auto-detection."""
+    enable = body.get("enabled", True)
+    if not S.meeting_detector:
+        return {"ok": False}
+    if enable:
+        S.meeting_detector.start_polling()
+    else:
+        S.meeting_detector.stop_polling()
+    return {"ok": True, "detecting": S.meeting_detector._polling}
+
+
+@api.get("/api/meetings/detect")
+async def api_detection_status():
+    return {"detecting": S.meeting_detector._polling if S.meeting_detector else False}
+
+
+@api.get("/api/meetings/blackhole")
+async def api_blackhole_status():
+    from utils import detect_blackhole
+    idx, name = detect_blackhole()
+    return {"installed": idx is not None, "device_name": name}
+
+
+@api.get("/api/meetings/{meeting_id}")
+async def api_get_meeting(meeting_id: str):
+    from meeting_recorder import get_meeting
+    data = get_meeting(meeting_id)
+    if not data:
+        return {"ok": False, "reason": "not found"}
+    return data
+
+
+@api.post("/api/meetings/start")
+async def api_start_meeting(body: dict):
+    if not S.meeting_recorder:
+        return {"ok": False, "reason": "not initialized"}
+    if S.meeting_recorder.is_recording:
+        return {"ok": False, "reason": "already recording", "meeting_id": S.meeting_recorder._meeting_id}
+    title = body.get("title", "Meeting")
+    cal_id = body.get("calendar_event_id")
+    mid = S.meeting_recorder.start(title=title, calendar_event_id=cal_id)
+    return {"ok": True, "meeting_id": mid}
+
+
+@api.post("/api/meetings/stop")
+async def api_stop_meeting():
+    if not S.meeting_recorder or not S.meeting_recorder.is_recording:
+        return {"ok": False, "reason": "not recording"}
+    data = S.meeting_recorder.stop()
+    # Check if meeting has calendar event with attendees → offer email draft
+    cal_id = data.get("calendar_event_id") if data else None
+    if cal_id and S.oauth:
+        try:
+            token = S.oauth.get_token("google")
+            if token:
+                from integrations.google_calendar import list_events
+                r = list_events(token, days_ahead=1, max_results=20)
+                for ev in r.get("events", []):
+                    if ev.get("id") == cal_id and ev.get("attendees"):
+                        emails = [a for a in ev["attendees"] if "@" in a and "self" not in a.lower()]
+                        if emails:
+                            emit({"type": "meeting_email_prompt",
+                                  "meeting_id": data["id"], "meeting_title": data["title"],
+                                  "attendees": emails})
+                        break
+        except Exception:
+            pass
+    return {"ok": True, "meeting": data}
+
+
+@api.delete("/api/meetings/{meeting_id}")
+async def api_delete_meeting(meeting_id: str):
+    from meeting_recorder import delete_meeting
+    return {"ok": delete_meeting(meeting_id)}
+
+
+@api.post("/api/meetings/{meeting_id}/draft-email")
+async def api_draft_meeting_email(meeting_id: str, body: dict):
+    """Draft a follow-up email with the meeting summary to attendees."""
+    to_list = body.get("to", [])
+    if not to_list or not S.oauth:
+        return {"ok": False, "reason": "no recipients or Google not connected"}
+    token = S.oauth.get_token("google")
+    if not token:
+        return {"ok": False, "reason": "Google token expired"}
+    from meeting_recorder import get_meeting
+    m = get_meeting(meeting_id)
+    if not m:
+        return {"ok": False, "reason": "meeting not found"}
+    s = m.get("summary", {})
+    body_text = f"Hi,\n\nHere's a summary of our meeting: {m['title']}\n\n"
+    if s.get("key_points"):
+        body_text += "Key Points:\n" + "\n".join(f"  - {p}" for p in s["key_points"]) + "\n\n"
+    if s.get("action_items"):
+        body_text += "Action Items:\n" + "\n".join(f"  - {p}" for p in s["action_items"]) + "\n\n"
+    if s.get("decisions"):
+        body_text += "Decisions:\n" + "\n".join(f"  - {p}" for p in s["decisions"]) + "\n\n"
+    body_text += "Best regards"
+    from integrations.gmail import draft_email
+    to = ", ".join(to_list)
+    return draft_email(token, to, f"Meeting Notes: {m['title']}", body_text)
+
+
+@api.get("/api/meetings/{meeting_id}/export/{fmt}")
+async def api_export_meeting(meeting_id: str, fmt: str):
+    """Export a single meeting as TXT or PDF."""
+    from meeting_recorder import get_meeting
+    import tempfile
+    m = get_meeting(meeting_id)
+    if not m:
+        return {"ok": False, "reason": "not found"}
+    if fmt not in ("txt", "pdf"):
+        return {"ok": False, "reason": "use txt or pdf"}
+    ext = ".txt" if fmt == "txt" else ".pdf"
+    slug = (m.get("title", "meeting"))[:20].replace(" ", "_")
+    path = os.path.join(tempfile.gettempdir(), f"muse_{slug}{ext}")
+    try:
+        if fmt == "txt":
+            export_meeting_txt(m, path)
+        else:
+            export_meeting_pdf(m, path)
+        return FileResponse(path, filename=f"muse-{slug}{ext}", media_type="application/octet-stream")
+    except Exception as e:
+        log.error("Meeting export failed: %s", e)
+        return {"ok": False, "reason": "export failed"}
+
+
+@api.post("/api/meetings/ask")
+async def api_ask_meeting(body: dict):
+    """Chat about a meeting — multi-turn conversation with transcript as context."""
+    question = body.get("question", "").strip()
+    meeting_id = body.get("meeting_id", "")
+    history = body.get("history", [])  # prior Q&A turns
+    if not question:
+        return {"ok": False, "answer": ""}
+    # Load meeting transcript from disk for full context
+    transcript = ""
+    if meeting_id:
+        from meeting_recorder import get_meeting
+        m = get_meeting(meeting_id)
+        if m:
+            transcript = "\n".join(f"[{c['timestamp']}] {c['speaker']}: {c['text']}" for c in m.get("chunks", []))
+            summary = m.get("summary", {})
+    try:
+        from llm import get_client
+        client = get_client()
+        system_ctx = f"""You are a meeting assistant. You have full context of this meeting.
+Answer questions conversationally. Be concise but thorough. Reference specific parts of the discussion when relevant.
+
+Meeting transcript:
+{transcript[:6000]}"""
+        if summary:
+            system_ctx += f"\n\nSummary: {json.dumps(summary)}"
+        messages = [{"role": "system", "content": system_ctx}]
+        # Add conversation history for multi-turn
+        for h in history[-10:]:  # keep last 10 turns
+            messages.append({"role": h.get("role", "user"), "content": h.get("content", "")})
+        messages.append({"role": "user", "content": question})
+        resp = client.chat(messages=messages, model_tier="small", temperature=0.3, max_tokens=512)
+        return {"ok": True, "answer": resp.text}
+    except Exception as e:
+        log.error("Meeting ask failed: %s", e)
+        return {"ok": False, "answer": "Failed to process question"}
 
 
 @api.get("/api/voices")
@@ -762,6 +1095,24 @@ async def api_set_voice(body: dict):
     prefs["voice"] = voice
     safe_json.save(str(DATA_DIR / "preferences.json"), prefs)
     return {"ok": True, "voice": voice}
+
+
+@api.get("/api/tts/speed")
+async def api_get_tts_speed():
+    return {"speed": tts.tts_speed}
+
+
+@api.post("/api/tts/speed")
+async def api_set_tts_speed(body: dict):
+    speed = float(body.get("speed", 1.0))
+    speed = max(0.5, min(2.0, speed))
+    tts.tts_speed = speed
+    import safe_json
+    from config import DATA_DIR
+    prefs = safe_json.load(str(DATA_DIR / "preferences.json"), {})
+    prefs["tts_speed"] = speed
+    safe_json.save(str(DATA_DIR / "preferences.json"), prefs)
+    return {"ok": True, "speed": speed}
 
 
 @api.post("/api/voices/preview")
@@ -806,6 +1157,9 @@ async def api_set_backend(body: BackendRequest):
     backend = body.backend.strip()
     if backend and S.transcriber:
         S.transcriber.set_backend(backend)
+        prefs = safe_json.load(str(DATA_DIR / "preferences.json"), {})
+        prefs["transcription_backend"] = backend
+        safe_json.save(str(DATA_DIR / "preferences.json"), prefs)
         return {"ok": True, "backend": S.transcriber.backend}
     return {"ok": False}
 
@@ -1461,8 +1815,14 @@ def load_engine():
             pass
 
     S.recorder = Recorder()
-    default_backend = "groq" if GROQ_API_KEY else "faster-whisper"
-    S.transcriber = Transcriber(backend=default_backend)
+    # Restore persisted LLM mode + transcription backend
+    _prefs = safe_json.load(str(DATA_DIR / "preferences.json"), {})
+    saved_llm = _prefs.get("llm_mode")
+    if saved_llm in ("local", "groq", "hybrid"):
+        os.environ["LLM_PROVIDER"] = saved_llm
+    saved_backend = _prefs.get("transcription_backend",
+                               "groq" if GROQ_API_KEY else "faster-whisper")
+    S.transcriber = Transcriber(backend=saved_backend)
     S.cleaner = Cleaner()
     S.dictionary = PersonalDictionary()
     S.snippets = SnippetStore()
@@ -1471,10 +1831,17 @@ def load_engine():
     S.macros = MacroEngine()
     S.conversation = ConversationTracker()
     S.oauth = OAuthManager()
+    S.oauth.set_emit_fn(emit)
     S.todos = TodoList()
     S.brain = Brain()
     from llm import get_client as get_llm
     S.assistant = Assistant(get_llm(), S.oauth, emit, S.todos, S.brain)
+    # Meeting system
+    from meeting_recorder import MeetingRecorder
+    from meeting_detector import MeetingDetector
+    S.meeting_recorder = MeetingRecorder(S.transcriber, emit)
+    S.meeting_detector = MeetingDetector(S.oauth, emit)
+    # Meeting detector does NOT auto-start — user must enable it from Meetings page
     set_status("idle", "Ready — hold ⌥R to dictate")
 
 
@@ -1516,6 +1883,7 @@ if __name__ == "__main__":
     # Check port BEFORE starting anything
     import socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
         sock.bind(("127.0.0.1", PORT))
         sock.close()
@@ -1536,8 +1904,9 @@ if __name__ == "__main__":
             try:
                 reminders = follow_ups.get_pending_reminders()
                 for r in reminders:
-                    msg = f"No reply from {r['to']} about '{r['subject']}' ({r['days_ago']} days ago)"
-                    emit({"type": "notification", "message": msg})
+                    msg = f"No reply from {r['to']} about '{r['subject']}' ({r['days_ago']}d ago)"
+                    pill_notify(msg, "followup")
+                    emit({"type": "follow_up_reminder", "reminders": reminders})
                     follow_ups.mark_reminded(r["to"], r["subject"])
                     log.info("Follow-up reminder: %s", msg)
             except Exception as e:
@@ -1553,6 +1922,34 @@ if __name__ == "__main__":
             except Exception:
                 pass
     threading.Thread(target=memory_flusher, daemon=True).start()
+
+    # Meeting notifier — pill_notify when a meeting is 5 min away
+    def meeting_notifier():
+        _notified = set()
+        while True:
+            time.sleep(60)
+            try:
+                token = S.oauth.get_token("google") if S.oauth else None
+                if not token:
+                    continue
+                from integrations.google_calendar import list_events
+                from datetime import datetime as dt, timezone as tz
+                r = list_events(token, days_ahead=1, max_results=10)
+                for ev in r.get("events", []):
+                    eid = ev.get("id", "")
+                    if eid in _notified:
+                        continue
+                    try:
+                        start = dt.fromisoformat(ev["start"].replace("Z", "+00:00"))
+                        diff = (start - dt.now(tz.utc)).total_seconds()
+                        if 240 <= diff <= 360:
+                            _notified.add(eid)
+                            pill_notify(f"Meeting in 5 min: {ev.get('summary','')[:40]}", "calendar", 5000)
+                    except (ValueError, KeyError):
+                        pass
+            except Exception:
+                pass
+    threading.Thread(target=meeting_notifier, daemon=True).start()
 
     # Reply watcher — checks for iMessage replies every 15s
     def reply_watcher():

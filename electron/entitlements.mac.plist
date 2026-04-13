@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Allow mic access for voice dictation -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <!-- Allow AppleScript for detecting active app + paste injection -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+    <!-- Allow outbound network for Groq API, HuggingFace downloads, Google OAuth -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <!-- Allow localhost server (backend on port 8528) -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+    <!-- Allow spawning Python subprocess -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <!-- Allow loading mlx/numpy/scipy native extensions -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+</dict>
+</plist>

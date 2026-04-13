@@ -20,6 +20,8 @@ MODEL_DIR = str(DATA_DIR / "models")
 KOKORO_MODEL = os.path.join(MODEL_DIR, "kokoro-v1.0.onnx")
 KOKORO_VOICES = os.path.join(MODEL_DIR, "voices-v1.0.bin")
 
+tts_speed = 1.05  # Adjustable TTS playback speed (0.5 - 2.0)
+
 VOICES = {
     "af_heart":   {"name": "Heart", "gender": "F", "accent": "US", "desc": "Warm, friendly"},
     "af_alloy":   {"name": "Alloy", "gender": "F", "accent": "US", "desc": "Clear, professional"},
@@ -80,7 +82,7 @@ def speak(text: str, voice: str = "af_heart"):
         try:
             kokoro = _get_kokoro()
             if kokoro:
-                audio, sr = kokoro.create(spoken_text, voice=voice, speed=1.05)
+                audio, sr = kokoro.create(spoken_text, voice=voice, speed=tts_speed)
                 if audio is not None and len(audio) > 0:
                     # Calculate max duration (audio length + 2s buffer)
                     max_wait = len(audio) / sr + 2.0
@@ -110,7 +112,7 @@ def speak_sync(text: str, voice: str = "af_heart"):
     kokoro = _get_kokoro()
     if kokoro:
         try:
-            audio, sr = kokoro.create(text, voice=voice, speed=1.05)
+            audio, sr = kokoro.create(text, voice=voice, speed=tts_speed)
             if audio is not None and len(audio) > 0:
                 sd.play(audio, samplerate=sr)
                 sd.wait()

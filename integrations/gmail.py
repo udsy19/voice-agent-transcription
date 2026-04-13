@@ -67,6 +67,73 @@ def send_email(token_data: dict, to: str, subject: str, body: str) -> dict:
         return api_error(e)
 
 
+def list_emails(token_data: dict, query: str = "", max_results: int = 10) -> dict:
+    """List recent emails from inbox (with optional search query).
+
+    Returns:
+        {"ok": True, "emails": [{"id": str, "subject": str, "from": str, "date": str, "snippet": str}]}
+    """
+    service = _get_service(token_data)
+    try:
+        params = {"userId": "me", "maxResults": min(max_results, 20)}
+        if query:
+            params["q"] = query
+        result = service.users().messages().list(**params).execute()
+        messages = result.get("messages", [])
+        emails = []
+        for msg_stub in messages[:max_results]:
+            msg = service.users().messages().get(
+                userId="me", id=msg_stub["id"], format="metadata",
+                metadataHeaders=["Subject", "From", "Date"],
+            ).execute()
+            headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
+            emails.append({
+                "id": msg["id"],
+                "subject": headers.get("Subject", "(no subject)"),
+                "from": headers.get("From", ""),
+                "date": headers.get("Date", ""),
+                "snippet": msg.get("snippet", ""),
+            })
+        log.info("Listed %d emails (query=%s)", len(emails), query or "inbox")
+        return {"ok": True, "emails": emails}
+    except Exception as e:
+        log.error("Gmail list failed: %s", e)
+        return api_error(e)
+
+
+def get_email(token_data: dict, message_id: str) -> dict:
+    """Get full email body by message ID.
+
+    Returns:
+        {"ok": True, "id": str, "subject": str, "from": str, "date": str, "body": str}
+    """
+    service = _get_service(token_data)
+    try:
+        msg = service.users().messages().get(userId="me", id=message_id, format="full").execute()
+        headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
+        # Extract plain text body
+        body = ""
+        payload = msg.get("payload", {})
+        if "parts" in payload:
+            for part in payload["parts"]:
+                if part.get("mimeType") == "text/plain" and part.get("body", {}).get("data"):
+                    body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8", errors="replace")
+                    break
+        elif payload.get("body", {}).get("data"):
+            body = base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8", errors="replace")
+        return {
+            "ok": True,
+            "id": msg["id"],
+            "subject": headers.get("Subject", "(no subject)"),
+            "from": headers.get("From", ""),
+            "date": headers.get("Date", ""),
+            "body": body[:3000],  # cap body length for LLM context
+        }
+    except Exception as e:
+        log.error("Gmail get failed: %s", e)
+        return api_error(e)
+
+
 def send_draft(token_data: dict, draft_id: str) -> dict:
     """Send a previously created draft.
 

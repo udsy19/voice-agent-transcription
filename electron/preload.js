@@ -14,6 +14,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onStatus: (cb) => addListener('status', (_, msg) => cb(msg)),
   getPort: () => ipcRenderer.invoke('get-port'),
   openOAuth: (url) => ipcRenderer.invoke('open-oauth', url),
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  onCommandPalette: (cb) => addListener('open-command-palette', () => cb()),
+  onThemeChange: (cb) => addListener('theme-change', (_, msg) => cb(msg)),
+  setTheme: (theme) => ipcRenderer.invoke('set-theme', theme),
   setIgnoreMouseEvents: (ignore, opts) => ipcRenderer.invoke('set-ignore-mouse', ignore, opts),
 });
 

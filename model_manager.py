@@ -118,10 +118,55 @@ def download_model(model_key: str, progress_callback=None) -> bool:
         return False
 
 
+def _get_hf_cache_size(repo_id: str) -> int:
+    """Get current downloaded size of a HF repo in bytes."""
+    try:
+        from huggingface_hub import scan_cache_dir
+        cache = scan_cache_dir()
+        for repo in cache.repos:
+            if repo.repo_id == repo_id:
+                return repo.size_on_disk
+    except Exception:
+        pass
+    # Fallback: scan blob dir
+    try:
+        import pathlib
+        cache_dir = pathlib.Path.home() / ".cache" / "huggingface" / "hub"
+        repo_dir = cache_dir / f"models--{repo_id.replace('/', '--')}"
+        if repo_dir.exists():
+            return sum(f.stat().st_size for f in repo_dir.rglob("*") if f.is_file())
+    except Exception:
+        pass
+    return 0
+
+
 def _download_hf_model(model_key: str, info: dict, progress_callback=None) -> bool:
-    """Download a HuggingFace model."""
+    """Download a HuggingFace model with real progress tracking."""
     repo = info["hf_repo"]
+    total_bytes = info["size_mb"] * 1024 * 1024
     log.info("Downloading %s from %s ...", info["name"], repo)
+
+    # Start a progress monitor thread that checks cache size
+    _progress_stop = threading.Event()
+
+    def monitor_progress():
+        while not _progress_stop.is_set():
+            try:
+                current = _get_hf_cache_size(repo)
+                pct = min(current / total_bytes, 0.99) if total_bytes > 0 else 0
+                _download_progress[model_key] = {
+                    "progress": pct, "total_mb": info["size_mb"],
+                    "downloaded_mb": round(current / (1024 * 1024)),
+                    "status": "downloading",
+                }
+                if progress_callback:
+                    progress_callback(pct)
+            except Exception:
+                pass
+            _progress_stop.wait(2)  # check every 2 seconds
+
+    monitor = threading.Thread(target=monitor_progress, daemon=True)
+    monitor.start()
 
     try:
         from huggingface_hub import snapshot_download
@@ -130,12 +175,14 @@ def _download_hf_model(model_key: str, info: dict, progress_callback=None) -> bo
             local_dir=None,  # use default cache
             resume_download=True,
         )
+        _progress_stop.set()
         _download_progress[model_key] = {"progress": 1.0, "total_mb": info["size_mb"], "status": "complete"}
         log.info("Downloaded: %s", info["name"])
         if progress_callback:
             progress_callback(1.0)
         return True
     except Exception as e:
+        _progress_stop.set()
         log.error("HuggingFace download failed: %s", e)
         return False
 
@@ -146,12 +193,21 @@ def get_download_progress(model_key: str) -> dict:
 
 
 def download_model_async(model_key: str, emit_fn=None):
-    """Download a model in background thread. Emits progress via WebSocket."""
+    """Download a model in background thread. Emits real-time progress via WebSocket."""
     def run():
+        last_pct = -1
+
         def on_progress(pct):
-            if emit_fn:
+            nonlocal last_pct
+            # Only emit if progress changed by at least 1%
+            rounded = round(pct * 100)
+            if emit_fn and rounded != last_pct:
+                last_pct = rounded
+                info = MODELS.get(model_key, {})
+                prog = _download_progress.get(model_key, {})
                 emit_fn({"type": "model_download", "model": model_key,
-                         "progress": pct, "total_mb": MODELS.get(model_key, {}).get("size_mb", 0)})
+                         "progress": pct, "total_mb": info.get("size_mb", 0),
+                         "downloaded_mb": prog.get("downloaded_mb", 0)})
 
         success = download_model(model_key, progress_callback=on_progress)
         if emit_fn:

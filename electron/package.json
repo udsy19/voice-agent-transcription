@@ -17,6 +17,8 @@
       "target": ["dir"],
       "icon": "assets/muse.icns",
       "darkModeSupport": true,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist",
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Muse needs microphone access to transcribe your speech.",
         "NSAppleEventsUsageDescription": "Muse needs this to detect the active app and paste text."

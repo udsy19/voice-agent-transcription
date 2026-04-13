@@ -21,14 +21,17 @@ def open_app(name: str) -> dict:
 
 
 def _sanitize_app_name(name: str) -> str:
-    """Sanitize app name to prevent AppleScript injection."""
+    """Sanitize app name — whitelist safe chars, escape quotes."""
     import re
-    return re.sub(r'[^a-zA-Z0-9 \-.]', '', name)[:50]
+    safe = re.sub(r'[^a-zA-Z0-9 \-.]', '', name).strip()[:50]
+    return safe.replace('\\', '\\\\').replace('"', '\\"')
 
 
 def quit_app(name: str) -> dict:
     """Quit a macOS app."""
     name = _sanitize_app_name(name)
+    if not name:
+        return {"ok": False, "error": "No app name provided."}
     try:
         subprocess.run(["osascript", "-e", f'tell application "{name}" to quit'],
                        capture_output=True, timeout=5)

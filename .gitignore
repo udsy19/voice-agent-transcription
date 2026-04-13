@@ -1,19 +1,33 @@
+# Environment
 .env
+.env.*
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
+.build-venv/
+
+# Electron
 electron/node_modules/
 node_modules/
-Voice Agent.app/
+electron/dist/
 dist/
 build/
 *.app
+
+# User data (generated at runtime)
 personal_dictionary.json
 snippets.json
 styles.json
 domains.json
 macros.json
 sync_config.json
+
+# Logs & OS
 *.log
 .DS_Store
+
+# Legacy
+Voice Agent.app/
 launch_backend.sh

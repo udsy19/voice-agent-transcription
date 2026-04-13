@@ -17,15 +17,22 @@
 }
 html,body{background:transparent;overflow:hidden;width:340px;height:320px;font-family:var(--font);-webkit-font-smoothing:antialiased}
 
+html.light{--text:rgba(0,0,0,.88);--text2:rgba(0,0,0,.55);--text3:rgba(0,0,0,.35);--border:rgba(0,0,0,.08);--blue:rgba(37,99,235,.6)}
+html.light .pill{background:rgba(255,255,255,.95);box-shadow:0 0 0 0.5px rgba(0,0,0,.1),0 4px 20px rgba(0,0,0,.15)}
+html.light .wv .bar{background:#222}
+html.light .dots span{background:rgba(0,0,0,.2)}
+html.light .atxt{color:#1a1a1a}
+html.light .stop{background:rgba(220,50,47,.85)}
+
 /* ── Pill container ── */
 .pill{
   position:absolute;top:4px;left:50%;transform:translateX(-50%);
   display:flex;align-items:center;justify-content:center;
-  background:rgba(0,0,0,.92);
-  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
-  border-radius:15px;
+  background:rgba(0,0,0,.88);
+  backdrop-filter:blur(30px) saturate(1.2);-webkit-backdrop-filter:blur(30px) saturate(1.2);
+  border-radius:16px;
   overflow:hidden;
-  box-shadow:0 0 0 0.5px rgba(255,255,255,.06),0 4px 20px rgba(0,0,0,0.5);
+  box-shadow:0 0 0 0.5px rgba(255,255,255,.05),0 8px 30px rgba(0,0,0,0.6);
   width:0;height:0;opacity:0;
   pointer-events:none;
   transition:width .2s ease,height .2s ease,opacity .15s ease,border-radius .2s;
@@ -40,6 +47,11 @@ html,body{background:transparent;overflow:hidden;width:340px;height:320px;font-f
   opacity:1;pointer-events:auto;border-radius:14px;
   flex-direction:column;align-items:stretch;justify-content:flex-start;
 }
+.pill.notify{width:280px;height:36px;opacity:1;pointer-events:auto;border-radius:18px}
+.notify-ui{display:none;align-items:center;gap:8px;padding:0 14px;width:100%;height:100%}
+.pill.notify .notify-ui{display:flex}
+.notify-icon{font-size:14px;flex-shrink:0}
+.notify-text{font-size:12px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
 
 /* ── Recording waveform ── */
 .rec-ui{display:none;align-items:center;justify-content:center;height:100%;width:100%}
@@ -118,11 +130,13 @@ html,body{background:transparent;overflow:hidden;width:340px;height:320px;font-f
     <button class="stop" id="bst"><svg viewBox="0 0 9 9"><rect width="9" height="9" rx="1.5"/></svg><span>Stop</span></button>
   </div>
   <div class="dots"><span></span><span></span><span></span></div>
+  <div class="notify-ui"><span class="notify-icon" id="notifyIcon"></span><span class="notify-text" id="notifyTxt"></span></div>
   <div class="atxt" id="atxt"></div>
   <div class="msg-mini" id="msgMini" style="display:none"></div>
   <div class="cal-mini" id="calMini" style="display:none"></div>
 </div>
 <script>
+function esc(s){return s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'):''}
 const pill=document.getElementById('pill'),wvEl=document.getElementById('wv'),atxt=document.getElementById('atxt');
 const msgMini=document.getElementById('msgMini'),calMini=document.getElementById('calMini');
 const MULTS=[.35,.55,.75,.9,1,.9,.75,.55,.35],MIN_H=2,MAX_H=16,bars=[];
@@ -202,6 +216,9 @@ function go(s){
 }
 
 if(window.electronAPI){
+  if(window.electronAPI.onThemeChange){
+    window.electronAPI.onThemeChange(msg=>{document.documentElement.classList.toggle('light',msg.theme==='light')});
+  }
   window.electronAPI.onWsMessage(m=>{
     if(m.type==='audio_level'){audioLevel=Math.min(1,m.rms*25)}
     if(m.type==='trigger_mode'){triggerMode=m.mode}
@@ -215,9 +232,9 @@ if(window.electronAPI){
         const isMe=msg.from==='me';
         const showSender=!isMe&&msg.from!==lastSender;
         lastSender=msg.from;
-        const sender=showSender?`<div class="msg-sender">${msg.from}</div>`:'';
-        const time=msg.time?`<div class="msg-time">${msg.time.split(' ').pop()||''}</div>`:'';
-        return`<div class="msg-row">${sender}<div class="msg-bubble ${isMe?'msg-me':'msg-them'}">${msg.text}${time}</div></div>`;
+        const sender=showSender?`<div class="msg-sender">${esc(msg.from)}</div>`:'';
+        const time=msg.time?`<div class="msg-time">${esc(msg.time.split(' ').pop()||'')}</div>`:'';
+        return`<div class="msg-row">${sender}<div class="msg-bubble ${isMe?'msg-me':'msg-them'}">${esc(msg.text)}${time}</div></div>`;
       }).join('');
       msgMini.scrollTop=msgMini.scrollHeight;
       requestAnimationFrame(resizePill);
@@ -237,17 +254,26 @@ if(window.electronAPI){
         }catch{t=e.start||''}
         let header='';
         if(day&&day!==lastDay){header=`<div class="cal-day">${day}</div>`;lastDay=day}
-        return header+`<div class="cal-ev"><span class="cal-time">${t}</span><span class="cal-title">${e.summary||'(no title)'}</span></div>`;
+        return header+`<div class="cal-ev"><span class="cal-time">${esc(t)}</span><span class="cal-title">${esc(e.summary||'(no title)')}</span></div>`;
       }).join('');
       requestAnimationFrame(resizePill);
     }
 
     // ── Assistant stream ──
+    // ── Pill notification ──
+    if(m.type==='pill_notify'&&(st==='hidden'||st==='done')){
+      const iconMap={calendar:'📅',memory:'💡',todo:'✓',followup:'📧',meeting:'🎙',info:'ℹ'};
+      document.getElementById('notifyIcon').textContent=iconMap[m.icon]||'ℹ';
+      document.getElementById('notifyTxt').textContent=m.text||'';
+      go('notify');
+      setTimeout(()=>{if(st==='notify')go('hidden')},m.duration_ms||3500);
+    }
+
     if(m.type==='assistant_stream'){
       if(st!=='assist')go('assist');
       const isToolMsg=!m.done&&(m.text.startsWith('Running ')||m.text.startsWith('Retrying '));
       atxt.className=isToolMsg?'atxt tool':'atxt';
-      atxt.innerHTML=m.text+(m.done?'':'<span class="cur"></span>');
+      atxt.innerHTML=esc(m.text)+(m.done?'':'<span class="cur"></span>');
       requestAnimationFrame(resizePill);
 
       if(m.done){

@@ -171,6 +171,71 @@ def export_pdf(history: list[dict], path: str) -> str:
     return path
 
 
+def export_meeting_txt(meeting: dict, path: str) -> str:
+    """Export a single meeting as plain text."""
+    with open(path, "w") as f:
+        f.write(f"Meeting: {meeting.get('title', 'Meeting')}\n")
+        f.write(f"Date: {meeting.get('start', '')}\n")
+        dur = meeting.get("duration_minutes", 0)
+        f.write(f"Duration: {dur} minutes\n")
+        f.write("=" * 60 + "\n\n")
+        s = meeting.get("summary", {})
+        if s.get("key_points"):
+            f.write("KEY POINTS\n")
+            for p in s["key_points"]:
+                f.write(f"  - {p}\n")
+            f.write("\n")
+        if s.get("action_items"):
+            f.write("ACTION ITEMS\n")
+            for p in s["action_items"]:
+                f.write(f"  - {p}\n")
+            f.write("\n")
+        if s.get("decisions"):
+            f.write("DECISIONS\n")
+            for p in s["decisions"]:
+                f.write(f"  - {p}\n")
+            f.write("\n")
+        f.write("-" * 60 + "\nTRANSCRIPT\n" + "-" * 60 + "\n\n")
+        for c in meeting.get("chunks", []):
+            f.write(f"[{c['timestamp']}] {c['speaker']}: {c['text']}\n")
+    return path
+
+
+def export_meeting_pdf(meeting: dict, path: str) -> str:
+    """Export a single meeting as PDF."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.colors import HexColor
+
+    doc = SimpleDocTemplate(path, pagesize=A4, leftMargin=60, rightMargin=60, topMargin=50, bottomMargin=50)
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("MtgTitle", parent=styles["Heading1"], fontSize=18, textColor=HexColor("#ECECEC"), spaceAfter=6)
+    meta_style = ParagraphStyle("MtgMeta", parent=styles["Normal"], fontSize=10, textColor=HexColor("#8A8A8A"), spaceAfter=16)
+    section_style = ParagraphStyle("MtgSection", parent=styles["Heading2"], fontSize=13, textColor=HexColor("#ECECEC"), spaceBefore=14, spaceAfter=6)
+    item_style = ParagraphStyle("MtgItem", parent=styles["Normal"], fontSize=10, textColor=HexColor("#CCCCCC"), leftIndent=16, spaceAfter=3)
+    chunk_style = ParagraphStyle("MtgChunk", parent=styles["Normal"], fontSize=9, textColor=HexColor("#AAAAAA"), spaceAfter=4)
+    speaker_style = ParagraphStyle("MtgSpeaker", parent=styles["Normal"], fontSize=9, textColor=HexColor("#4F8FF7"), spaceAfter=1)
+
+    story = []
+    story.append(Paragraph(meeting.get("title", "Meeting"), title_style))
+    story.append(Paragraph(f"{meeting.get('start', '')} &bull; {meeting.get('duration_minutes', 0)} min", meta_style))
+    s = meeting.get("summary", {})
+    for label, items in [("Key Points", s.get("key_points", [])), ("Action Items", s.get("action_items", [])), ("Decisions", s.get("decisions", []))]:
+        if items:
+            story.append(Paragraph(label, section_style))
+            for p in items:
+                story.append(Paragraph(f"&bull; {p}", item_style))
+    story.append(Spacer(1, 16))
+    story.append(Paragraph("Transcript", section_style))
+    for c in meeting.get("chunks", []):
+        color = "#4F8FF7" if c["speaker"] == "You" else "#ECECEC"
+        story.append(Paragraph(f'<font color="{color}">{c["speaker"]}</font> <font color="#8A8A8A">{c["timestamp"]}</font>', speaker_style))
+        story.append(Paragraph(c["text"], chunk_style))
+    doc.build(story)
+    return path
+
+
 def export_logs(log_dir: str, output_path: str) -> str:
     """Zip all log files for bug reporting."""
     if os.path.exists(log_dir):

@@ -177,6 +177,16 @@ class MacroEngine:
                         actions = actions[:i + 1 + n_actions] + repeat_actions + actions[i + 1 + n_actions:]
                 results.append({"type": "repeat", "count": count, "actions": n_actions})
 
+            elif atype == "open_app":
+                from system_control import open_app
+                open_app(value)
+                results.append({"type": "open_app", "app": value})
+
+            elif atype == "run_shortcut":
+                from system_control import run_shortcut
+                run_shortcut(value)
+                results.append({"type": "run_shortcut", "name": value})
+
             # "shell" action type deliberately removed for security
 
             i += 1

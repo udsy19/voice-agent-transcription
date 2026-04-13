@@ -149,6 +149,34 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "read_emails",
+            "description": "Read recent emails from inbox. Use for 'check my email', 'any new emails', 'what emails do I have'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "max_results": {"type": "string", "description": "Number of emails to fetch. Default '5'."},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_emails",
+            "description": "Search emails by query. Use for 'find email from X', 'email about Y'. Supports Gmail search syntax.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Gmail search query: 'from:name', 'subject:invoice', 'is:unread', 'after:2026/04/01', etc."},
+                    "max_results": {"type": "string", "description": "Number of results. Default '5'."},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "add_todo",
             "description": "Add a task to the todo list. Use for reminders, tasks, things to do.",
             "parameters": {
@@ -861,6 +889,14 @@ class Assistant:
             if result.get("ok"):
                 self._oauth._last_draft_id = None
             return result
+
+        elif name == "read_emails":
+            from integrations.gmail import list_emails
+            return list_emails(token, max_results=int(args.get("max_results", 5)))
+
+        elif name == "search_emails":
+            from integrations.gmail import list_emails
+            return list_emails(token, query=args.get("query", ""), max_results=int(args.get("max_results", 5)))
 
         # ── iMessage ──
 

@@ -44,6 +44,8 @@ class OAuthManager:
     def __init__(self):
         self._last_draft_id = None
         self._google_available = False
+        self._emit_fn = None
+        self._expired_notified = set()  # track which accounts we've already notified about
         # Check if Google libraries are installed
         try:
             from google_auth_oauthlib.flow import InstalledAppFlow
@@ -54,6 +56,10 @@ class OAuthManager:
         # Load from env or keychain
         self.client_id = os.getenv("GOOGLE_CLIENT_ID","") or _kc_get("google_client_id")
         self.client_secret = os.getenv("GOOGLE_CLIENT_SECRET","") or _kc_get("google_client_secret")
+
+    def set_emit_fn(self, fn):
+        """Set the WebSocket emit function for broadcasting events."""
+        self._emit_fn = fn
 
     def save_credentials(self, client_id, client_secret):
         self.client_id = client_id
@@ -69,8 +75,11 @@ class OAuthManager:
             return {"ok": False, "needs_credentials": True}
         # Kill any existing OAuth server on the port
         try:
-            subprocess.run(f"lsof -ti :{REDIRECT_PORT} | xargs kill -9",
-                          shell=True, capture_output=True, timeout=3)
+            result = subprocess.run(["lsof", "-ti", f":{REDIRECT_PORT}"],
+                                    capture_output=True, text=True, timeout=3)
+            for pid in result.stdout.strip().split('\n'):
+                if pid.strip().isdigit():
+                    subprocess.run(["kill", "-9", pid.strip()], capture_output=True, timeout=2)
         except Exception:
             pass
 
@@ -159,8 +168,19 @@ class OAuthManager:
                 creds.refresh(Request())
                 data["token"] = creds.token
                 _kc_set(f"oauth:{service}:{email}", json.dumps(data))
+                self._expired_notified.discard(cache_key)
             except Exception as e:
-                log.error("Refresh failed: %s — trying with existing token", e)
+                err_str = str(e).lower()
+                if "invalid_grant" in err_str or "token" in err_str and "revoked" in err_str:
+                    log.error("Token revoked for %s:%s — clearing credentials", service, email)
+                    _kc_delete(f"oauth:{service}:{email}")
+                    self._token_cache.pop(cache_key, None)
+                    if self._emit_fn and cache_key not in self._expired_notified:
+                        self._expired_notified.add(cache_key)
+                        self._emit_fn({"type": "oauth_expired", "service": service, "email": email})
+                    return None
+                log.error("Token refresh failed: %s", e)
+                return None
 
         result = {"access_token": creds.token, "credentials": creds, "email": email}
         self._token_cache[cache_key] = {"data": result, "ts": time.time()}
