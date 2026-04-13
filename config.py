@@ -55,4 +55,4 @@ DTYPE = "float32"
 
 # ── Silence detection ────────────────────────────────────────────────────────
 SILENCE_THRESHOLD = 0.002  # very sensitive — captures faint audio
-MIN_AUDIO_DURATION = 0.5
+MIN_AUDIO_DURATION = 1.0  # reject < 1s to avoid Whisper hallucinations

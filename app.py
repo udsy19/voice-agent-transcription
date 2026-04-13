@@ -153,6 +153,58 @@ _prefs = _load_preferences()
 _sound_enabled = _prefs.get("sounds", True)
 _clipboard_context_enabled = _prefs.get("clipboard_context", True)
 
+def _is_hallucination(text: str) -> bool:
+    """Detect Whisper hallucinations — gibberish in random scripts when audio is unclear."""
+    import unicodedata
+    if not text or len(text.strip()) < 2:
+        return True
+    # Count characters by script category
+    latin = 0
+    non_latin = 0
+    for ch in text:
+        if ch.isalpha():
+            cat = unicodedata.category(ch)
+            # Check if character is Latin (basic Latin, Latin Extended, etc.)
+            try:
+                name = unicodedata.name(ch, '')
+                if 'LATIN' in name or ch.isascii():
+                    latin += 1
+                else:
+                    non_latin += 1
+            except ValueError:
+                non_latin += 1
+    total = latin + non_latin
+    if total == 0:
+        return True
+    # If more than 15% of alphabetic chars are non-Latin, it's likely hallucinated
+    if total > 3 and non_latin / total > 0.15:
+        return True
+    # Multiple distinct non-Latin scripts = definite hallucination
+    scripts = set()
+    for ch in text:
+        if ch.isalpha():
+            try:
+                n = unicodedata.name(ch, '')
+                script = n.split()[0] if n else ''
+                if script and script != 'LATIN':
+                    scripts.add(script)
+            except ValueError:
+                pass
+    if len(scripts) >= 2:
+        return True
+    # Check for known hallucination patterns
+    hallucination_markers = [
+        "thank you for watching", "thanks for watching", "subscribe",
+        "please like and subscribe", "see you in the next",
+        "subtitles by", "translated by", "copyright",
+    ]
+    text_lower = text.lower().strip()
+    for marker in hallucination_markers:
+        if marker in text_lower:
+            return True
+    return False
+
+
 def _play_sound(name: str):
     """Play a subtle system sound in background. Non-blocking."""
     if not _sound_enabled:
@@ -1481,6 +1533,13 @@ def process_audio(audio):
         )
         if not raw_text:
             set_status("idle", "Nothing detected")
+            return
+
+        # Filter Whisper hallucinations (random scripts when audio is unclear)
+        if _is_hallucination(raw_text):
+            log.info("Filtered hallucination: %s", raw_text[:60])
+            set_status("idle", "Unclear audio — try again")
+            _play_sound("error")
             return
 
         # === Assistant mode (Right Option key) ===
