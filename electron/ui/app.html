@@ -240,6 +240,20 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
 
 .empty{text-align:center;padding:64px 16px;color:var(--text3);font-size:14px;line-height:1.8}
 
+/* Settings tabs */
+.settings-tabs{display:flex;gap:0;margin-bottom:24px;border-bottom:1px solid var(--border)}
+.settings-tab{padding:8px 16px;font-size:13px;color:var(--text3);cursor:pointer;background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s var(--ease);font-family:var(--font)}
+.settings-tab.on{color:var(--text);border-bottom-color:var(--text)}
+.settings-tab:hover{color:var(--text2)}
+.settings-panel{display:none}
+.settings-panel.on{display:block;animation:pageIn .15s var(--ease)}
+
+/* Action pills */
+.action-pill{display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:6px 14px 6px 10px;transition:border-color .15s var(--ease)}
+.action-pill:hover{border-color:rgba(255,255,255,.12)}
+.action-pill-key{font-family:var(--mono);font-size:10px;font-weight:600;background:var(--hover);padding:3px 6px;border-radius:4px;color:var(--text3);letter-spacing:.02em}
+.action-pill-label{font-size:12px;font-weight:500;color:var(--text2)}
+
 /* Status bar */
 .stat{
   flex-shrink:0;display:flex;align-items:center;gap:6px;
@@ -540,9 +554,7 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
     <a class="on" data-pg="home" onclick="nav(this)"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Home</a>
     <a data-pg="history" onclick="nav(this)"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>History</a>
     <a data-pg="meetings" onclick="nav(this)"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Meetings <span id="mtgRecDot" style="display:none;width:6px;height:6px;border-radius:50%;background:var(--red);margin-left:auto;animation:p .8s infinite"></span></a>
-    <a data-pg="dictionary" onclick="nav(this)"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Dictionary</a>
     <a data-pg="memories" onclick="nav(this)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Memories <span id="memCount" style="font-size:9px;color:var(--text3);margin-left:auto"></span></a>
-    <a data-pg="integrations" onclick="nav(this)"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Integrations <span id="acctBadge" style="font-size:9px;color:var(--text3);margin-left:auto"></span></a>
     <a data-pg="settings" onclick="nav(this)"><svg viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>Settings</a>
     <div class="sb-space"></div>
     <div class="sb-foot" id="sbFoot" style="font-size:10px;color:var(--text3)">v1.0.0</div>
@@ -551,13 +563,17 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
   <div class="main">
     <!-- HOME -->
     <div class="pg on" id="pg-home">
-      <div id="greeting" style="font-size:22px;font-weight:500;letter-spacing:-.02em;margin-bottom:4px"></div>
-      <div class="desc" style="margin-bottom:20px"><span style="font-family:var(--mono);font-size:10px;background:var(--hover);padding:2px 5px;border-radius:3px">⌥L</span> dictate &nbsp; <span style="font-family:var(--mono);font-size:10px;background:var(--hover);padding:2px 5px;border-radius:3px">⌥R</span> assistant</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div id="greeting" style="font-size:24px;font-weight:600;letter-spacing:-.03em;margin-bottom:16px"></div>
+      <div style="display:flex;gap:8px;margin-bottom:20px">
+        <div class="action-pill"><span class="action-pill-key">⌥L</span><span class="action-pill-label">Dictate</span></div>
+        <div class="action-pill"><span class="action-pill-key">⌥R</span><span class="action-pill-label">Assistant</span></div>
+        <div class="action-pill" onclick="openPalette()" style="cursor:pointer"><span class="action-pill-key">⌘K</span><span class="action-pill-label">Commands</span></div>
+      </div>
+      <div id="meetingPrepCard"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div id="todayCard"></div>
         <div id="todoCard"></div>
       </div>
-      <div id="meetingPrepCard"></div>
       <div id="followUpCard"></div>
       <div id="briefingCard" class="block" style="display:none">
         <div class="row" style="flex-direction:column;align-items:stretch;gap:8px;padding:14px">
@@ -583,20 +599,7 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
       <div id="hist"><div class="empty">Hold Left Option and speak.<br>Your dictations will appear here.</div></div>
     </div>
 
-    <!-- DICTIONARY -->
-    <div class="pg" id="pg-dictionary">
-      <h1>Dictionary</h1>
-      <div class="desc">Help Whisper spell names and jargon correctly. Snippets paste template text when triggered.</div>
-      <div class="label">Terms</div>
-      <div class="fr"><input class="inp" id="dInp" placeholder="Add a term..." onkeydown="if(event.key==='Enter')addTerm()"><button class="btn btn-p" onclick="addTerm()">Add</button></div>
-      <div class="tags" id="dTags"></div>
-      <div class="label">Auto-corrections</div>
-      <div class="fr"><input class="inp" id="cW" placeholder="Wrong..." style="flex:.4"><input class="inp" id="cR" placeholder="Correct..." style="flex:.6" onkeydown="if(event.key==='Enter')addCorr()"><button class="btn btn-g" onclick="addCorr()">Add</button></div>
-      <div id="cList"></div>
-      <div class="label">Snippets</div>
-      <div class="fr"><input class="inp" id="snT" placeholder="Trigger phrase..." style="flex:.35"><input class="inp" id="snV" placeholder="Text to paste..." style="flex:.65" onkeydown="if(event.key==='Enter')addSnip()"><button class="btn btn-g" onclick="addSnip()">Add</button></div>
-      <div id="snList"></div>
-    </div>
+    <!-- Dictionary content moved to Settings > Personalization -->
 
     <!-- MEMORIES -->
     <div class="pg" id="pg-memories">
@@ -612,29 +615,7 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
     </div>
 
     <!-- INTEGRATIONS -->
-    <div class="pg" id="pg-integrations">
-      <h1>Integrations</h1>
-      <div class="desc">Connect Google for calendar and email voice commands.</div>
-      <div id="oauthExpiredBanner" style="display:none;background:rgba(233,86,80,.1);border:1px solid rgba(233,86,80,.2);border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--red)">Google token expired or revoked. Please reconnect below.</div>
-      <div class="block" id="googleSetup">
-        <div class="row" style="flex-direction:column;align-items:stretch;gap:8px;padding:14px">
-          <div class="row-label">Google</div>
-          <div class="row-sub" id="credHint">Enter your OAuth credentials.</div>
-          <input class="inp" id="gCid" placeholder="Client ID">
-          <input class="inp" id="gCs" placeholder="Client Secret" type="password">
-          <button class="btn btn-p" id="gBtn" onclick="gConnect()" style="align-self:flex-start">Connect</button>
-        </div>
-      </div>
-      <div class="block" id="gConnected" style="display:none">
-        <div class="row">
-          <div><div class="row-label">Google</div><div class="row-sub" id="gEmail"></div></div>
-          <div style="display:flex;gap:6px">
-            <button class="btn btn-p" onclick="gReconnect()" id="gReconnectBtn" style="display:none;font-size:11px;padding:5px 10px">Reconnect</button>
-            <button class="btn btn-g" onclick="gDisconnect()">Disconnect</button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- Integrations content moved to Settings > AI Engine -->
 
     <!-- MEETINGS -->
     <div class="pg" id="pg-meetings">
@@ -685,113 +666,180 @@ select.inp{appearance:none;padding-right:24px;background:var(--bg) url("data:ima
     <!-- SETTINGS -->
     <div class="pg" id="pg-settings">
       <h1>Settings</h1>
-
-      <div class="label">AI Engine</div>
-      <div class="block">
-        <div class="row">
-          <div><div class="row-label">LLM Mode</div><div class="row-sub" id="llmModeStatus">Loading...</div></div>
-          <select class="inp" id="llmModeSelect" onchange="setLlmMode(this.value)" style="width:160px;font-size:12px">
-            <option value="hybrid">Hybrid (local + cloud)</option>
-            <option value="local">Local Only (offline)</option>
-            <option value="groq">Cloud Only (Groq)</option>
-          </select>
-        </div>
-        <div class="row" id="groqRow">
-          <div style="flex:1;min-width:0"><div class="row-label">Groq API Key</div><div class="row-sub" id="groqStatus">Optional — enables cloud models</div></div>
-          <div id="groqActions" style="display:flex;gap:6px;flex-shrink:0"></div>
-        </div>
+      <div class="settings-tabs">
+        <button class="settings-tab on" data-stab="ai" onclick="switchSettingsTab('ai',this)">AI Engine</button>
+        <button class="settings-tab" data-stab="voice" onclick="switchSettingsTab('voice',this)">Voice</button>
+        <button class="settings-tab" data-stab="personal" onclick="switchSettingsTab('personal',this)">Personalization</button>
+        <button class="settings-tab" data-stab="data" onclick="switchSettingsTab('data',this)">Data</button>
       </div>
 
-      <div class="label">Local Models</div>
-      <div id="modelBlock"></div>
-
-      <div class="label">Transcription</div>
-      <div class="block">
-        <div class="row">
-          <div><div class="row-label">Engine</div><div class="row-sub" id="backendStatus">Loading...</div></div>
-          <select class="inp" id="backendSelect" onchange="setBackend(this.value)" style="width:160px;font-size:12px">
-            <option value="groq">Groq API (cloud)</option>
-            <option value="mlx">MLX Whisper (local GPU)</option>
-            <option value="parakeet">Parakeet (local, fast)</option>
-            <option value="faster-whisper">Faster-Whisper (local CPU)</option>
-          </select>
+      <!-- AI Engine Tab -->
+      <div class="settings-panel on" id="stab-ai">
+        <div class="label">LLM</div>
+        <div class="block">
+          <div class="row">
+            <div><div class="row-label">Mode</div><div class="row-sub" id="llmModeStatus">Loading...</div></div>
+            <select class="inp" id="llmModeSelect" onchange="setLlmMode(this.value)" style="width:160px;font-size:12px">
+              <option value="hybrid">Hybrid (local + cloud)</option>
+              <option value="local">Local Only (offline)</option>
+              <option value="groq">Cloud Only (Groq)</option>
+            </select>
+          </div>
+          <div class="row" id="groqRow">
+            <div style="flex:1;min-width:0"><div class="row-label">Groq API Key</div><div class="row-sub" id="groqStatus">Optional — enables cloud models</div></div>
+            <div id="groqActions" style="display:flex;gap:6px;flex-shrink:0"></div>
+          </div>
         </div>
-        <div class="row">
-          <div><div class="row-label">Domain</div><div class="row-sub" id="domainStatus">General</div></div>
-          <select class="inp" id="domainSelect" onchange="setDomain(this.value)" style="width:160px;font-size:12px">
-            <option value="">General (no domain)</option>
-          </select>
-        </div>
-      </div>
 
-      <div class="label">Voice</div>
-      <div class="block" id="voiceBlock">
-        <div class="row" style="flex-direction:column;align-items:stretch;gap:6px;padding:14px">
-          <div class="row-sub">All voices run locally via Kokoro.</div>
-          <div id="voiceGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:4px"></div>
-        </div>
-        <div class="row">
-          <div style="flex:1"><div class="row-label">Speed</div><div class="row-sub"><span id="ttsSpeedVal">1.05</span>x</div></div>
-          <input type="range" id="ttsSpeedSlider" min="0.5" max="2.0" step="0.05" value="1.05" style="width:120px;accent-color:var(--blue)" oninput="document.getElementById('ttsSpeedVal').textContent=this.value" onchange="setTtsSpeed(this.value)">
-        </div>
-      </div>
+        <div class="label">Local Models</div>
+        <div id="modelBlock"></div>
 
-      <div class="label">Modes</div>
-      <div class="block">
-        <div class="row"><div><div class="row-label">Hands-Free</div><div class="row-sub">Continuous listening, auto-processes on silence</div></div><button id="togHF" class="tog" onclick="apiPost('toggle-hands-free')"></button></div>
-        <div class="row"><div><div class="row-label">Whisper Mode</div><div class="row-sub">Extra mic sensitivity for quiet speech</div></div><button id="togW" class="tog" onclick="apiPost('toggle-whisper')"></button></div>
-        <div class="row"><div><div class="row-label">Sound Feedback</div><div class="row-sub">Subtle sounds on start/stop/error</div></div><button id="togS" class="tog on" onclick="apiPost('toggle-sounds')"></button></div>
-      </div>
-
-      <div class="label">Privacy</div>
-      <div class="block">
-        <div class="row">
-          <div><div class="row-label">Clipboard Context</div><div class="row-sub">Let AI read clipboard for smarter responses</div></div>
-          <button id="togClip" class="tog" onclick="toggleClipboard()"></button>
+        <div class="label">Transcription</div>
+        <div class="block">
+          <div class="row">
+            <div><div class="row-label">Engine</div><div class="row-sub" id="backendStatus">Loading...</div></div>
+            <select class="inp" id="backendSelect" onchange="setBackend(this.value)" style="width:160px;font-size:12px">
+              <option value="groq">Groq API (cloud)</option>
+              <option value="mlx">MLX Whisper (local GPU)</option>
+              <option value="parakeet">Parakeet (local, fast)</option>
+              <option value="faster-whisper">Faster-Whisper (local CPU)</option>
+            </select>
+          </div>
+          <div class="row">
+            <div><div class="row-label">Domain</div><div class="row-sub" id="domainStatus">General</div></div>
+            <select class="inp" id="domainSelect" onchange="setDomain(this.value)" style="width:160px;font-size:12px">
+              <option value="">General (no domain)</option>
+            </select>
+          </div>
         </div>
-      </div>
 
-      <div class="label" style="display:flex;align-items:center;justify-content:space-between">Macros<button class="btn btn-g" onclick="showMacroForm()" style="font-size:10px;padding:3px 8px">+ New</button></div>
-      <div class="block" id="macroBlock">
-        <div class="row"><div class="row-sub" style="padding:4px 0">Loading...</div></div>
-      </div>
-      <div class="block" id="macroFormBlock" style="display:none">
-        <div style="padding:14px;display:flex;flex-direction:column;gap:8px">
-          <div class="row-label">New Macro</div>
-          <input class="inp" id="macroTrigger" placeholder='Trigger phrase (e.g. "email mode")'>
-          <input class="inp" id="macroDesc" placeholder="Description (optional)">
-          <div id="macroActionList"></div>
-          <button class="btn btn-g" onclick="addMacroAction()" style="font-size:11px;align-self:flex-start">+ Add action</button>
-          <div style="display:flex;gap:6px;margin-top:4px">
-            <button class="btn btn-p" onclick="saveMacro()" style="flex:1">Save</button>
-            <button class="btn btn-g" onclick="hideMacroForm()">Cancel</button>
+        <div class="label">Integrations</div>
+        <div id="oauthExpiredBanner" style="display:none;background:rgba(233,86,80,.1);border:1px solid rgba(233,86,80,.2);border-radius:6px;padding:10px 14px;margin-bottom:8px;font-size:12px;color:var(--red)">Google token expired or revoked. Please reconnect below.</div>
+        <div class="block" id="googleSetup">
+          <div class="row" style="flex-direction:column;align-items:stretch;gap:8px;padding:14px">
+            <div class="row-label">Google</div>
+            <div class="row-sub" id="credHint">Enter your OAuth credentials for Calendar + Gmail.</div>
+            <input class="inp" id="gCid" placeholder="Client ID">
+            <input class="inp" id="gCs" placeholder="Client Secret" type="password">
+            <button class="btn btn-p" id="gBtn" onclick="gConnect()" style="align-self:flex-start">Connect</button>
+          </div>
+        </div>
+        <div class="block" id="gConnected" style="display:none">
+          <div class="row">
+            <div><div class="row-label">Google</div><div class="row-sub" id="gEmail"></div></div>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-p" onclick="gReconnect()" id="gReconnectBtn" style="display:none;font-size:11px;padding:5px 10px">Reconnect</button>
+              <button class="btn btn-g" onclick="gDisconnect()">Disconnect</button>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="label">Appearance</div>
-      <div class="block">
-        <div class="row">
-          <div><div class="row-label">Light Mode</div><div class="row-sub">Switch to light theme</div></div>
-          <button id="togLight" class="tog" onclick="toggleLightMode()"></button>
+      <!-- Voice Tab -->
+      <div class="settings-panel" id="stab-voice">
+        <div class="label">TTS Voice</div>
+        <div class="block" id="voiceBlock">
+          <div class="row" style="flex-direction:column;align-items:stretch;gap:6px;padding:14px">
+            <div class="row-sub">All voices run locally via Kokoro.</div>
+            <div id="voiceGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:4px"></div>
+          </div>
+          <div class="row">
+            <div style="flex:1"><div class="row-label">Speed</div><div class="row-sub"><span id="ttsSpeedVal">1.05</span>x</div></div>
+            <input type="range" id="ttsSpeedSlider" min="0.5" max="2.0" step="0.05" value="1.05" style="width:120px;accent-color:var(--blue)" oninput="document.getElementById('ttsSpeedVal').textContent=this.value" onchange="setTtsSpeed(this.value)">
+          </div>
+        </div>
+
+        <div class="label">Modes</div>
+        <div class="block">
+          <div class="row"><div><div class="row-label">Hands-Free</div><div class="row-sub">Continuous listening, auto-processes on silence</div></div><button id="togHF" class="tog" onclick="apiPost('toggle-hands-free')"></button></div>
+          <div class="row"><div><div class="row-label">Whisper Mode</div><div class="row-sub">Extra mic sensitivity for quiet speech</div></div><button id="togW" class="tog" onclick="apiPost('toggle-whisper')"></button></div>
+          <div class="row"><div><div class="row-label">Sound Feedback</div><div class="row-sub">Subtle sounds on start/stop/error</div></div><button id="togS" class="tog on" onclick="apiPost('toggle-sounds')"></button></div>
         </div>
       </div>
 
-      <div class="label">Data</div>
-      <div class="block">
-        <div class="row" style="flex-direction:column;align-items:stretch;gap:8px;padding:14px">
-          <div class="row-label">Export</div>
-          <div style="display:flex;gap:4px;flex-wrap:wrap">
-            <a class="btn btn-g" href="http://127.0.0.1:8528/api/export/json" target="_blank" style="font-size:10px;padding:4px 10px">History (JSON)</a>
-            <a class="btn btn-g" href="http://127.0.0.1:8528/api/export/txt" target="_blank" style="font-size:10px;padding:4px 10px">History (TXT)</a>
-            <a class="btn btn-g" href="http://127.0.0.1:8528/api/export/pdf" target="_blank" style="font-size:10px;padding:4px 10px">History (PDF)</a>
-            <a class="btn btn-g" href="http://127.0.0.1:8528/api/memories/export" target="_blank" style="font-size:10px;padding:4px 10px">Memories</a>
-            <a class="btn btn-g" href="http://127.0.0.1:8528/api/export-logs" target="_blank" style="font-size:10px;padding:4px 10px">Logs</a>
+      <!-- Personalization Tab -->
+      <div class="settings-panel" id="stab-personal">
+        <div class="label">Dictionary</div>
+        <div class="block">
+          <div class="row" style="flex-direction:column;align-items:stretch;gap:8px;padding:14px">
+            <div class="row-sub">Help Whisper spell names and jargon correctly.</div>
+            <div class="fr"><input class="inp" id="dInp" placeholder="Add a term..." onkeydown="if(event.key==='Enter')addTerm()"><button class="btn btn-p" onclick="addTerm()">Add</button></div>
+            <div class="tags" id="dTags"></div>
           </div>
         </div>
-        <div class="row">
-          <div><div class="row-label">Clear History</div><div class="row-sub" id="histCount">0 entries</div></div>
-          <button class="btn btn-g" onclick="if(confirm('Clear all dictation history?'))apiPost('clear-history')" style="font-size:11px;padding:5px 10px;color:var(--red)">Clear</button>
+
+        <div class="label">Auto-corrections</div>
+        <div class="block">
+          <div class="row" style="flex-direction:column;align-items:stretch;gap:6px;padding:14px">
+            <div class="fr"><input class="inp" id="cW" placeholder="Wrong..." style="flex:.4"><input class="inp" id="cR" placeholder="Correct..." style="flex:.6" onkeydown="if(event.key==='Enter')addCorr()"><button class="btn btn-g" onclick="addCorr()">Add</button></div>
+            <div id="cList"></div>
+          </div>
+        </div>
+
+        <div class="label">Snippets</div>
+        <div class="block">
+          <div class="row" style="flex-direction:column;align-items:stretch;gap:6px;padding:14px">
+            <div class="fr"><input class="inp" id="snT" placeholder="Trigger phrase..." style="flex:.35"><input class="inp" id="snV" placeholder="Text to paste..." style="flex:.65" onkeydown="if(event.key==='Enter')addSnip()"><button class="btn btn-g" onclick="addSnip()">Add</button></div>
+            <div id="snList"></div>
+          </div>
+        </div>
+
+        <div class="label" style="display:flex;align-items:center;justify-content:space-between">Macros<button class="btn btn-g" onclick="showMacroForm()" style="font-size:10px;padding:3px 8px">+ New</button></div>
+        <div class="block" id="macroBlock">
+          <div class="row"><div class="row-sub" style="padding:4px 0">Loading...</div></div>
+        </div>
+        <div class="block" id="macroFormBlock" style="display:none">
+          <div style="padding:14px;display:flex;flex-direction:column;gap:8px">
+            <div class="row-label">New Macro</div>
+            <input class="inp" id="macroTrigger" placeholder='Trigger phrase (e.g. "email mode")'>
+            <input class="inp" id="macroDesc" placeholder="Description (optional)">
+            <div id="macroActionList"></div>
+            <button class="btn btn-g" onclick="addMacroAction()" style="font-size:11px;align-self:flex-start">+ Add action</button>
+            <div style="display:flex;gap:6px;margin-top:4px">
+              <button class="btn btn-p" onclick="saveMacro()" style="flex:1">Save</button>
+              <button class="btn btn-g" onclick="hideMacroForm()">Cancel</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="label">Privacy</div>
+        <div class="block">
+          <div class="row">
+            <div><div class="row-label">Clipboard Context</div><div class="row-sub">Let AI read clipboard for smarter responses</div></div>
+            <button id="togClip" class="tog" onclick="toggleClipboard()"></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Data Tab -->
+      <div class="settings-panel" id="stab-data">
+        <div class="label">Appearance</div>
+        <div class="block">
+          <div class="row">
+            <div><div class="row-label">Light Mode</div><div class="row-sub">Switch to light theme</div></div>
+            <button id="togLight" class="tog" onclick="toggleLightMode()"></button>
+          </div>
+        </div>
+
+        <div class="label">Export</div>
+        <div class="block">
+          <div class="row" style="flex-direction:column;align-items:stretch;gap:8px;padding:14px">
+            <div style="display:flex;gap:4px;flex-wrap:wrap">
+              <a class="btn btn-g" href="http://127.0.0.1:8528/api/export/json" target="_blank" style="font-size:10px;padding:4px 10px">History (JSON)</a>
+              <a class="btn btn-g" href="http://127.0.0.1:8528/api/export/txt" target="_blank" style="font-size:10px;padding:4px 10px">History (TXT)</a>
+              <a class="btn btn-g" href="http://127.0.0.1:8528/api/export/pdf" target="_blank" style="font-size:10px;padding:4px 10px">History (PDF)</a>
+              <a class="btn btn-g" href="http://127.0.0.1:8528/api/memories/export" target="_blank" style="font-size:10px;padding:4px 10px">Memories</a>
+              <a class="btn btn-g" href="http://127.0.0.1:8528/api/export-logs" target="_blank" style="font-size:10px;padding:4px 10px">Logs</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="label">History</div>
+        <div class="block">
+          <div class="row">
+            <div><div class="row-label">Clear History</div><div class="row-sub" id="histCount">0 entries</div></div>
+            <button class="btn btn-g" onclick="if(confirm('Clear all dictation history?'))apiPost('clear-history')" style="font-size:11px;padding:5px 10px;color:var(--red)">Clear</button>
+          </div>
         </div>
       </div>
     </div>
@@ -810,9 +858,8 @@ function nav(el){
   document.getElementById('pg-'+el.dataset.pg).classList.add('on');
   if(_nextMeetingTimer){clearInterval(_nextMeetingTimer);_nextMeetingTimer=null}
   if(el.dataset.pg==='home'){loadBriefing();loadFollowUps();loadNextMeeting();_nextMeetingTimer=setInterval(loadNextMeeting,60000)}
-  if(el.dataset.pg==='integrations')gLoad();
   if(el.dataset.pg==='meetings')loadMeetings();
-  if(el.dataset.pg==='settings'){loadVoices();chkLlmMode();chkGroq();loadDomains();loadTtsSpeed();loadPrivacy();loadMacros();syncLightToggle()}
+  if(el.dataset.pg==='settings'){switchSettingsTab('ai',document.querySelector('.settings-tab[data-stab="ai"]'))}
   if(el.dataset.pg==='memories')loadMemories();
   if(el.dataset.pg==='history')renderHist();
 }
@@ -1772,10 +1819,8 @@ const PALETTE_COMMANDS=[
   {label:'Go to Home',icon:'⌂',hint:'⌘1',action:()=>nav(document.querySelector('[data-pg="home"]'))},
   {label:'Go to History',icon:'≡',hint:'⌘2',action:()=>nav(document.querySelector('[data-pg="history"]'))},
   {label:'Go to Meetings',icon:'📅',hint:'⌘3',action:()=>nav(document.querySelector('[data-pg="meetings"]'))},
-  {label:'Go to Dictionary',icon:'📖',hint:'⌘4',action:()=>nav(document.querySelector('[data-pg="dictionary"]'))},
-  {label:'Go to Memories',icon:'💡',hint:'⌘5',action:()=>nav(document.querySelector('[data-pg="memories"]'))},
-  {label:'Go to Integrations',icon:'🔗',hint:'⌘6',action:()=>nav(document.querySelector('[data-pg="integrations"]'))},
-  {label:'Go to Settings',icon:'⚙',hint:'⌘,',action:()=>nav(document.querySelector('[data-pg="settings"]'))},
+  {label:'Go to Memories',icon:'💡',hint:'⌘4',action:()=>nav(document.querySelector('[data-pg="memories"]'))},
+  {label:'Go to Settings',icon:'⚙',hint:'⌘5',action:()=>nav(document.querySelector('[data-pg="settings"]'))},
   {label:'Speak Morning Briefing',icon:'☀',action:()=>fetch(`${API}/api/briefing/speak`,{method:'POST'})},
   {label:'Search History',icon:'🔍',hint:'⌘F',action:()=>{nav(document.querySelector('[data-pg="history"]'));setTimeout(()=>document.getElementById('histSearch')?.focus(),100)}},
   {label:'Start Meeting Recording',icon:'🎙',action:()=>startMeetingRecord('Meeting')},
@@ -1816,8 +1861,8 @@ document.addEventListener('keydown',e=>{
   if(meta&&e.key==='k'){e.preventDefault();openPalette();return}
   if(meta&&e.key===','){e.preventDefault();nav(document.querySelector('[data-pg="settings"]'));return}
   if(meta&&e.key==='f'){e.preventDefault();nav(document.querySelector('[data-pg="history"]'));setTimeout(()=>document.getElementById('histSearch')?.focus(),100);return}
-  const pages=['home','history','meetings','dictionary','memories','integrations','settings'];
-  if(meta&&e.key>='1'&&e.key<='7'){const pg=pages[parseInt(e.key)-1];if(pg){e.preventDefault();nav(document.querySelector(`[data-pg="${pg}"]`))}}
+  const pages=['home','history','meetings','memories','settings'];
+  if(meta&&e.key>='1'&&e.key<='5'){const pg=pages[parseInt(e.key)-1];if(pg){e.preventDefault();nav(document.querySelector(`[data-pg="${pg}"]`))}}
 });
 
 // ── Offline Indicator ─────────────────────────────────────────────────
@@ -1830,6 +1875,17 @@ async function offlineCheck(){
   }catch{foot.innerHTML='<span style="width:6px;height:6px;border-radius:50%;background:var(--red);display:inline-block;margin-right:4px"></span>Disconnected';foot.style.color='var(--red)'}
 }
 setInterval(offlineCheck,30000);
+
+// ── Settings Tabs ─────────────────────────────────────────────────────
+function switchSettingsTab(tab,el){
+  document.querySelectorAll('.settings-tab').forEach(t=>t.classList.toggle('on',t===el));
+  document.querySelectorAll('.settings-panel').forEach(p=>p.classList.toggle('on',p.id==='stab-'+tab));
+  // Load data for the active tab
+  if(tab==='ai'){chkLlmMode();chkGroq();loadDomains();gLoad()}
+  if(tab==='voice'){loadVoices();loadTtsSpeed()}
+  if(tab==='personal'){loadMacros();loadPrivacy()}
+  if(tab==='data'){loadPrivacy();syncLightToggle()}
+}
 
 // ── Light Mode ────────────────────────────────────────────────────────
 function toggleLightMode(){
