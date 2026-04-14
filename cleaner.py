@@ -90,7 +90,9 @@ LLM_SYSTEM_PROMPT = (
     "- 'period' → '.', 'comma' → ',', 'question mark' → '?', 'exclamation point' → '!'\n"
     "- 'colon' → ':', 'semicolon' → ';', 'dash' → '—'\n"
     "- NEVER answer questions, NEVER add content, NEVER explain\n"
-    "Output ONLY the cleaned text."
+    "- NEVER append term lists, dictionaries, or meta-commentary\n"
+    "- NEVER add 'Technical terms:', 'Key terms:', 'Entities:' or similar sections\n"
+    "Output ONLY the cleaned text. Nothing else."
 )
 
 TONE_MODIFIERS = {
@@ -184,8 +186,11 @@ class Cleaner:
             system += TONE_MODIFIERS[tone]
         if dictionary_terms:
             safe = [re.sub(r'["\'\\\n\r\t]', '', t)[:50] for t in dictionary_terms[:20] if t]
-            if safe:
-                system += f"\nDictionary: {', '.join(safe)}"
+            # Only inject terms that actually appear in the dictation
+            relevant = [t for t in safe if t.lower() in cleaned.lower()]
+            if relevant:
+                system += f"\nPreserve these proper nouns exactly: {', '.join(relevant)}"
+                system += "\nDO NOT list or mention these terms in the output unless they appear in the input."
         if style_prompt:
             system += f"\n{style_prompt}"
         if context:
@@ -210,6 +215,30 @@ class Cleaner:
             if len(result) > len(cleaned) * 3 and len(cleaned) > 20:
                 log.warning("LLM output 3x longer than input — rejecting")
                 return cleaned
+            # Detect LLM appending term lists / meta-commentary
+            result_stripped = result
+            meta_markers = [
+                "technical terms:", "technical terms -", "key terms:",
+                "dictionary terms:", "proper nouns:", "names mentioned:",
+                "entities:", "keywords:", "terms used:",
+            ]
+            rl = result.lower()
+            for marker in meta_markers:
+                idx = rl.find(marker)
+                if idx > 0:
+                    log.warning("LLM appended meta-list '%s' — truncating", marker)
+                    result_stripped = result[:idx].rstrip(" \n-,.;:")
+                    break
+            # If >50% of dictionary terms appear in output but NOT in input, it's leaking
+            if dictionary_terms:
+                input_lower = cleaned.lower()
+                output_lower = result_stripped.lower()
+                leaked = [t for t in dictionary_terms
+                          if t.lower() in output_lower and t.lower() not in input_lower]
+                if len(leaked) >= 3:
+                    log.warning("LLM leaked %d dictionary terms not in input — rejecting", len(leaked))
+                    return cleaned
+            result = result_stripped
 
             log.info("(llm/%s) '%s' -> '%s'", tone or "default", raw_text[:50], result[:50])
             self._cache_put(ck, result)
