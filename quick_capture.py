@@ -32,6 +32,31 @@ _PATTERNS = [
 ]
 
 
+_FOLLOWUP_PATTERNS = [
+    r"i'?ll\s+(.+?)\s+by\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|tonight|end of (?:day|week)|next week|eod|eow)",
+    r"(?:i'?ll|i will)\s+(?:send|share|email|forward|deliver)\s+(.+?)\s+(?:by|before|on)\s+(.+?)(?:\.|$)",
+    r"(?:follow up|circle back)\s+(?:with|on)\s+(.+?)\s+(?:by|on)\s+(.+?)(?:\.|$)",
+    r"(?:due|deadline)[:.]?\s+(.+?)(?:\.|$)",
+]
+
+
+def detect_followup(text: str) -> dict | None:
+    """Detect 'I'll do X by Y' commitments. Returns {what, when} or None."""
+    if not text or len(text) < 10:
+        return None
+    tl = text.lower()
+    for pattern in _FOLLOWUP_PATTERNS:
+        m = re.search(pattern, tl)
+        if m:
+            groups = m.groups()
+            what = (groups[0] if len(groups) > 0 else "").strip()[:200]
+            when = (groups[1] if len(groups) > 1 else "").strip()[:50]
+            if what:
+                log.info("Follow-up detected: '%s' by '%s'", what[:40], when)
+                return {"what": what, "when": when}
+    return None
+
+
 def detect(raw_text: str) -> tuple[str, str] | None:
     """Detect if text is a quick capture command.
 

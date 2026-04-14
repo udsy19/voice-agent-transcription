@@ -1620,6 +1620,17 @@ def process_audio(audio):
             set_status("idle", f"Done ({dur:.1f}s)")
             return
 
+        # === Voice follow-up detection (passive — runs alongside other capture) ===
+        if S.recording_mode == "dictation":
+            try:
+                fu = quick_capture.detect_followup(raw_text)
+                if fu:
+                    import follow_ups as _fu
+                    _fu.add(to=fu["what"][:60], subject=fu.get("when", "soon"), message_id=f"voice_{int(time.time())}")
+                    rb.pill_notify(f"Tracking: {fu['what'][:40]}", "followup", 3000) if hasattr(rb, "pill_notify") else None
+            except Exception as _e:
+                log.debug("Follow-up detect failed: %s", _e)
+
         # === Quick Capture (dictation mode only) ===
         if S.recording_mode == "dictation":
             capture = quick_capture.detect(raw_text)

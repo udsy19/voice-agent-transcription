@@ -368,6 +368,52 @@ def get_telemetry_summary(limit: int = 1000) -> dict:
     return {"total": total, "events": counts}
 
 
+# ── LLM Output Schemas (Pydantic) ────────────────────────────────────────
+
+try:
+    from pydantic import BaseModel, ValidationError, Field
+    from typing import List, Optional
+
+    class MeetingSummarySchema(BaseModel):
+        key_points: List[str] = Field(default_factory=list, max_length=20)
+        action_items: List[str] = Field(default_factory=list, max_length=20)
+        decisions: List[str] = Field(default_factory=list, max_length=20)
+
+    class StandupSchema(BaseModel):
+        yesterday: List[str] = Field(default_factory=list, max_length=10)
+        today: List[str] = Field(default_factory=list, max_length=10)
+        blockers: List[str] = Field(default_factory=list, max_length=10)
+
+    def validate_meeting_summary(data: dict) -> dict:
+        """Validate + sanitize meeting summary. Returns safe dict or empty fallback."""
+        try:
+            m = MeetingSummarySchema(**data)
+            return {
+                "key_points": [str(x)[:500] for x in m.key_points],
+                "action_items": [str(x)[:500] for x in m.action_items],
+                "decisions": [str(x)[:500] for x in m.decisions],
+            }
+        except (ValidationError, TypeError, ValueError) as e:
+            log.warning("MeetingSummary validation failed: %s", e)
+            return {"key_points": [], "action_items": [], "decisions": [], "_error": "invalid"}
+
+    _has_pydantic = True
+except ImportError:
+    log.warning("Pydantic not available — skipping schema validation")
+    _has_pydantic = False
+
+    def validate_meeting_summary(data: dict) -> dict:
+        # Fallback validation without pydantic
+        out = {"key_points": [], "action_items": [], "decisions": []}
+        if not isinstance(data, dict):
+            return {**out, "_error": "not_dict"}
+        for k in out:
+            v = data.get(k, [])
+            if isinstance(v, list):
+                out[k] = [str(x)[:500] for x in v[:20] if x]
+        return out
+
+
 # ── Schema Migration ─────────────────────────────────────────────────────
 
 SCHEMA_VERSION = 1

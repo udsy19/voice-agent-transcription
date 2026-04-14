@@ -37,6 +37,18 @@ html.light .btn-g{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.06)}
 html.light .cmdpal{background:rgba(255,255,255,.85);backdrop-filter:var(--glass);border-color:rgba(0,0,0,.08)}
 html.light .cmdpal-item.sel{background:rgba(0,0,0,.04)}
 html.light .mtg-toast{background:rgba(255,255,255,.85);backdrop-filter:var(--glass)}
+html.light .action-pill{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.06)}
+html.light .action-pill:hover{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.1)}
+html.light .action-pill-key{background:rgba(0,0,0,.05)}
+html.light .settings-tabs{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.05)}
+html.light .settings-tab.on{background:rgba(0,0,0,.04)}
+html.light .tag{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.06)}
+html.light .tog{background:rgba(0,0,0,.06);border-color:rgba(0,0,0,.06)}
+html.light input.inp,html.light select.inp{background:rgba(0,0,0,.02)}
+html.light .live-entry{border-left-color:var(--accent)}
+html.light .entry-badge.assist{background:rgba(99,102,241,.1);color:var(--accent)}
+html.light .empty{color:var(--text3)}
+html.light ::selection{background:rgba(99,102,241,.2)}
 *{margin:0;padding:0;box-sizing:border-box}
 ::selection{background:rgba(124,138,255,.25)}
 body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;overflow:hidden;height:100vh;display:flex;flex-direction:column;font-size:14px;line-height:1.6;font-weight:300}
@@ -85,6 +97,18 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 .main::-webkit-scrollbar{width:0}
 
 .pg{display:none;max-width:720px;margin:0 auto;padding:8px 48px 64px;animation:pageIn .25s var(--ease)}
+@media (max-width:680px){
+  .sb{width:60px;padding:12px 6px}
+  .sb a{justify-content:center;padding:9px 6px;gap:0}
+  .sb a span,.sb a:not(.on)::after{display:none}
+  .sb-foot{display:none}
+  .pg{padding:8px 24px 64px}
+}
+@media (max-width:480px){
+  .pg{padding:8px 16px 64px}
+  .pg h1{font-size:22px}
+  #pg-home>div[style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr!important}
+}
 .pg.on{display:block}
 @keyframes pageIn{from{opacity:0;transform:translateY(6px) scale(.995)}to{opacity:1;transform:translateY(0) scale(1)}}
 .pg h1{font-size:26px;font-weight:600;letter-spacing:-.03em;margin-bottom:4px}
@@ -248,7 +272,7 @@ select.inp{appearance:none;padding-right:24px;background:rgba(255,255,255,.02) u
 .typing-cursor{display:inline-block;width:1.5px;height:14px;background:var(--accent);margin-left:2px;vertical-align:text-bottom;animation:blink .8s step-end infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
 
-.empty{text-align:center;padding:64px 16px;color:var(--text3);font-size:14px;line-height:1.8}
+.empty{text-align:center;padding:80px 16px;color:var(--text3);font-size:13px;line-height:1.8;font-weight:300;letter-spacing:.01em;background:var(--surface);backdrop-filter:var(--glass);border:1px solid var(--border);border-radius:var(--radius);margin-top:8px}
 
 /* Settings tabs — pill style */
 .settings-tabs{display:flex;gap:4px;margin-bottom:28px;background:rgba(255,255,255,.02);border-radius:12px;padding:3px;border:1px solid var(--border)}
@@ -615,10 +639,14 @@ select.inp{appearance:none;padding-right:24px;background:rgba(255,255,255,.02) u
     <div class="pg" id="pg-memories">
       <h1>Memories</h1>
       <div class="desc">Everything learned about you, organized by category.</div>
-      <div class="fr" style="margin-bottom:12px">
+      <div class="fr" style="margin-bottom:8px">
         <input class="inp" id="memSearch" placeholder="Search memories..." onkeydown="if(event.key==='Enter')searchMem()">
         <button class="btn btn-p" onclick="searchMem()">Search</button>
         <a class="btn btn-g" href="http://127.0.0.1:8528/api/memories/export" target="_blank" style="font-size:10px;padding:6px 10px;white-space:nowrap">Export</a>
+      </div>
+      <div class="fr" style="margin-bottom:16px">
+        <input class="inp" id="memAdd" placeholder='Add a memory... (e.g. "I prefer window seats")' onkeydown="if(event.key==='Enter')addMemoryManual()">
+        <button class="btn btn-g" onclick="addMemoryManual()">Add</button>
       </div>
       <div id="memResults" style="display:none;margin-bottom:16px"></div>
       <div id="memBoxes"></div>
@@ -759,6 +787,21 @@ select.inp{appearance:none;padding-right:24px;background:rgba(255,255,255,.02) u
           </div>
         </div>
 
+        <div class="label">Hotkey</div>
+        <div class="block">
+          <div class="row">
+            <div><div class="row-label">Trigger key</div><div class="row-sub" id="hotkeyStatus">Right Option (⌥R)</div></div>
+            <select class="inp" id="hotkeySelect" onchange="setHotkey(this.value)" style="width:160px;font-size:12px">
+              <option value="alt_r">Right Option (⌥R)</option>
+              <option value="alt_l">Left Option (⌥L)</option>
+              <option value="ctrl_r">Right Control (⌃R)</option>
+              <option value="ctrl_l">Left Control (⌃L)</option>
+              <option value="cmd_r">Right Command (⌘R)</option>
+              <option value="fn">Fn key (F20)</option>
+            </select>
+          </div>
+        </div>
+
         <div class="label">Modes</div>
         <div class="block">
           <div class="row"><div><div class="row-label">Hands-Free</div><div class="row-sub">Continuous listening, auto-processes on silence</div></div><button id="togHF" class="tog" onclick="apiPost('toggle-hands-free')"></button></div>
@@ -849,6 +892,28 @@ select.inp{appearance:none;padding-right:24px;background:rgba(255,255,255,.02) u
           <div class="row">
             <div><div class="row-label">Clear History</div><div class="row-sub" id="histCount">0 entries</div></div>
             <button class="btn btn-g" onclick="if(confirm('Clear all dictation history?'))apiPost('clear-history')" style="font-size:11px;padding:5px 10px;color:var(--red)">Clear</button>
+          </div>
+        </div>
+
+        <div class="label" style="display:flex;align-items:center;justify-content:space-between">Diagnostics<button class="btn btn-g" onclick="loadDiagnostics()" style="font-size:10px;padding:3px 8px">Refresh</button></div>
+        <div class="block">
+          <div class="row" style="flex-direction:column;align-items:stretch;gap:10px;padding:14px">
+            <div id="healthList"></div>
+            <div class="row-sub" id="quotaInfo"></div>
+          </div>
+        </div>
+        <div class="label">Recent errors</div>
+        <div class="block">
+          <div class="row" style="flex-direction:column;align-items:stretch;gap:8px;padding:14px">
+            <div id="errorList" style="max-height:200px;overflow-y:auto"></div>
+            <button class="btn btn-g" onclick="clearErrors()" style="font-size:11px;padding:4px 10px;align-self:flex-start">Clear errors</button>
+          </div>
+        </div>
+        <div class="label">Telemetry</div>
+        <div class="block">
+          <div class="row">
+            <div><div class="row-label">Local telemetry</div><div class="row-sub">Track usage locally (never sent anywhere)</div></div>
+            <button id="togTelemetry" class="tog" onclick="toggleTelemetry()"></button>
           </div>
         </div>
       </div>
@@ -1149,6 +1214,50 @@ async function loadTtsSpeed(){
 }
 async function setTtsSpeed(v){
   try{await fetch(`${API}/api/tts/speed`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({speed:parseFloat(v)})})}catch{}
+}
+const HOTKEY_LABELS={alt_r:'Right Option (⌥R)',alt_l:'Left Option (⌥L)',ctrl_r:'Right Control (⌃R)',ctrl_l:'Left Control (⌃L)',cmd_r:'Right Command (⌘R)',fn:'Fn key (F20)'};
+async function loadHotkey(){
+  try{const r=await fetch(`${API}/api/hotkey`);const d=await r.json();
+    document.getElementById('hotkeySelect').value=d.key||'alt_r';
+    document.getElementById('hotkeyStatus').textContent=HOTKEY_LABELS[d.key]||d.key;
+  }catch{}
+}
+async function setHotkey(k){
+  try{await fetch(`${API}/api/hotkey`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})});
+    document.getElementById('hotkeyStatus').textContent=HOTKEY_LABELS[k]||k;
+  }catch{}
+}
+
+// Diagnostics
+const HEALTH_LABELS={groq:'Groq Cloud',google:'Google',local_llm:'Local LLM',kokoro:'Kokoro TTS',disk:'Disk Space'};
+async function loadDiagnostics(){
+  try{
+    const [d,e]=await Promise.all([fetch(`${API}/api/diagnostics`).then(r=>r.json()),fetch(`${API}/api/errors`).then(r=>r.json())]);
+    // Health
+    const hl=document.getElementById('healthList');
+    hl.innerHTML=Object.entries(d.health||{}).map(([k,v])=>{
+      const color=v.ok===true?'var(--green)':v.ok===false?'var(--red)':'var(--text3)';
+      const dot=`<span style="width:6px;height:6px;border-radius:50%;background:${color};display:inline-block;margin-right:8px;flex-shrink:0"></span>`;
+      return `<div style="display:flex;align-items:center;font-size:12px;padding:3px 0">${dot}<span style="flex:1">${esc(HEALTH_LABELS[k]||k)}</span><span style="color:var(--text3);font-size:11px">${esc(v.msg||'')}</span></div>`;
+    }).join('');
+    // Quota
+    const q=d.quota||{};
+    document.getElementById('quotaInfo').textContent=`Groq calls today: ${q.count||0} · Schema v${d.schema_version||0} · ${d.history_count||0} entries in memory`;
+    // Errors
+    const errs=e.errors||[];
+    const el=document.getElementById('errorList');
+    if(!errs.length){el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:4px 0">No recent errors</div>'}
+    else{el.innerHTML=errs.slice(0,15).map(er=>`<div style="font-size:11px;padding:5px 0;border-bottom:1px solid var(--border)"><div style="display:flex;justify-content:space-between"><span style="color:var(--red);font-family:var(--mono);font-size:10px">${esc(er.category)}</span><span style="color:var(--text3);font-size:10px">${esc(er.ts)}</span></div><div style="color:var(--text2);margin-top:2px">${esc(er.message)}</div></div>`).join('')}
+    // Telemetry toggle
+    document.getElementById('togTelemetry').classList.toggle('on',(d.telemetry?.total||0)>0);
+  }catch(e){console.log('diagnostics err',e)}
+}
+async function clearErrors(){await fetch(`${API}/api/errors/clear`,{method:'POST'});loadDiagnostics()}
+async function toggleTelemetry(){
+  const tog=document.getElementById('togTelemetry');
+  const newState=!tog.classList.contains('on');
+  tog.classList.toggle('on',newState);
+  await fetch(`${API}/api/telemetry/toggle`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:newState})});
 }
 
 // Privacy
@@ -1814,6 +1923,15 @@ async function searchMem(){
   }catch{}
 }
 
+async function addMemoryManual(){
+  const inp=document.getElementById('memAdd');
+  const text=inp.value.trim();if(!text)return;
+  inp.disabled=true;
+  try{await fetch(`${API}/api/memories/add`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
+    inp.value='';loadMemories();
+  }catch{}
+  inp.disabled=false;inp.focus();
+}
 async function deleteMem(id){
   await fetch(`${API}/api/memories/${id}`,{method:'DELETE'});
   loadMemories();
@@ -1908,9 +2026,9 @@ function switchSettingsTab(tab,el){
   document.querySelectorAll('.settings-panel').forEach(p=>p.classList.toggle('on',p.id==='stab-'+tab));
   // Load data for the active tab
   if(tab==='ai'){chkLlmMode();chkGroq();loadDomains();gLoad()}
-  if(tab==='voice'){loadVoices();loadTtsSpeed()}
+  if(tab==='voice'){loadVoices();loadTtsSpeed();loadHotkey()}
   if(tab==='personal'){loadMacros();loadPrivacy()}
-  if(tab==='data'){loadPrivacy();syncLightToggle()}
+  if(tab==='data'){loadPrivacy();syncLightToggle();loadDiagnostics()}
 }
 
 // ── Light Mode ────────────────────────────────────────────────────────

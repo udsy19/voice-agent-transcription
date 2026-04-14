@@ -321,13 +321,9 @@ Respond ONLY with valid JSON."""
                 parsed = json.loads(text)
                 if not isinstance(parsed, dict):
                     raise ValueError("Summary not a dict")
-                # Validate + sanitize each field
-                summary = {"key_points": [], "action_items": [], "decisions": []}
-                for field in ("key_points", "action_items", "decisions"):
-                    items = parsed.get(field, [])
-                    if isinstance(items, list):
-                        summary[field] = [str(x)[:500] for x in items[:20] if x and isinstance(x, (str, int, float))]
-                meeting["summary"] = summary
+                # Validate via pydantic schema
+                import robustness as _rb
+                meeting["summary"] = _rb.validate_meeting_summary(parsed)
             except Exception as e:
                 log.error("Meeting summarization failed: %s", e)
                 meeting["summary"] = {
