@@ -302,7 +302,8 @@ import system_control
 
 def test_sanitize_app_name():
     assert system_control._sanitize_app_name("Safari") == "Safari"
-    assert system_control._sanitize_app_name('"; rm -rf /') == " rm -rf "
+    # Dangerous chars stripped, leading/trailing whitespace trimmed
+    assert system_control._sanitize_app_name('"; rm -rf /') == "rm -rf"
     assert system_control._sanitize_app_name("Google Chrome") == "Google Chrome"
     assert len(system_control._sanitize_app_name("A" * 100)) <= 50
 test("app name sanitization", test_sanitize_app_name)

@@ -258,16 +258,18 @@ def run_health_checks(oauth_mgr=None):
         if not GROQ_API_KEY:
             update_health("groq", None, "No API key")
         else:
-            import urllib.request, urllib.error
-            req = urllib.request.Request(
-                "https://api.groq.com/openai/v1/models",
-                headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
-            )
+            # Use httpx with certifi (already a dependency) — handles SSL properly
+            import httpx, certifi
             try:
-                with urllib.request.urlopen(req, timeout=5) as r:
-                    update_health("groq", r.status == 200, f"HTTP {r.status}")
-            except urllib.error.HTTPError as e:
-                update_health("groq", e.code == 401, f"HTTP {e.code}")  # 401 means reachable
+                with httpx.Client(verify=certifi.where(), timeout=5) as client:
+                    r = client.get("https://api.groq.com/openai/v1/models",
+                                   headers={"Authorization": f"Bearer {GROQ_API_KEY}"})
+                    if r.status_code == 200:
+                        update_health("groq", True, "Connected")
+                    elif r.status_code == 401:
+                        update_health("groq", False, "Invalid API key")
+                    else:
+                        update_health("groq", False, f"HTTP {r.status_code}")
             except Exception as e:
                 update_health("groq", False, f"Unreachable: {str(e)[:60]}")
     except Exception as e:

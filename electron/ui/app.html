@@ -183,12 +183,14 @@ html.light .main::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.15)}
 }
 html.light .block:hover{box-shadow:0 0 0 1px rgba(0,0,0,.02) inset, 0 6px 24px rgba(0,0,0,.06)}
 .row{
-  display:flex;align-items:center;justify-content:space-between;
+  display:flex;align-items:center;justify-content:space-between;gap:16px;
   padding:12px 16px;border-bottom:1px solid var(--border);
 }
 .row:last-child{border-bottom:none}
-.row-label{font-size:13px;font-weight:500}
-.row-sub{font-size:11px;color:var(--text3);margin-top:2px;font-weight:300}
+.row>div:first-child{flex:1;min-width:0;overflow:hidden}
+.row>div:last-child,.row>button:last-child,.row>select:last-child,.row>input:last-child,.row>a:last-child{flex-shrink:0}
+.row-label{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row-sub{font-size:11px;color:var(--text3);margin-top:2px;font-weight:300;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* Inputs */
 .fr{display:flex;gap:6px;margin-bottom:6px}
@@ -862,18 +864,34 @@ html.light .skel{background:linear-gradient(90deg,rgba(0,0,0,.03) 0%,rgba(0,0,0,
           </div>
         </div>
 
-        <div class="label">Hotkey</div>
+        <div class="label">Hotkeys</div>
         <div class="block">
           <div class="row">
-            <div><div class="row-label">Trigger key</div><div class="row-sub" id="hotkeyStatus">Right Option (⌥R)</div></div>
-            <select class="inp" id="hotkeySelect" onchange="setHotkey(this.value)" style="width:160px;font-size:12px">
+            <div><div class="row-label">Dictation</div><div class="row-sub">Hold to dictate text</div></div>
+            <select class="inp" id="hotkeyDictation" onchange="setHotkeys()" style="width:180px;font-size:12px">
+              <option value="alt_l">Left Option (⌥L)</option>
+              <option value="alt_r">Right Option (⌥R)</option>
+              <option value="ctrl_l">Left Control (⌃L)</option>
+              <option value="ctrl_r">Right Control (⌃R)</option>
+              <option value="cmd_l">Left Command (⌘L)</option>
+              <option value="cmd_r">Right Command (⌘R)</option>
+              <option value="shift_r">Right Shift (⇧R)</option>
+            </select>
+          </div>
+          <div class="row">
+            <div><div class="row-label">Assistant</div><div class="row-sub">Hold to talk to AI</div></div>
+            <select class="inp" id="hotkeyAssistant" onchange="setHotkeys()" style="width:180px;font-size:12px">
               <option value="alt_r">Right Option (⌥R)</option>
               <option value="alt_l">Left Option (⌥L)</option>
               <option value="ctrl_r">Right Control (⌃R)</option>
               <option value="ctrl_l">Left Control (⌃L)</option>
               <option value="cmd_r">Right Command (⌘R)</option>
-              <option value="fn">Fn key (F20)</option>
+              <option value="cmd_l">Left Command (⌘L)</option>
+              <option value="shift_r">Right Shift (⇧R)</option>
             </select>
+          </div>
+          <div class="row" id="hotkeyError" style="display:none">
+            <div class="row-sub" style="color:var(--red)" id="hotkeyErrorText"></div>
           </div>
         </div>
 
@@ -1308,17 +1326,27 @@ async function loadTtsSpeed(){
 async function setTtsSpeed(v){
   try{await fetch(`${API}/api/tts/speed`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({speed:parseFloat(v)})})}catch{}
 }
-const HOTKEY_LABELS={alt_r:'Right Option (⌥R)',alt_l:'Left Option (⌥L)',ctrl_r:'Right Control (⌃R)',ctrl_l:'Left Control (⌃L)',cmd_r:'Right Command (⌘R)',fn:'Fn key (F20)'};
 async function loadHotkey(){
   try{const r=await fetch(`${API}/api/hotkey`);const d=await r.json();
-    document.getElementById('hotkeySelect').value=d.key||'alt_r';
-    document.getElementById('hotkeyStatus').textContent=HOTKEY_LABELS[d.key]||d.key;
+    document.getElementById('hotkeyDictation').value=d.dictation||'alt_l';
+    document.getElementById('hotkeyAssistant').value=d.assistant||'alt_r';
   }catch{}
 }
-async function setHotkey(k){
-  try{await fetch(`${API}/api/hotkey`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})});
-    document.getElementById('hotkeyStatus').textContent=HOTKEY_LABELS[k]||k;
-  }catch{}
+async function setHotkeys(){
+  const d=document.getElementById('hotkeyDictation').value;
+  const a=document.getElementById('hotkeyAssistant').value;
+  const errRow=document.getElementById('hotkeyError');
+  const errTxt=document.getElementById('hotkeyErrorText');
+  if(d===a){
+    errRow.style.display='';errTxt.textContent='Dictation and Assistant must use different keys';
+    return;
+  }
+  try{
+    const r=await fetch(`${API}/api/hotkey`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dictation:d,assistant:a})});
+    const res=await r.json();
+    if(res.ok){errRow.style.display='none';}
+    else{errRow.style.display='';errTxt.textContent=res.reason||'Could not save'}
+  }catch(e){errRow.style.display='';errTxt.textContent='Save failed'}
 }
 
 // Diagnostics

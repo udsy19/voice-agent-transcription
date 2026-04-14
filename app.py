@@ -92,34 +92,37 @@ PORT = 8528
 HANDS_FREE_SILENCE_SEC = 2.0
 
 # ── Hotkey config ───────────────────────────────────────────────────────────
+# Fn key (f20) removed — pynput can't reliably capture it on macOS
 _HOTKEY_MAP = {
     "alt_r": keyboard.Key.alt_r,
     "alt_l": keyboard.Key.alt_l,
     "ctrl_r": keyboard.Key.ctrl_r,
     "ctrl_l": keyboard.Key.ctrl_l,
     "cmd_r": keyboard.Key.cmd_r,
-    "fn": keyboard.Key.f20,  # Fn key sends F20 on some Macs
+    "cmd_l": keyboard.Key.cmd_l,
+    "shift_r": keyboard.Key.shift_r,
 }
 
-def _load_hotkey():
-    """Load saved hotkey from config, default to Right Option."""
+def _load_hotkeys():
+    """Load dictation + assistant hotkey config. Defaults to ⌥L / ⌥R."""
     try:
         import json
         hk_path = os.path.join(str(__import__('config').DATA_DIR), "hotkey.json")
         if os.path.exists(hk_path):
             with open(hk_path) as f:
                 data = json.load(f)
-            key_name = data.get("key", "alt_r")
-            return _HOTKEY_MAP.get(key_name, keyboard.Key.alt_r), key_name
+            dk = data.get("dictation", "alt_l")
+            ak = data.get("assistant", "alt_r")
+            return (_HOTKEY_MAP.get(dk, keyboard.Key.alt_l), dk,
+                    _HOTKEY_MAP.get(ak, keyboard.Key.alt_r), ak)
     except Exception:
         pass
-    return keyboard.Key.alt_r, "alt_r"
+    return (keyboard.Key.alt_l, "alt_l", keyboard.Key.alt_r, "alt_r")
 
-TRIGGER_KEY, TRIGGER_KEY_NAME = _load_hotkey()
-
-# Left Option = dictation, Right Option = assistant
-DICTATION_KEY = keyboard.Key.alt_l   # ⌥L = dictate
-ASSISTANT_KEY = keyboard.Key.alt_r   # ⌥R = assistant
+DICTATION_KEY, DICTATION_KEY_NAME, ASSISTANT_KEY, ASSISTANT_KEY_NAME = _load_hotkeys()
+# Legacy alias for code still referencing TRIGGER_KEY
+TRIGGER_KEY = ASSISTANT_KEY
+TRIGGER_KEY_NAME = ASSISTANT_KEY_NAME
 
 # Undo keywords
 UNDO_PHRASES = {"undo that", "go back", "undo", "scratch that", "never mind", "cancel that"}
@@ -1290,23 +1293,36 @@ async def api_toggle_hf():
 
 @api.get("/api/hotkey")
 async def api_get_hotkey():
-    return {"key": TRIGGER_KEY_NAME, "available": list(_HOTKEY_MAP.keys())}
+    return {
+        "dictation": DICTATION_KEY_NAME,
+        "assistant": ASSISTANT_KEY_NAME,
+        "available": list(_HOTKEY_MAP.keys()),
+    }
 
 
 @api.post("/api/hotkey")
 async def api_set_hotkey(body: dict):
-    global TRIGGER_KEY, TRIGGER_KEY_NAME
-    key_name = body.get("key", "").strip()
-    if key_name not in _HOTKEY_MAP:
-        return {"ok": False, "reason": f"unknown key: {key_name}"}
-    TRIGGER_KEY = _HOTKEY_MAP[key_name]
-    TRIGGER_KEY_NAME = key_name
+    """Set dictation and/or assistant hotkey. Either key in body is optional."""
+    global DICTATION_KEY, DICTATION_KEY_NAME, ASSISTANT_KEY, ASSISTANT_KEY_NAME, TRIGGER_KEY, TRIGGER_KEY_NAME
+    dk_name = (body.get("dictation") or DICTATION_KEY_NAME).strip()
+    ak_name = (body.get("assistant") or ASSISTANT_KEY_NAME).strip()
+    if dk_name not in _HOTKEY_MAP:
+        return {"ok": False, "reason": f"unknown dictation key: {dk_name}"}
+    if ak_name not in _HOTKEY_MAP:
+        return {"ok": False, "reason": f"unknown assistant key: {ak_name}"}
+    if dk_name == ak_name:
+        return {"ok": False, "reason": "dictation and assistant must use different keys"}
+    DICTATION_KEY = _HOTKEY_MAP[dk_name]
+    DICTATION_KEY_NAME = dk_name
+    ASSISTANT_KEY = _HOTKEY_MAP[ak_name]
+    ASSISTANT_KEY_NAME = ak_name
+    TRIGGER_KEY = ASSISTANT_KEY
+    TRIGGER_KEY_NAME = ASSISTANT_KEY_NAME
     # Save to config
-    from config import DATA_DIR
-    import safe_json
-    safe_json.save(os.path.join(str(DATA_DIR), "hotkey.json"), {"key": key_name})
-    log.info("Hotkey changed to: %s", key_name)
-    return {"ok": True, "key": key_name}
+    safe_json.save(os.path.join(str(DATA_DIR), "hotkey.json"),
+                   {"dictation": dk_name, "assistant": ak_name})
+    log.info("Hotkeys: dictation=%s assistant=%s", dk_name, ak_name)
+    return {"ok": True, "dictation": dk_name, "assistant": ak_name}
 
 
 @api.post("/api/toggle-sounds")
