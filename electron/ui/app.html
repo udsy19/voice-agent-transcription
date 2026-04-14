@@ -49,9 +49,36 @@ html.light .live-entry{border-left-color:var(--accent)}
 html.light .entry-badge.assist{background:rgba(99,102,241,.1);color:var(--accent)}
 html.light .empty{color:var(--text3)}
 html.light ::selection{background:rgba(99,102,241,.2)}
-*{margin:0;padding:0;box-sizing:border-box}
+*{margin:0;padding:0;box-sizing:border-box;transition:background-color .3s var(--ease),border-color .3s var(--ease),color .3s var(--ease)}
 ::selection{background:rgba(124,138,255,.25)}
-body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;overflow:hidden;height:100vh;display:flex;flex-direction:column;font-size:14px;line-height:1.6;font-weight:300}
+body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;overflow:hidden;height:100vh;display:flex;flex-direction:column;font-size:14px;line-height:1.6;font-weight:300;position:relative}
+
+/* Ambient animated background gradient */
+body::before{
+  content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(ellipse 60% 50% at 15% 20%,rgba(124,138,255,.06),transparent 60%),
+    radial-gradient(ellipse 50% 40% at 85% 70%,rgba(180,130,255,.04),transparent 60%),
+    radial-gradient(ellipse 40% 35% at 50% 90%,rgba(100,200,220,.035),transparent 60%);
+  animation:bgDrift 24s ease-in-out infinite alternate;
+}
+html.light body::before{
+  background:
+    radial-gradient(ellipse 60% 50% at 15% 20%,rgba(99,102,241,.07),transparent 60%),
+    radial-gradient(ellipse 50% 40% at 85% 70%,rgba(168,85,247,.05),transparent 60%),
+    radial-gradient(ellipse 40% 35% at 50% 90%,rgba(6,182,212,.04),transparent 60%);
+}
+@keyframes bgDrift{
+  0%{transform:translate(0,0) scale(1)}
+  50%{transform:translate(2%,-1%) scale(1.05)}
+  100%{transform:translate(-1%,2%) scale(1.03)}
+}
+
+/* Typography scale */
+.t-display{font-size:32px;font-weight:600;letter-spacing:-.035em;line-height:1.15}
+.t-title{font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.25}
+.t-body{font-size:14px;font-weight:400;line-height:1.6}
+.t-caption{font-size:11px;font-weight:500;color:var(--text3);letter-spacing:.02em}
 
 /* Titlebar */
 .tb{height:44px;-webkit-app-region:drag;flex-shrink:0}
@@ -92,9 +119,33 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 .sb-space{flex:1}
 .sb-foot{padding:8px 12px;font-size:10px;color:var(--text3);font-family:var(--mono)}
 
+/* Rich status pill (sidebar footer) */
+.status-pill{display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:999px;margin:4px 4px 0;transition:all .25s var(--ease)}
+.status-pill:hover{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.08)}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0;transition:background .2s var(--ease)}
+.status-dot.recording{background:var(--red);animation:p .8s infinite}
+.status-dot.processing{background:var(--amber);animation:p 1.2s infinite}
+.status-dot.offline{background:var(--amber)}
+.status-dot.error{background:var(--red)}
+.status-label{font-size:11px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.status-mode{font-size:9px;color:var(--text3);font-family:var(--mono);letter-spacing:.05em;text-transform:uppercase}
+html.light .status-pill{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.05)}
+html.light .status-pill:hover{background:rgba(0,0,0,.04)}
+
 /* Main content */
-.main{flex:1;overflow-y:auto;-webkit-app-region:no-drag;scroll-behavior:smooth}
-.main::-webkit-scrollbar{width:0}
+.main{flex:1;overflow-y:auto;-webkit-app-region:no-drag;scroll-behavior:smooth;position:relative}
+.main::-webkit-scrollbar{width:3px}
+.main::-webkit-scrollbar-track{background:transparent}
+.main::-webkit-scrollbar-thumb{background:rgba(255,255,255,.04);border-radius:2px}
+.main::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.08)}
+html.light .main::-webkit-scrollbar-thumb{background:rgba(0,0,0,.08)}
+html.light .main::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.15)}
+/* Scroll-reactive top fade (when page has been scrolled) */
+.main.scrolled .pg::before{
+  content:'';position:sticky;top:0;display:block;height:16px;
+  background:linear-gradient(to bottom,var(--bg),transparent);
+  margin:-8px -48px 0;z-index:5;pointer-events:none;
+}
 
 .pg{display:none;max-width:720px;margin:0 auto;padding:8px 48px 64px;animation:pageIn .25s var(--ease)}
 @media (max-width:680px){
@@ -110,19 +161,27 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
   #pg-home>div[style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr!important}
 }
 .pg.on{display:block}
-@keyframes pageIn{from{opacity:0;transform:translateY(6px) scale(.995)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes pageIn{from{opacity:0;transform:translateY(8px) scale(.996)}to{opacity:1;transform:translateY(0) scale(1)}}
+.pg.on.slideUp{animation:pageInUp .28s var(--ease)}
+@keyframes pageInUp{from{opacity:0;transform:translateY(-8px) scale(.996)}to{opacity:1;transform:translateY(0) scale(1)}}
 .pg h1{font-size:26px;font-weight:600;letter-spacing:-.03em;margin-bottom:4px}
 .pg .desc{font-size:13px;color:var(--text2);margin-bottom:24px;font-weight:300}
 
 .label{font-size:10px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.12em;margin:28px 0 8px}
 
-/* Cards — glass */
+/* Cards — glass with subtle lift on hover */
 .block{
   background:var(--surface);backdrop-filter:var(--glass);-webkit-backdrop-filter:var(--glass);
   border:1px solid var(--border);border-radius:var(--radius);
-  margin-bottom:8px;overflow:hidden;transition:all .25s var(--ease);
+  margin-bottom:8px;overflow:hidden;transition:transform .35s var(--ease),border-color .35s var(--ease),box-shadow .35s var(--ease);
+  will-change:transform;
 }
-.block:hover{border-color:rgba(255,255,255,.07);box-shadow:0 0 0 1px rgba(255,255,255,.02) inset}
+.block:hover{
+  border-color:rgba(255,255,255,.08);
+  box-shadow:0 0 0 1px rgba(255,255,255,.02) inset, 0 6px 24px rgba(0,0,0,.2);
+  transform:translateY(-1px);
+}
+html.light .block:hover{box-shadow:0 0 0 1px rgba(0,0,0,.02) inset, 0 6px 24px rgba(0,0,0,.06)}
 .row{
   display:flex;align-items:center;justify-content:space-between;
   padding:12px 16px;border-bottom:1px solid var(--border);
@@ -149,8 +208,19 @@ select.inp{appearance:none;padding-right:24px;background:rgba(255,255,255,.02) u
 }
 .btn-p{background:var(--text);color:var(--bg);border-radius:20px}
 .btn-p:hover{opacity:.85;transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.btn-p:active{transform:scale(.97);transition:transform .08s}
 .btn-g{background:rgba(255,255,255,.03);color:var(--text2);border:1px solid var(--border);border-radius:20px}
 .btn-g:hover{background:rgba(255,255,255,.06);color:var(--text);border-color:rgba(255,255,255,.1)}
+.btn-g:active{transform:scale(.97);transition:transform .08s}
+
+/* Skeleton loaders */
+.skel{background:linear-gradient(90deg,rgba(255,255,255,.02) 0%,rgba(255,255,255,.06) 50%,rgba(255,255,255,.02) 100%);background-size:200% 100%;animation:skelShim 1.5s ease-in-out infinite;border-radius:6px}
+html.light .skel{background:linear-gradient(90deg,rgba(0,0,0,.03) 0%,rgba(0,0,0,.06) 50%,rgba(0,0,0,.03) 100%);background-size:200% 100%}
+@keyframes skelShim{0%{background-position:100% 0}100%{background-position:-100% 0}}
+.skel-line{height:12px;margin:8px 0}
+.skel-line.short{width:40%}
+.skel-line.med{width:65%}
+.skel-line.long{width:90%}
 
 /* Tags — bubble pills */
 .tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
@@ -389,7 +459,8 @@ select.inp{appearance:none;padding-right:24px;background:rgba(255,255,255,.02) u
 .tour-tip-body{color:var(--text2);line-height:1.5}
 .tour-tip-foot{display:flex;justify-content:space-between;margin-top:8px;align-items:center}
 .tour-tip-step{font-size:10px;color:var(--text3)}
-.tour-bg{position:fixed;inset:0;z-index:290}
+.tour-bg{position:fixed;inset:0;z-index:290;background:rgba(0,0,0,.65);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);transition:opacity .3s var(--ease)}
+.tour-spotlight{position:fixed;z-index:295;border-radius:12px;pointer-events:none;box-shadow:0 0 0 4px rgba(124,138,255,.3),0 0 0 9999px rgba(0,0,0,.6);transition:all .35s var(--ease)}
 
 /* Onboarding Wizard */
 .setup{position:fixed;inset:0;background:var(--bg);z-index:100;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:40px;-webkit-app-region:no-drag}
@@ -591,13 +662,17 @@ select.inp{appearance:none;padding-right:24px;background:rgba(255,255,255,.02) u
     <a data-pg="memories" onclick="nav(this)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Memories <span id="memCount" style="font-size:9px;color:var(--text3);margin-left:auto"></span></a>
     <a data-pg="settings" onclick="nav(this)"><svg viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>Settings</a>
     <div class="sb-space"></div>
-    <div class="sb-foot" id="sbFoot" style="font-size:10px;color:var(--text3)">v1.0.0</div>
+    <div class="status-pill" id="sbFoot">
+      <span class="status-dot" id="statusDot"></span>
+      <span class="status-label" id="statusLabel">Ready</span>
+      <span class="status-mode" id="statusMode"></span>
+    </div>
   </div>
 
   <div class="main">
     <!-- HOME -->
     <div class="pg on" id="pg-home">
-      <div id="greeting" style="font-size:24px;font-weight:600;letter-spacing:-.03em;margin-bottom:16px"></div>
+      <div id="greeting" class="t-display" style="margin-bottom:20px;margin-top:4px"></div>
       <div style="display:flex;gap:8px;margin-bottom:20px">
         <div class="action-pill"><span class="action-pill-key">⌥L</span><span class="action-pill-label">Dictate</span></div>
         <div class="action-pill"><span class="action-pill-key">⌥R</span><span class="action-pill-label">Assistant</span></div>
@@ -672,7 +747,7 @@ select.inp{appearance:none;padding-right:24px;background:rgba(255,255,255,.02) u
           <button class="btn btn-g" onclick="stopMeetingRecord()" style="font-size:11px;padding:5px 12px;color:var(--red)">Stop</button>
         </div>
         <div id="mtgUpcoming"></div>
-        <div id="mtgPast"><div class="empty">No meetings recorded yet.<br>Muse will detect when you join a call.</div></div>
+        <div id="mtgPast"><div class="empty"><div style="font-size:22px;margin-bottom:8px">🎙</div>No meetings yet<br><span style="font-size:12px;opacity:.7">Say "record meeting" or enable auto-detect above to get started</span></div></div>
       </div>
       <div id="mtgDetail" style="display:none">
         <button onclick="closeMtgDetail()" style="font-size:12px;color:var(--text3);background:none;border:none;cursor:pointer;padding:0;margin-bottom:16px">&larr; Back to meetings</button>
@@ -928,9 +1003,16 @@ const API='http://127.0.0.1:8528';let hist=[],connected=false;
 function esc(s){return s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/`/g,'&#96;'):''}
 
 function nav(el){
-  document.querySelectorAll('.sb a').forEach(a=>a.classList.remove('on'));el.classList.add('on');
-  document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));
-  document.getElementById('pg-'+el.dataset.pg).classList.add('on');
+  // Directional slide based on sidebar index
+  const navs=[...document.querySelectorAll('.sb a')];
+  const curIdx=navs.findIndex(a=>a.classList.contains('on'));
+  const newIdx=navs.indexOf(el);
+  const goingUp=newIdx<curIdx;
+  navs.forEach(a=>a.classList.remove('on'));el.classList.add('on');
+  document.querySelectorAll('.pg').forEach(p=>{p.classList.remove('on');p.classList.remove('slideUp')});
+  const page=document.getElementById('pg-'+el.dataset.pg);
+  if(goingUp)page.classList.add('slideUp');
+  page.classList.add('on');
   if(_nextMeetingTimer){clearInterval(_nextMeetingTimer);_nextMeetingTimer=null}
   if(el.dataset.pg==='home'){loadBriefing();loadFollowUps();loadNextMeeting();_nextMeetingTimer=setInterval(loadNextMeeting,60000)}
   if(el.dataset.pg==='meetings')loadMeetings();
@@ -1015,6 +1097,17 @@ function onMsg(m){
 }
 function updStatus(s,d){
   document.getElementById('sTxt').textContent=d||s;
+  // Update sidebar status pill
+  if(typeof setStatusPill==='function'){
+    if(s==='recording')setStatusPill('recording','Recording');
+    else if(s==='processing')setStatusPill('processing','Processing');
+    else setStatusPill('ready','Ready');
+  }
+  // Play ambient feedback tone
+  if(typeof playTone==='function'){
+    if(s==='recording')playTone(660,.03);
+    else if(s==='processing')playTone(440,.02);
+  }
   // Update greeting with status hint
   const gr=document.getElementById('greeting');
   if(gr){
@@ -1971,10 +2064,16 @@ const PALETTE_COMMANDS=[
   {label:'Stop Meeting Recording',icon:'⏹',action:()=>stopMeetingRecord()},
 ];
 let _palSel=0,_palFiltered=[...PALETTE_COMMANDS];
+let _palRecent=JSON.parse(localStorage.getItem('pal_recent')||'[]');
 function openPalette(){
   document.getElementById('cmdpalOverlay').classList.add('open');
   const inp=document.getElementById('cmdpalInput');
-  inp.value='';_palFiltered=[...PALETTE_COMMANDS];_palSel=0;renderPalette();
+  inp.value='';
+  // Order: recent 3 (with "Recent" label), then rest alphabetically
+  const recent=_palRecent.map(label=>PALETTE_COMMANDS.find(c=>c.label===label)).filter(Boolean);
+  const others=PALETTE_COMMANDS.filter(c=>!recent.includes(c));
+  _palFiltered=[...recent,...others];
+  _palSel=0;renderPalette();
   setTimeout(()=>inp.focus(),50);
 }
 function closePalette(){document.getElementById('cmdpalOverlay').classList.remove('open')}
@@ -1988,7 +2087,14 @@ function renderPalette(){
     `<div class="cmdpal-item${i===_palSel?' sel':''}" onclick="runPalCmd(${i})"><span class="cmdpal-item-icon">${c.icon||''}</span><span class="cmdpal-item-label">${esc(c.label)}</span>${c.hint?`<span class="cmdpal-item-hint">${c.hint}</span>`:''}</div>`
   ).join('');
 }
-function runPalCmd(i){const c=_palFiltered[i];if(c){closePalette();c.action()}}
+function runPalCmd(i){
+  const c=_palFiltered[i];
+  if(!c)return;
+  // Track as recent (max 3, most recent first)
+  _palRecent=[c.label,..._palRecent.filter(l=>l!==c.label)].slice(0,3);
+  localStorage.setItem('pal_recent',JSON.stringify(_palRecent));
+  closePalette();c.action();
+}
 function palKeydown(e){
   if(e.key==='Escape'){closePalette();return}
   if(e.key==='ArrowDown'){_palSel=Math.min(_palSel+1,_palFiltered.length-1);renderPalette();e.preventDefault()}
@@ -2011,14 +2117,57 @@ document.addEventListener('keydown',e=>{
 
 // ── Offline Indicator ─────────────────────────────────────────────────
 async function offlineCheck(){
-  const foot=document.getElementById('sbFoot');
+  const dot=document.getElementById('statusDot');
+  const label=document.getElementById('statusLabel');
+  const mode=document.getElementById('statusMode');
+  if(!dot)return;
   try{
     const r=await fetch(`${API}/api/llm-mode`);const d=await r.json();
-    if(d.mode==='local'){foot.innerHTML='<span style="width:6px;height:6px;border-radius:50%;background:var(--amber);display:inline-block;margin-right:4px"></span>Offline mode';foot.style.color='var(--amber)'}
-    else{foot.textContent='v1.0.0';foot.style.color=''}
-  }catch{foot.innerHTML='<span style="width:6px;height:6px;border-radius:50%;background:var(--red);display:inline-block;margin-right:4px"></span>Disconnected';foot.style.color='var(--red)'}
+    const modeLabels={local:'LOCAL',groq:'CLOUD',hybrid:'HYBRID'};
+    mode.textContent=modeLabels[d.mode]||'';
+    // Dot color overridden by recording/processing status if active
+    const curStatus=document.querySelector('#statusDot').dataset.kind||'ready';
+    if(curStatus==='ready'){
+      if(d.mode==='local'){dot.className='status-dot offline';label.textContent='Offline'}
+      else{dot.className='status-dot';label.textContent='Ready'}
+    }
+  }catch{
+    dot.className='status-dot error';
+    label.textContent='Disconnected';
+    mode.textContent='';
+  }
 }
 setInterval(offlineCheck,30000);
+// Update status pill from recording state via WS
+function setStatusPill(kind,text){
+  const dot=document.getElementById('statusDot');
+  const label=document.getElementById('statusLabel');
+  if(!dot)return;
+  dot.dataset.kind=kind;
+  dot.className='status-dot '+(kind==='ready'?'':kind);
+  label.textContent=text;
+}
+
+// Ambient tone feedback — WebAudio synthesized
+let _audioCtx=null;
+function playTone(freq,vol=.02,dur=.15){
+  try{
+    if(!_audioCtx)_audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+    const osc=_audioCtx.createOscillator();
+    const gain=_audioCtx.createGain();
+    osc.type='sine';osc.frequency.value=freq;
+    gain.gain.setValueAtTime(0,_audioCtx.currentTime);
+    gain.gain.linearRampToValueAtTime(vol,_audioCtx.currentTime+.02);
+    gain.gain.exponentialRampToValueAtTime(.001,_audioCtx.currentTime+dur);
+    osc.connect(gain);gain.connect(_audioCtx.destination);
+    osc.start();osc.stop(_audioCtx.currentTime+dur);
+  }catch{}
+}
+
+// Scroll glass effect
+document.querySelector('.main')?.addEventListener('scroll',function(){
+  this.classList.toggle('scrolled',this.scrollTop>4);
+},{passive:true});
 
 // ── Settings Tabs ─────────────────────────────────────────────────────
 function switchSettingsTab(tab,el){
@@ -2054,20 +2203,31 @@ function startTour(){
   if(localStorage.getItem('tour_seen'))return;
   _tourIdx=0;showTourStep();
 }
+let _tourSpot=null;
 function showTourStep(){
   if(_tourTip){_tourTip.remove();_tourTip=null}
   if(_tourBg){_tourBg.remove();_tourBg=null}
+  if(_tourSpot){_tourSpot.remove();_tourSpot=null}
   if(_tourIdx>=TOUR_STEPS.length){localStorage.setItem('tour_seen','1');return}
   const step=TOUR_STEPS[_tourIdx];
   const anchor=document.querySelector(step.anchor);
   if(!anchor){_tourIdx++;showTourStep();return}
   const rect=anchor.getBoundingClientRect();
-  _tourBg=document.createElement('div');_tourBg.className='tour-bg';_tourBg.onclick=advanceTour;document.body.appendChild(_tourBg);
+  // Transparent overlay with cut-out spotlight via box-shadow
+  _tourSpot=document.createElement('div');_tourSpot.className='tour-spotlight';
+  _tourSpot.style.top=(rect.top-6)+'px';_tourSpot.style.left=(rect.left-6)+'px';
+  _tourSpot.style.width=(rect.width+12)+'px';_tourSpot.style.height=(rect.height+12)+'px';
+  _tourSpot.onclick=advanceTour;
+  document.body.appendChild(_tourSpot);
+  // Click handler for dismissing (outside spotlight)
+  _tourBg=document.createElement('div');_tourBg.style.cssText='position:fixed;inset:0;z-index:294;background:transparent';
+  _tourBg.onclick=advanceTour;document.body.appendChild(_tourBg);
   _tourTip=document.createElement('div');_tourTip.className='tour-tip';
   _tourTip.innerHTML=`<div class="tour-tip-title">${esc(step.title)}</div><div class="tour-tip-body">${esc(step.body)}</div><div class="tour-tip-foot"><span class="tour-tip-step">${_tourIdx+1} / ${TOUR_STEPS.length}</span><button class="btn btn-p" onclick="advanceTour()" style="font-size:11px;padding:4px 10px">${_tourIdx<TOUR_STEPS.length-1?'Next':'Done'}</button></div>`;
   document.body.appendChild(_tourTip);
   _tourTip.style.top=Math.max(8,rect.top+rect.height/2-40)+'px';
-  _tourTip.style.left=(rect.right+12)+'px';
+  _tourTip.style.left=(rect.right+18)+'px';
+  _tourTip.style.zIndex='300';
 }
 function advanceTour(){_tourIdx++;showTourStep()}
 </script>
