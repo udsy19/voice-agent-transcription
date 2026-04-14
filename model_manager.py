@@ -103,6 +103,22 @@ def download_model(model_key: str, progress_callback=None) -> bool:
         log.info("Model %s already downloaded", model_key)
         return True
 
+    # Check disk space (need 2x model size for safety margin during download)
+    required_mb = info.get("size_mb", 0) * 2
+    if required_mb > 0:
+        import shutil
+        try:
+            free_mb = shutil.disk_usage(str(MODELS_DIR)).free // (1024 * 1024)
+            if free_mb < required_mb:
+                log.error("Insufficient disk space: need %d MB, have %d MB", required_mb, free_mb)
+                _download_progress[model_key] = {
+                    "progress": -1, "total_mb": info["size_mb"],
+                    "status": f"Insufficient disk space ({free_mb} MB free, need {required_mb} MB)",
+                }
+                return False
+        except Exception:
+            pass  # Can't check — proceed
+
     with _download_lock:
         _download_progress[model_key] = {"progress": 0, "total_mb": info["size_mb"], "status": "downloading"}
 

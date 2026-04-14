@@ -80,8 +80,21 @@ class Recorder:
                 log.info("Recording started%s", " (whisper mode)" if self._whisper_mode else "")
             except Exception as e:
                 log.error("Failed to start recording: %s", e)
-                self._recording = False
-                self._stream = None
+                # Device may have been unplugged — refresh detection
+                try:
+                    dev = sd.query_devices(kind="input")
+                    self._native_rate = int(dev.get("default_samplerate", 16000))
+                    log.info("Re-detected input device: rate=%d", self._native_rate)
+                    self._stream = sd.InputStream(
+                        samplerate=self._native_rate, channels=CHANNELS, dtype=DTYPE,
+                        callback=self._audio_callback,
+                    )
+                    self._stream.start()
+                    log.info("Recording started (after device reinit)")
+                except Exception as e2:
+                    log.error("Recording start retry failed: %s", e2)
+                    self._recording = False
+                    self._stream = None
 
     def stop(self) -> np.ndarray | None:
         with self._lock:

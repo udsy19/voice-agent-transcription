@@ -90,6 +90,11 @@ class GroqClient(LLMClient):
             kwargs["model"] = m
             try:
                 response = self._client.chat.completions.create(**kwargs)
+                try:
+                    import robustness as _rb
+                    _rb.record_groq_call()
+                except Exception:
+                    pass
                 choice = response.choices[0]
                 return ChatResponse(
                     text=choice.message.content or "",

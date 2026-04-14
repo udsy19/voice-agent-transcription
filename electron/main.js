@@ -148,10 +148,14 @@ function actuallyStartPython() {
   pythonProcess.on('exit', (code) => {
     console.log(`[main] Python exited (${code})`);
     pythonProcess = null;
-    if (!app.isQuitting && restartCount < 3) {
+    if (!app.isQuitting) {
       restartCount++;
-      const delay = 1000 * restartCount; // escalating delay: 1s, 2s, 3s
-      console.log(`[main] Restarting in ${delay}ms (attempt ${restartCount}/3)`);
+      // Exponential backoff: 1s, 2s, 4s, ... capped at 30s. Restart indefinitely.
+      const delay = Math.min(1000 * Math.pow(2, Math.min(restartCount - 1, 5)), 30000);
+      console.log(`[main] Restarting in ${delay}ms (attempt ${restartCount})`);
+      if (restartCount >= 5) {
+        console.error(`[main] Backend has crashed ${restartCount} times — check logs`);
+      }
       setTimeout(startPython, delay);
     }
   });

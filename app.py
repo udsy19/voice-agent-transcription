@@ -27,6 +27,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 import uvicorn
 import safe_json
+import robustness as rb
+import traceback
 
 
 # ── Request Models ──────────────────────────────────────────────────────────
@@ -152,6 +154,7 @@ def _save_preferences():
 _prefs = _load_preferences()
 _sound_enabled = _prefs.get("sounds", True)
 _clipboard_context_enabled = _prefs.get("clipboard_context", True)
+rb.set_telemetry(_prefs.get("telemetry", False))
 
 def _is_hallucination(text: str) -> bool:
     """Detect Whisper hallucinations — gibberish in random scripts when audio is unclear."""
@@ -308,6 +311,8 @@ def add_history(entry):
         S.history.append(entry)
         if len(S.history) > 100:
             S.history = S.history[-100:]
+    # Persist to disk (survives crashes, restart restores)
+    rb.append_history(entry)
 
 
 def set_status(status, detail=""):
@@ -340,6 +345,52 @@ async def index():
 @api.get("/api/health")
 async def health():
     return {"ok": True, "status": S.status}
+
+
+@api.get("/api/diagnostics")
+async def api_diagnostics():
+    """Full system health snapshot."""
+    return {
+        "health": rb.get_health(),
+        "quota": rb.get_groq_quota(),
+        "telemetry": rb.get_telemetry_summary(),
+        "schema_version": rb.get_schema_version(),
+        "history_count": len(S.history),
+    }
+
+
+@api.get("/api/errors")
+async def api_errors():
+    """Recent errors for troubleshooting."""
+    return {"errors": rb.get_errors()}
+
+
+@api.post("/api/errors/clear")
+async def api_clear_errors():
+    rb.clear_errors()
+    return {"ok": True}
+
+
+@api.get("/api/crashes")
+async def api_crashes():
+    return {"crashes": rb.list_crash_reports()}
+
+
+@api.post("/api/health/check")
+async def api_run_health():
+    """Trigger a manual health check."""
+    rb.run_health_checks(S.oauth)
+    return {"ok": True, "health": rb.get_health()}
+
+
+@api.post("/api/telemetry/toggle")
+async def api_toggle_telemetry(body: dict):
+    enabled = bool(body.get("enabled"))
+    rb.set_telemetry(enabled)
+    prefs = safe_json.load(str(DATA_DIR / "preferences.json"), {})
+    prefs["telemetry"] = enabled
+    safe_json.save(str(DATA_DIR / "preferences.json"), prefs)
+    return {"ok": True, "enabled": enabled}
 
 
 @api.post("/api/start-recording")
@@ -645,7 +696,8 @@ async def api_search_history(q: str = "", app: str = ""):
 
 @api.post("/api/clear-history")
 async def api_clear_history():
-    """Clear all dictation history."""
+    """Clear all dictation history — with backup for recovery."""
+    rb.clear_history(keep_backup=True)  # backup to ~/Library/.../Muse/backups/
     with _history_lock:
         S.history.clear()
     if S.conversation:
@@ -1028,7 +1080,11 @@ async def api_stop_meeting():
 
 @api.delete("/api/meetings/{meeting_id}")
 async def api_delete_meeting(meeting_id: str):
-    from meeting_recorder import delete_meeting
+    from meeting_recorder import delete_meeting, MEETINGS_DIR
+    # Backup before delete for recovery
+    src = MEETINGS_DIR / f"{meeting_id}.json"
+    if src.exists():
+        rb.backup_file(src)
     return {"ok": delete_meeting(meeting_id)}
 
 
@@ -1328,6 +1384,11 @@ def on_key_press(key):
             return
         if not S.is_ready:
             return
+        # Reject if busy processing a previous recording
+        if S.processing:
+            log.info("Rejecting hotkey — still processing previous recording")
+            rb.telemetry("hotkey_rejected", {"reason": "processing"})
+            return
 
         S.key_held = True
         _key_held_since = time.time()
@@ -1335,6 +1396,7 @@ def on_key_press(key):
         if not S.recorder.is_recording:
             S.source_app = _get_active_app()
             S.recorder.start()
+            rb.telemetry("recording_started", {"mode": mode})
             _play_sound("start")
             emit({"type": "trigger_mode", "mode": "hold"})
             label = "assistant" if mode == "assistant" else "dictation"
@@ -1755,6 +1817,8 @@ def process_audio(audio):
         _play_sound("error")
         emit({"type": "error", "error": msg})
         set_status("idle", msg)
+        rb.record_error("processing", str(e), traceback.format_exc())
+        rb.write_crash_report(e, {"mode": S.recording_mode, "app": S.source_app})
     finally:
         S.processing = False
 
@@ -1903,6 +1967,26 @@ def load_engine():
     S.meeting_recorder = MeetingRecorder(S.transcriber, emit)
     S.meeting_detector = MeetingDetector(S.oauth, emit)
     # Meeting detector does NOT auto-start — user must enable it from Meetings page
+
+    # Run schema migrations + restore persisted history
+    rb.run_migrations()
+    persisted = rb.load_recent_history(100)
+    if persisted:
+        with _history_lock:
+            S.history = list(reversed(persisted))  # oldest first in S.history
+        log.info("Restored %d history entries from disk", len(persisted))
+
+    # Start periodic health checks (every 5 min)
+    def health_loop():
+        while True:
+            try:
+                rb.run_health_checks(S.oauth)
+            except Exception as e:
+                rb.record_error("health_check", str(e))
+            time.sleep(300)
+    threading.Thread(target=health_loop, daemon=True).start()
+    rb.run_health_checks(S.oauth)  # initial run
+
     set_status("idle", "Ready — hold ⌥R to dictate")
 
 
@@ -1941,6 +2025,23 @@ def start_listener():
 
 
 if __name__ == "__main__":
+    # Graceful shutdown handlers
+    import signal as _sig
+    def _graceful_shutdown(signum, frame):
+        log.info("Received signal %d, shutting down cleanly", signum)
+        try:
+            if S.recorder and S.recorder.is_recording:
+                S.recorder.stop()
+            if S.meeting_recorder and S.meeting_recorder.is_recording:
+                S.meeting_recorder.stop()
+            if S.meeting_detector:
+                S.meeting_detector.stop_polling()
+        except Exception as e:
+            log.error("Shutdown cleanup error: %s", e)
+        sys.exit(0)
+    _sig.signal(_sig.SIGTERM, _graceful_shutdown)
+    _sig.signal(_sig.SIGINT, _graceful_shutdown)
+
     # Check port BEFORE starting anything
     import socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

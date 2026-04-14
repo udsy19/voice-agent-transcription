@@ -876,7 +876,23 @@ function nav(el){
 
 function setupListeners(){if(window.electronAPI){window.electronAPI.onWsMessage(onMsg);window.electronAPI.onBackendReady(()=>{connected=true;onBackendUp()});poll()}else{connectWS()}}
 function poll(){fetch(`${API}/api/health`).then(r=>r.json()).then(d=>{if(d.ok){connected=true;onBackendUp()}else setTimeout(poll,1e3)}).catch(()=>setTimeout(poll,1e3))}
-function connectWS(){try{const ws=new WebSocket('ws://127.0.0.1:8528/ws');ws.onopen=()=>{connected=true;onBackendUp()};ws.onmessage=e=>{try{onMsg(JSON.parse(e.data))}catch{}};ws.onclose=()=>{connected=false;setTimeout(connectWS,2e3)}}catch{setTimeout(connectWS,2e3)}}
+let _wsRetry=0;
+function connectWS(){
+  try{
+    const ws=new WebSocket('ws://127.0.0.1:8528/ws');
+    ws.onopen=()=>{_wsRetry=0;connected=true;onBackendUp()};
+    ws.onmessage=e=>{try{onMsg(JSON.parse(e.data))}catch{}};
+    ws.onclose=()=>{connected=false;
+      const delay=Math.min(1000*Math.pow(2,_wsRetry),30000);
+      _wsRetry++;
+      setTimeout(connectWS,delay);
+    };
+  }catch{
+    const delay=Math.min(1000*Math.pow(2,_wsRetry),30000);
+    _wsRetry++;
+    setTimeout(connectWS,delay);
+  }
+}
 let _backendUpFired=false;
 function onBackendUp(){if(_backendUpFired)return;_backendUpFired=true;refresh();chkGroq();chkLlmMode();chkBackend();if(localStorage.getItem('setup_ok')){document.getElementById('setup').classList.add('hidden')}else{wizInit()}}
 
