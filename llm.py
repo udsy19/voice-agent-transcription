@@ -85,7 +85,7 @@ class GroqClient(LLMClient):
             kwargs["tools"] = tools
             kwargs["tool_choice"] = tool_choice or "auto"
 
-        # Try primary model, fall back to 8b on rate limit
+        # Try primary model, fall back to 8b on rate limit or tool-call failure
         for m in [model, GROQ_MODELS["small"]]:
             kwargs["model"] = m
             try:
@@ -98,8 +98,13 @@ class GroqClient(LLMClient):
                 )
             except Exception as e:
                 err = str(e)
+                # Rate limit → try smaller model
                 if ("429" in err or "rate_limit" in err) and m != GROQ_MODELS["small"]:
                     log.warning("%s rate limited, trying %s", m, GROQ_MODELS["small"])
+                    continue
+                # Tool call format failure → retry without tool_choice=auto (let model decide)
+                if tools and "Failed to call a function" in err and m == model:
+                    log.warning("%s tool call failed, retrying with different model", m)
                     continue
                 raise
 
@@ -184,6 +189,9 @@ class LocalClient(LLMClient):
             tool_calls = self._parse_tool_calls(output)
             if tool_calls:
                 return ChatResponse(text="", tool_calls=tool_calls)
+            # If tools were required but local LLM didn't produce any, this is unreliable
+            # Raise so the hybrid client can surface a clear error rather than hallucinate
+            raise RuntimeError("Local LLM cannot reliably use tools — requires cloud LLM")
 
         return ChatResponse(text=output.strip())
 
@@ -318,6 +326,12 @@ class HybridClient(LLMClient):
             return self._local.chat(messages, model_tier, tools, tool_choice,
                                     temperature, max_tokens, timeout)
         except Exception as e:
+            # If tools were required and local failed, return a clear error
+            # Do NOT let the assistant hallucinate an answer without real tool data
+            if tools:
+                return ChatResponse(
+                    text="I need to look that up but I can't reach the cloud service right now. Check your connection or Groq API key.",
+                )
             # If local also fails and we haven't tried Groq yet, try it
             if self._groq and not use_groq:
                 return self._groq.chat(messages, model_tier, tools, tool_choice,
