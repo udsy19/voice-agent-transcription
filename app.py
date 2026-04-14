@@ -1070,7 +1070,9 @@ async def api_export_meeting(meeting_id: str, fmt: str):
     if fmt not in ("txt", "pdf"):
         return {"ok": False, "reason": "use txt or pdf"}
     ext = ".txt" if fmt == "txt" else ".pdf"
-    slug = (m.get("title", "meeting"))[:20].replace(" ", "_")
+    import re as _re
+    # Sanitize title — only safe filename chars, prevent path traversal
+    slug = _re.sub(r'[^a-zA-Z0-9_-]', '_', m.get("title", "meeting"))[:30] or "meeting"
     path = os.path.join(tempfile.gettempdir(), f"muse_{slug}{ext}")
     try:
         if fmt == "txt":

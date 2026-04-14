@@ -27,10 +27,24 @@ def generate(ramble: str) -> str:
             timeout=10,
         )
         result = response.text.strip()
-        if result:
-            log.info("Generated standup from %d words", len(ramble.split()))
-            return result
-        return ramble
+        if not result:
+            return ramble
+        # Validate structure: must have Yesterday + Today sections
+        rl = result.lower()
+        if "yesterday" not in rl or "today" not in rl:
+            log.warning("Standup missing required sections — using raw ramble")
+            return ramble
+        # Cross-check: output should share vocab with input (not a rewrite)
+        ramble_words = set(w.lower().strip(".,!?") for w in ramble.split() if len(w) > 3)
+        result_words = set(w.lower().strip(".,!?") for w in result.split() if len(w) > 3)
+        if ramble_words:
+            overlap = ramble_words & result_words
+            ratio = len(overlap) / len(ramble_words)
+            if ratio < 0.25:
+                log.warning("Standup rewrote too much (overlap %.0f%%) — using raw", ratio * 100)
+                return ramble
+        log.info("Generated standup from %d words", len(ramble.split()))
+        return result
     except Exception as e:
         log.error("Standup generation failed: %s", e)
         return ramble

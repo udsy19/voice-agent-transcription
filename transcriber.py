@@ -158,6 +158,10 @@ class Transcriber:
         if audio is None or len(audio) == 0:
             return ""
         audio = _clean_audio(audio)
+        # Skip transcription on near-silence (prevents hallucinations on noise)
+        rms = float(np.sqrt(np.mean(audio ** 2)))
+        if rms < 0.001:
+            return ""
         t0 = time.time()
 
         if self._backend_name == "parakeet":
@@ -170,6 +174,17 @@ class Transcriber:
             text = self._transcribe_faster_whisper(audio, language, initial_prompt)
 
         log.info("[%s] (%.2fs) '%s'", self._backend_name, time.time() - t0, text[:100])
+        # Filter known Whisper hallucination phrases (happens on background noise)
+        text_stripped = (text or "").strip().lower()
+        halluc_phrases = [
+            "thank you for watching", "thanks for watching",
+            "please subscribe", "subscribe to",
+            "see you in the next video", "see you next time",
+            "subtitles by", "translated by",
+        ]
+        if text_stripped and any(p in text_stripped for p in halluc_phrases) and len(text_stripped) < 80:
+            log.warning("Filtered Whisper hallucination: '%s'", text[:60])
+            return ""
         return text
 
     def transcribe_streaming(self, audio: np.ndarray, on_segment=None,

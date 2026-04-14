@@ -48,8 +48,16 @@ def detect(raw_text: str) -> tuple[str, str] | None:
         if m:
             # Use original case for the captured text
             extracted = text[m.start(1):m.end(1)].strip()
-            if extracted:
-                log.info("Quick capture: %s → %s", intent, extracted[:50])
-                return (intent, extracted)
+            if not extracted:
+                continue
+            # Reject questions being captured as todos (e.g., "I need to know if ...")
+            if intent == "todo":
+                ext_lower = extracted.lower()
+                if ext_lower.startswith(("know if", "know whether", "find out if", "see if", "check if")):
+                    continue
+                if extracted.endswith("?"):
+                    continue
+            log.info("Quick capture: %s → %s", intent, extracted[:50])
+            return (intent, extracted)
 
     return None

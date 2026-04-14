@@ -171,13 +171,18 @@ class OAuthManager:
                 self._expired_notified.discard(cache_key)
             except Exception as e:
                 err_str = str(e).lower()
-                if "invalid_grant" in err_str or "token" in err_str and "revoked" in err_str:
+                # Revoked/invalid grant — clear credentials
+                if "invalid_grant" in err_str or ("token" in err_str and "revoked" in err_str):
                     log.error("Token revoked for %s:%s — clearing credentials", service, email)
                     _kc_delete(f"oauth:{service}:{email}")
                     self._token_cache.pop(cache_key, None)
                     if self._emit_fn and cache_key not in self._expired_notified:
                         self._expired_notified.add(cache_key)
                         self._emit_fn({"type": "oauth_expired", "service": service, "email": email})
+                    return None
+                # Network errors — don't clear creds, just return None (retry later)
+                if any(x in err_str for x in ("timeout", "connection", "network", "unreachable", "dns")):
+                    log.warning("Token refresh network error: %s — will retry", e)
                     return None
                 log.error("Token refresh failed: %s", e)
                 return None

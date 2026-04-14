@@ -496,21 +496,39 @@ class Assistant:
             except Exception as e:
                 err = str(e)
                 if "tool_use_failed" in err or "400" in err:
-                    # Parse failed tool call and execute manually
-                    log.warning("Tool format error, executing manually")
+                    log.warning("Tool format error, attempting safe manual extraction")
                     import re as _re
                     fn_match = _re.search(r'<function=(\w+)', err)
+                    executed = False
                     if fn_match:
-                        args = {}
-                        json_match = _re.search(r'\{.*?\}', err)
-                        if json_match:
-                            try:
-                                args = json.loads(json_match.group(0))
-                            except Exception:
-                                kv_matches = _re.findall(r'"(\w+)":\s*"([^"]*)"', err)
-                                args = dict(kv_matches) if kv_matches else {}
-                        result = self._execute_tool(fn_match.group(1), args)
-                        messages.append({"role": "user", "content": f"Result: {json.dumps(result)[:200]}. Summarize in 1 sentence."})
+                        fn_name = fn_match.group(1)
+                        # Validate tool name exists in TOOLS registry
+                        valid_tools = {t["function"]["name"] for t in TOOLS}
+                        if fn_name not in valid_tools:
+                            log.warning("Extracted tool '%s' not in registry, skipping manual exec", fn_name)
+                        else:
+                            args = {}
+                            json_match = _re.search(r'\{[^{}]*\}', err)
+                            if json_match:
+                                try:
+                                    parsed = json.loads(json_match.group(0))
+                                    if isinstance(parsed, dict):
+                                        args = parsed
+                                except Exception:
+                                    pass
+                            # Validate required args are present before executing
+                            tool_spec = next((t for t in TOOLS if t["function"]["name"] == fn_name), None)
+                            required = (tool_spec or {}).get("function", {}).get("parameters", {}).get("required", [])
+                            missing = [r for r in required if r not in args or not args[r]]
+                            if missing:
+                                log.warning("Manual exec skipped: tool %s missing required args %s", fn_name, missing)
+                            else:
+                                result = self._execute_tool(fn_name, args)
+                                messages.append({"role": "user", "content": f"Result: {json.dumps(result)[:200]}. Summarize in 1 sentence."})
+                                executed = True
+                    if not executed:
+                        # Let the LLM see a clear error and try again properly
+                        messages.append({"role": "user", "content": "The previous tool call failed. Please retry with valid arguments."})
                     response = self._client.chat(
                         messages=messages, model_tier="small",
                         temperature=0.3, max_tokens=256, timeout=10,
@@ -575,6 +593,18 @@ class Assistant:
                             args = {}  # json.loads("null") returns None
                     except (json.JSONDecodeError, TypeError):
                         args = {}
+
+                    # Validate required args before executing (prevents silent bad calls)
+                    tool_spec = next((t for t in TOOLS if t["function"]["name"] == fn_name), None)
+                    required = (tool_spec or {}).get("function", {}).get("parameters", {}).get("required", [])
+                    missing = [r for r in required if r not in args or args[r] in (None, "", [])]
+                    if missing:
+                        log.warning("Tool %s missing required args: %s", fn_name, missing)
+                        messages.append({
+                            "role": "tool", "tool_call_id": tc.id,
+                            "content": json.dumps({"error": f"Missing required: {', '.join(missing)}. Ask the user."}),
+                        })
+                        continue
 
                     self._emit({"type": "assistant_stream",
                                 "text": f"{'Retrying' if iteration > 1 else 'Running'} {fn_name.replace('_', ' ')}...",
@@ -812,10 +842,22 @@ class Assistant:
 
         if name == "create_calendar_event":
             from integrations.google_calendar import create_event
+            from datetime import datetime
             summary = args.get("summary", "")
             start_time = args.get("start_time", "")
             if not summary or not start_time:
                 return {"error": "Missing event title or start time."}
+            # Validate ISO 8601 format — LLM sometimes returns "tomorrow at 3pm" which fails silently
+            try:
+                datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+            except ValueError:
+                return {"error": f"Invalid start_time format: '{start_time}'. Use ISO 8601 (e.g., 2026-04-15T15:00:00-04:00).", "non_retryable": False}
+            end_time_val = args.get("end_time", "")
+            if end_time_val:
+                try:
+                    datetime.fromisoformat(end_time_val.replace("Z", "+00:00"))
+                except ValueError:
+                    return {"error": f"Invalid end_time format: '{end_time_val}'. Use ISO 8601.", "non_retryable": False}
             att_str = args.get("attendees", "")
             attendees = [e.strip() for e in att_str.split(",") if e.strip()] if att_str else None
             return create_event(
@@ -966,12 +1008,19 @@ class Assistant:
                 # Check if the LLM's message is significantly different from user's words
                 user_key_words = set(user_words.split())
                 msg_key_words = set(msg_lower.split())
-                if len(user_key_words) >= 3:
+                # Detect formality injection — LLM loves to add these
+                formality_words = {"unfortunately", "apologize", "regret", "sincerely",
+                                   "regards", "kindly", "please be advised", "i hope this"}
+                added_formality = any(w in msg_lower for w in formality_words
+                                      if w not in user_words.lower())
+                if added_formality:
+                    log.warning("LLM added formality. Using user's raw words.")
+                    message = user_words
+                elif len(user_key_words) >= 3:
                     overlap = user_key_words & msg_key_words
-                    # If less than 40% word overlap, LLM rewrote the message
-                    if len(overlap) / len(user_key_words) < 0.4:
+                    # Stricter: <60% overlap means LLM rewrote the message (was 40%)
+                    if len(overlap) / len(user_key_words) < 0.6:
                         log.warning("LLM rewrote message. User: '%s' → LLM: '%s'", user_words[:60], message[:60])
-                        # Use user's original words instead
                         message = user_words
                         log.info("Using user's original words: '%s'", message[:60])
 

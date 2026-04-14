@@ -262,10 +262,25 @@ class MeetingRecorder:
 
     def _summarize_and_save(self, meeting):
         """Run LLM summarization on the full transcript and save to disk."""
-        # Build full transcript
+        # Known Whisper hallucination phrases to filter out
+        _halluc_markers = [
+            "thank you for watching", "thanks for watching", "subscribe to",
+            "see you in the next", "subtitles by", "translated by",
+        ]
+        # Build full transcript — skip hallucinated chunks
         transcript_lines = []
-        for c in meeting["chunks"]:
-            transcript_lines.append(f"[{c['timestamp']}] {c['speaker']}: {c['text']}")
+        cleaned_chunks = []
+        for c in meeting.get("chunks", []):
+            text = (c.get("text") or "").strip()
+            if not text or len(text) < 3:
+                continue
+            if any(m in text.lower() for m in _halluc_markers):
+                continue
+            speaker = c.get("speaker", "Unknown")
+            timestamp = c.get("timestamp", "??:??:??")
+            transcript_lines.append(f"[{timestamp}] {speaker}: {text}")
+            cleaned_chunks.append(c)
+        meeting["chunks"] = cleaned_chunks
         full_transcript = "\n".join(transcript_lines)
 
         # Summarize with LLM
@@ -297,16 +312,29 @@ Respond ONLY with valid JSON."""
                 text = resp.text.strip()
                 # Handle markdown code blocks
                 if text.startswith("```"):
-                    text = text.split("```")[1]
-                    if text.startswith("json"):
-                        text = text[4:]
-                meeting["summary"] = json.loads(text)
+                    parts = text.split("```")
+                    if len(parts) >= 2:
+                        text = parts[1]
+                        if text.startswith("json"):
+                            text = text[4:]
+                        text = text.strip()
+                parsed = json.loads(text)
+                if not isinstance(parsed, dict):
+                    raise ValueError("Summary not a dict")
+                # Validate + sanitize each field
+                summary = {"key_points": [], "action_items": [], "decisions": []}
+                for field in ("key_points", "action_items", "decisions"):
+                    items = parsed.get(field, [])
+                    if isinstance(items, list):
+                        summary[field] = [str(x)[:500] for x in items[:20] if x and isinstance(x, (str, int, float))]
+                meeting["summary"] = summary
             except Exception as e:
                 log.error("Meeting summarization failed: %s", e)
                 meeting["summary"] = {
-                    "key_points": ["Summarization failed — see full transcript"],
+                    "key_points": ["Summary unavailable — see full transcript"],
                     "action_items": [],
                     "decisions": [],
+                    "_error": "summarization_failed",
                 }
         else:
             meeting["summary"] = {
