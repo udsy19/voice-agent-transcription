@@ -539,6 +539,71 @@ test("brain: deadline filtering edge cases", test_brain_deadline_filter)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# robustness module tests
+
+def test_cap_chunks():
+    import robustness as rb
+    small = [{"timestamp": f"{i}", "speaker": "You", "text": f"chunk {i}"} for i in range(10)]
+    assert rb.cap_chunks(small) == small, "Small lists unchanged"
+    huge = [{"timestamp": f"{i}", "speaker": "You", "text": f"chunk {i}"} for i in range(1000)]
+    capped = rb.cap_chunks(huge)
+    assert len(capped) <= rb.MAX_MEETING_CHUNKS + 1
+    assert any("truncated" in c.get("text", "") for c in capped), "Should have truncation marker"
+test("robustness: cap_chunks", test_cap_chunks)
+
+
+def test_cap_transcript():
+    import robustness as rb
+    short = "hello world"
+    assert rb.cap_transcript(short) == short
+    long_text = "x" * (rb.MAX_TRANSCRIPT_CHARS + 5000)
+    capped = rb.cap_transcript(long_text)
+    assert len(capped) <= rb.MAX_TRANSCRIPT_CHARS + 100  # marker adds a few chars
+    assert "truncated" in capped
+test("robustness: cap_transcript", test_cap_transcript)
+
+
+def test_deduped_decorator():
+    import robustness as rb
+    calls = []
+    @rb.deduped("test_dedup", ttl=0.5)
+    def slow_fn(x):
+        calls.append(x)
+        return x * 2
+    assert slow_fn(3) == 6
+    assert slow_fn(3) == 6  # cached
+    assert len(calls) == 1, f"expected 1 call, got {len(calls)}"
+    time.sleep(0.6)
+    slow_fn(3)
+    assert len(calls) == 2, "should miss cache after TTL"
+test("robustness: deduped decorator", test_deduped_decorator)
+
+
+def test_metrics():
+    import robustness as rb
+    rb.record_metric("test_metric", 100.0)
+    rb.record_metric("test_metric", 200.0)
+    rb.record_metric("test_metric", 300.0)
+    summary = rb.get_metrics_summary()
+    m = summary.get("test_metric", {})
+    assert m.get("count") == 3
+    assert m.get("avg_ms") == 200.0
+    assert m.get("min_ms") == 100.0
+    assert m.get("max_ms") == 300.0
+test("robustness: metrics", test_metrics)
+
+
+def test_parse_iso():
+    from utils import parse_iso
+    assert parse_iso("2026-04-15T10:30:00Z") is not None
+    assert parse_iso("2026-04-15T10:30:00+00:00") is not None
+    assert parse_iso("not a date") is None
+    assert parse_iso("") is None
+    assert parse_iso(None) is None
+test("utils: parse_iso", test_parse_iso)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Results
 
 print(f"\n{'='*60}")

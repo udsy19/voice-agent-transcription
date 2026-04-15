@@ -125,8 +125,11 @@ class MeetingDetector:
             now = datetime.now(timezone.utc)
             for ev in events.get("events", []):
                 try:
-                    start = datetime.fromisoformat(ev["start"].replace("Z", "+00:00"))
-                    end = datetime.fromisoformat(ev["end"].replace("Z", "+00:00"))
+                    from utils import parse_iso
+                    start = parse_iso(ev.get("start"))
+                    end = parse_iso(ev.get("end"))
+                    if not start or not end:
+                        continue
                     if start <= now <= end and ev.get("meet_link"):
                         return {
                             "type": "meeting_detected",

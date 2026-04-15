@@ -3,7 +3,18 @@
 import subprocess
 import time
 import threading
+from datetime import datetime
 from logger import get_logger
+
+
+def parse_iso(ts: str):
+    """Parse an ISO 8601 timestamp including Z suffix. Returns datetime or None on failure."""
+    if not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
 
 log = get_logger("utils")
 

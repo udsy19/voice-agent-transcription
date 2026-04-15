@@ -422,10 +422,23 @@ class Assistant:
         self._emit = emit_fn
         self._todos = todos
         self._brain = brain
-        # Multi-turn conversation history (persists across recordings)
         self._conversation: list[dict] = []
         self._conversation_expires: float = 0
-        self._current_command: str = ""  # the raw user command, for message validation
+        self._current_command: str = ""
+        # Generation counter — bumps on every handle() call, lets earlier calls detect cancellation
+        self._gen_id: int = 0
+        self._gen_lock = __import__('threading').Lock()
+
+    def _claim_generation(self) -> int:
+        """Start a new generation, invalidating any in-flight previous one."""
+        with self._gen_lock:
+            self._gen_id += 1
+            return self._gen_id
+
+    def _is_current(self, gen: int) -> bool:
+        """Check if this generation is still the active one."""
+        with self._gen_lock:
+            return gen == self._gen_id
 
     _cached_today: str = ""
     _cached_today_ts: float = 0
@@ -451,7 +464,12 @@ class Assistant:
         return self._cached_today
 
     def handle(self, command: str) -> str | None:
-        """Process a voice command. Supports multi-turn follow-ups."""
+        """Process a voice command. Supports multi-turn follow-ups.
+
+        Claims a new generation-id. Any previous in-flight call checking
+        _is_current(its_gen) will return False and exit early.
+        """
+        gen = self._claim_generation()
         if not self._client:
             return None
         self._current_command = command
@@ -581,6 +599,11 @@ class Assistant:
             while tool_calls and iteration < MAX_ITERATIONS:
                 iteration += 1
 
+                # Cancel if a newer request has superseded us
+                if not self._is_current(gen):
+                    log.info("Cancelled — newer request in flight")
+                    return None
+
                 if time.time() - loop_start > LOOP_TIMEOUT:
                     log.warning("Agentic loop timeout after %ds", LOOP_TIMEOUT)
                     break
@@ -681,11 +704,15 @@ class Assistant:
 
             # Generate human-readable response from results
             if not text:
+                # Show immediate feedback while LLM thinks (perceived speed)
+                self._emit({"type": "assistant_stream", "text": "", "done": False})
                 try:
                     final = self._client.chat(
                         messages=messages, model_tier="small",
                         temperature=0.3, max_tokens=200, timeout=10,
                     )
+                    if not self._is_current(gen):
+                        return None  # superseded
                     text = final.text or "Done."
                 except Exception as sum_err:
                     log.warning("Summary failed: %s", sum_err)

@@ -88,11 +88,13 @@ class GroqClient(LLMClient):
         # Try primary model, fall back to 8b on rate limit or tool-call failure
         for m in [model, GROQ_MODELS["small"]]:
             kwargs["model"] = m
+            _t0 = time.time()
             try:
                 response = self._client.chat.completions.create(**kwargs)
                 try:
                     import robustness as _rb
                     _rb.record_groq_call()
+                    _rb.record_metric("groq_chat", (time.time() - _t0) * 1000)
                 except Exception:
                     pass
                 choice = response.choices[0]
@@ -190,6 +192,11 @@ class LocalClient(LLMClient):
                 verbose=False,
             )
         duration = time.time() - t0
+        try:
+            import robustness as _rb
+            _rb.record_metric("local_chat", duration * 1000)
+        except Exception:
+            pass
         log.info("Local LLM (%.1fs): %s", duration, output[:80])
 
         # Parse tool calls from output if tools were provided

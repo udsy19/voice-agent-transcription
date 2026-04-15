@@ -173,7 +173,13 @@ class Transcriber:
         else:
             text = self._transcribe_faster_whisper(audio, language, initial_prompt)
 
-        log.info("[%s] (%.2fs) '%s'", self._backend_name, time.time() - t0, text[:100])
+        _dur = time.time() - t0
+        try:
+            import robustness as _rb
+            _rb.record_metric(f"transcribe_{self._backend_name}", _dur * 1000)
+        except Exception:
+            pass
+        log.info("[%s] (%.2fs) '%s'", self._backend_name, _dur, text[:100])
         # Filter known Whisper hallucination phrases (happens on background noise)
         text_stripped = (text or "").strip().lower()
         halluc_phrases = [

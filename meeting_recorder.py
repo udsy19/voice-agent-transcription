@@ -280,8 +280,10 @@ class MeetingRecorder:
             timestamp = c.get("timestamp", "??:??:??")
             transcript_lines.append(f"[{timestamp}] {speaker}: {text}")
             cleaned_chunks.append(c)
-        meeting["chunks"] = cleaned_chunks
-        full_transcript = "\n".join(transcript_lines)
+        # Cap chunks to prevent runaway growth (3hr+ meetings)
+        import robustness as _rb
+        meeting["chunks"] = _rb.cap_chunks(cleaned_chunks)
+        full_transcript = _rb.cap_transcript("\n".join(transcript_lines))
 
         # Summarize with LLM
         if full_transcript.strip():

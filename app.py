@@ -359,6 +359,8 @@ async def api_diagnostics():
         "telemetry": rb.get_telemetry_summary(),
         "schema_version": rb.get_schema_version(),
         "history_count": len(S.history),
+        "config": rb.get_config(),
+        "metrics": rb.get_metrics_summary() if hasattr(rb, "get_metrics_summary") else {},
     }
 
 
@@ -2006,9 +2008,11 @@ def load_engine():
     # ── Background warm-up (invisible to user) ──────────────────────────
     def _bg_warmup():
         _wt0 = time.time()
-        # 1. Migrations + persisted history
+        # 1. Migrations + persisted history + integrity + tempfile cleanup
         try:
             rb.run_migrations()
+            rb.cleanup_old_tempfiles(24)
+            rb.startup_integrity_check()
             persisted = rb.load_recent_history(100)
             if persisted:
                 with _history_lock:

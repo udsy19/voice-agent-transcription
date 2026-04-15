@@ -441,6 +441,291 @@ except ImportError:
         return out
 
 
+# ── Request Deduplication (in-flight coalescing) ─────────────────────────
+
+_inflight = {}
+_inflight_lock = threading.Lock()
+
+
+def deduped(key: str, ttl: float = 1.0):
+    """Decorator: coalesce concurrent identical calls within `ttl` seconds.
+
+    Usage:
+        @deduped("today_events", ttl=2.0)
+        def fetch_today(): ...
+    """
+    def decorator(fn):
+        def wrapper(*args, **kwargs):
+            full_key = f"{key}:{hash((args, tuple(sorted(kwargs.items()))))}"
+            now = time.time()
+            with _inflight_lock:
+                entry = _inflight.get(full_key)
+                if entry and (now - entry["ts"]) < ttl:
+                    return entry["result"]
+            result = fn(*args, **kwargs)
+            with _inflight_lock:
+                _inflight[full_key] = {"result": result, "ts": time.time()}
+                # Garbage collect stale entries
+                if len(_inflight) > 100:
+                    cutoff = now - 60
+                    for k in list(_inflight.keys()):
+                        if _inflight[k]["ts"] < cutoff:
+                            del _inflight[k]
+            return result
+        return wrapper
+    return decorator
+
+
+# ── OAuth Credential Backup ──────────────────────────────────────────────
+
+OAUTH_BACKUP_FILE = DATA_DIR / "oauth_backup.json"
+
+
+def backup_oauth_tokens(tokens: dict):
+    """Signed backup of OAuth tokens — recovers from keychain corruption."""
+    import hashlib
+    try:
+        payload = json.dumps(tokens, sort_keys=True)
+        sig = hashlib.sha256(payload.encode()).hexdigest()[:16]
+        safe_json.save(str(OAUTH_BACKUP_FILE), {"tokens": tokens, "sig": sig, "ts": time.time()})
+    except Exception as e:
+        log.error("OAuth backup failed: %s", e)
+
+
+def restore_oauth_tokens_if_missing(keychain_get_fn) -> dict | None:
+    """If keychain has no Google tokens but backup exists, restore. Returns restored dict or None."""
+    if keychain_get_fn("Muse", "oauth_google_backed_up"):
+        return None  # already restored
+    backup = safe_json.load(str(OAUTH_BACKUP_FILE), None)
+    if not backup or "tokens" not in backup:
+        return None
+    # Verify signature
+    import hashlib
+    payload = json.dumps(backup["tokens"], sort_keys=True)
+    expected_sig = hashlib.sha256(payload.encode()).hexdigest()[:16]
+    if expected_sig != backup.get("sig"):
+        log.error("OAuth backup signature mismatch — ignoring")
+        return None
+    log.info("OAuth backup available (created %s)", time.strftime("%Y-%m-%d %H:%M",
+             time.localtime(backup.get("ts", 0))))
+    return backup["tokens"]
+
+
+# ── Resource Limits ───────────────────────────────────────────────────────
+
+# Prevent runaway growth — enforced at write time
+MAX_MEETING_CHUNKS = 500          # ~4 hours at 30s/chunk
+MAX_TRANSCRIPT_CHARS = 12000      # fed to LLM for summarization
+MAX_HISTORY_PER_DAY = 1000        # entries in one daily JSONL file
+MAX_FOLLOWUPS = 100
+MAX_MEMORIES = 500
+
+
+def cap_chunks(chunks: list) -> list:
+    """Cap meeting chunks to prevent 3hr+ meetings from breaking JSON files."""
+    if len(chunks) <= MAX_MEETING_CHUNKS:
+        return chunks
+    # Keep first 50 + last (MAX-50) — beginning and end most important
+    keep_start = 50
+    keep_end = MAX_MEETING_CHUNKS - keep_start
+    truncated = chunks[:keep_start] + [{"timestamp": "...", "speaker": "System",
+                                         "text": f"[{len(chunks) - MAX_MEETING_CHUNKS} chunks truncated]"}] + chunks[-keep_end:]
+    log.warning("Meeting chunks capped: %d → %d", len(chunks), len(truncated))
+    return truncated
+
+
+def cap_transcript(text: str) -> str:
+    """Cap transcript length for LLM input."""
+    if len(text) <= MAX_TRANSCRIPT_CHARS:
+        return text
+    # Keep first 60% and last 40% (meetings usually wrap up with key points)
+    split = int(MAX_TRANSCRIPT_CHARS * 0.6)
+    return text[:split] + "\n\n[... middle truncated for length ...]\n\n" + text[-(MAX_TRANSCRIPT_CHARS - split):]
+
+
+# ── Integrity Checks ─────────────────────────────────────────────────────
+
+def startup_integrity_check() -> dict:
+    """Scan data files on startup, quarantine corrupt ones. Returns summary."""
+    import json
+    result = {"checked": 0, "corrupt": [], "quarantined": []}
+    meetings_dir = DATA_DIR / "meetings"
+    if meetings_dir.exists():
+        quarantine = DATA_DIR / "corrupt"
+        for f in meetings_dir.glob("*.json"):
+            result["checked"] += 1
+            try:
+                with open(f) as fh:
+                    data = json.load(fh)
+                if not isinstance(data, dict) or "id" not in data:
+                    raise ValueError("missing required fields")
+            except (json.JSONDecodeError, ValueError, OSError) as e:
+                quarantine.mkdir(parents=True, exist_ok=True)
+                try:
+                    dest = quarantine / f.name
+                    f.rename(dest)
+                    result["quarantined"].append(f.name)
+                    log.warning("Quarantined corrupt meeting %s: %s", f.name, e)
+                except Exception:
+                    result["corrupt"].append(f.name)
+    # Check history JSONL files
+    for f in HISTORY_DIR.glob("*.jsonl"):
+        result["checked"] += 1
+        try:
+            with open(f) as fh:
+                for i, line in enumerate(fh):
+                    line = line.strip()
+                    if line:
+                        json.loads(line)  # validates each line
+                    if i > 10000:  # bail early on huge files
+                        break
+        except (json.JSONDecodeError, OSError) as e:
+            log.warning("Corrupt history file %s: %s (keeping — append will still work)", f.name, e)
+            result["corrupt"].append(f.name)
+    if result["quarantined"] or result["corrupt"]:
+        log.info("Integrity check: %d files, %d quarantined, %d corrupt",
+                 result["checked"], len(result["quarantined"]), len(result["corrupt"]))
+    return result
+
+
+# ── Tempfile Cleanup ─────────────────────────────────────────────────────
+
+def cleanup_old_tempfiles(max_age_hours: int = 24):
+    """Remove /tmp/muse_* files older than max_age_hours. Run at startup."""
+    import tempfile
+    tmp = Path(tempfile.gettempdir())
+    cutoff = time.time() - (max_age_hours * 3600)
+    removed = 0
+    for f in tmp.glob("muse_*"):
+        try:
+            if f.stat().st_mtime < cutoff:
+                if f.is_file():
+                    f.unlink()
+                else:
+                    shutil.rmtree(f, ignore_errors=True)
+                removed += 1
+        except (OSError, PermissionError):
+            continue
+    if removed:
+        log.info("Cleaned up %d old tempfiles", removed)
+    return removed
+
+
+# ── Metrics (rolling in-memory stats) ────────────────────────────────────
+
+_metrics_lock = threading.Lock()
+_metrics = {}  # name → {count, total_ms, min_ms, max_ms, recent: deque}
+
+
+def record_metric(name: str, duration_ms: float):
+    """Record a timing sample. Keeps rolling last 100 samples per metric."""
+    with _metrics_lock:
+        m = _metrics.setdefault(name, {
+            "count": 0, "total_ms": 0.0,
+            "min_ms": float("inf"), "max_ms": 0.0,
+            "recent": deque(maxlen=100),
+        })
+        m["count"] += 1
+        m["total_ms"] += duration_ms
+        m["min_ms"] = min(m["min_ms"], duration_ms)
+        m["max_ms"] = max(m["max_ms"], duration_ms)
+        m["recent"].append(duration_ms)
+
+
+def timed(name: str):
+    """Decorator: record timing for a function."""
+    def decorator(fn):
+        def wrapper(*args, **kwargs):
+            t0 = time.time()
+            try:
+                return fn(*args, **kwargs)
+            finally:
+                record_metric(name, (time.time() - t0) * 1000)
+        return wrapper
+    return decorator
+
+
+def get_metrics_summary() -> dict:
+    """Return p50/p95/avg/count for all tracked metrics."""
+    out = {}
+    with _metrics_lock:
+        for name, m in _metrics.items():
+            recent = sorted(m["recent"])
+            n = len(recent)
+            if n == 0:
+                continue
+            out[name] = {
+                "count": m["count"],
+                "avg_ms": round(m["total_ms"] / max(m["count"], 1), 1),
+                "min_ms": round(m["min_ms"], 1),
+                "max_ms": round(m["max_ms"], 1),
+                "p50_ms": round(recent[n // 2], 1),
+                "p95_ms": round(recent[int(n * 0.95)], 1) if n >= 5 else round(recent[-1], 1),
+            }
+    return out
+
+
+# ── Background Job Queue ─────────────────────────────────────────────────
+
+import queue as _queue
+
+_job_queue = _queue.Queue()
+_job_workers_started = False
+
+
+def enqueue_job(fn, *args, **kwargs):
+    """Queue a background job for the worker pool. Non-blocking."""
+    global _job_workers_started
+    if not _job_workers_started:
+        _start_job_workers()
+    _job_queue.put((fn, args, kwargs))
+
+
+def _job_worker():
+    while True:
+        try:
+            fn, args, kwargs = _job_queue.get(timeout=60)
+        except _queue.Empty:
+            continue
+        try:
+            fn(*args, **kwargs)
+        except Exception as e:
+            log.error("Background job %s failed: %s", getattr(fn, "__name__", "?"), e)
+            record_error("job_worker", str(e))
+        finally:
+            _job_queue.task_done()
+
+
+def _start_job_workers(n: int = 2):
+    global _job_workers_started
+    if _job_workers_started:
+        return
+    _job_workers_started = True
+    for _ in range(n):
+        threading.Thread(target=_job_worker, daemon=True).start()
+    log.info("Started %d background job workers", n)
+
+
+# ── Config (unified view of env + preferences + files) ──────────────────
+
+def get_config() -> dict:
+    """Return a merged snapshot of runtime config for /api/diagnostics."""
+    prefs = safe_json.load(str(DATA_DIR / "preferences.json"), {})
+    hotkey = safe_json.load(str(DATA_DIR / "hotkey.json"), {})
+    return {
+        "llm_mode": os.environ.get("LLM_PROVIDER", "hybrid"),
+        "has_groq_key": bool(os.environ.get("GROQ_API_KEY") or prefs.get("_groq_in_keychain")),
+        "transcription_backend": prefs.get("transcription_backend", "auto"),
+        "sounds": prefs.get("sounds", True),
+        "clipboard_context": prefs.get("clipboard_context", True),
+        "tts_speed": prefs.get("tts_speed", 1.05),
+        "voice": prefs.get("voice", "af_heart"),
+        "hotkey_dictation": hotkey.get("dictation", "alt_l"),
+        "hotkey_assistant": hotkey.get("assistant", "alt_r"),
+        "telemetry": prefs.get("telemetry", False),
+    }
+
+
 # ── Schema Migration ─────────────────────────────────────────────────────
 
 SCHEMA_VERSION = 1

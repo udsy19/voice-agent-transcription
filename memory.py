@@ -45,6 +45,10 @@ def _get_mem0():
         if not GROQ_API_KEY:
             log.warning("No Groq key — memory disabled")
             return None
+        # Suppress noisy "Loading weights 100%" / BertModel report from mem0 embedder
+        import logging as _lg
+        for _name in ("transformers", "sentence_transformers", "huggingface_hub", "httpx"):
+            _lg.getLogger(_name).setLevel(_lg.WARNING)
         try:
             from mem0 import Memory
             config = {
@@ -171,9 +175,9 @@ _names_cache: list[str] = []
 _names_cache_ts: float = 0
 
 def get_names_for_dictation(user_id: str = "user") -> list[str]:
-    """Get known names/terms from memory for Whisper prompt hints. Cached 2 min."""
+    """Get known names/terms from memory for Whisper prompt hints. Cached 5 min."""
     global _names_cache, _names_cache_ts
-    if time.time() - _names_cache_ts < 120 and _names_cache:
+    if time.time() - _names_cache_ts < 300 and _names_cache:
         return _names_cache
     memories = get_all(user_id)
     names = set()
