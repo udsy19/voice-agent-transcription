@@ -89,9 +89,13 @@ def _is_transient_ssl_error(e: Exception) -> bool:
     """Detect transient SSL/network errors worth retrying."""
     s = str(e).lower()
     return any(m in s for m in (
-        "decryption_failed", "bad record mac", "ssl:",
+        "decryption_failed", "bad record mac", "ssl:", "wrong_version_number",
         "connection reset", "timed out", "timeout",
         "eof occurred", "connection aborted",
+        "broken pipe", "errno 32",
+        "nodename nor servname", "unable to find the server", "dns",
+        "errno 8", "name or service not known",
+        "temporary failure",
     ))
 
 

@@ -111,10 +111,21 @@ def _load_hotkeys():
         if os.path.exists(hk_path):
             with open(hk_path) as f:
                 data = json.load(f)
+            # Handle legacy single-"key" format
+            if "key" in data and "dictation" not in data:
+                key = data["key"]
+                data = {"dictation": "alt_l" if key != "alt_l" else "alt_r",
+                        "assistant": key}
             dk = data.get("dictation", "alt_l")
             ak = data.get("assistant", "alt_r")
-            return (_HOTKEY_MAP.get(dk, keyboard.Key.alt_l), dk,
-                    _HOTKEY_MAP.get(ak, keyboard.Key.alt_r), ak)
+            # Reset unusable keys — pynput can't capture Fn reliably
+            if dk not in _HOTKEY_MAP or dk == "fn":
+                dk = "alt_l"
+            if ak not in _HOTKEY_MAP or ak == "fn":
+                ak = "alt_r"
+            if dk == ak:
+                dk, ak = "alt_l", "alt_r"
+            return (_HOTKEY_MAP[dk], dk, _HOTKEY_MAP[ak], ak)
     except Exception:
         pass
     return (keyboard.Key.alt_l, "alt_l", keyboard.Key.alt_r, "alt_r")
@@ -2021,12 +2032,15 @@ def load_engine():
         except Exception as e:
             log.error("History restore failed: %s", e)
         # 2. Pre-warm local LLM (so first assistant call is instant)
-        try:
-            import llm as _llm
-            if os.environ.get("LLM_PROVIDER") in ("local", "hybrid"):
-                _llm._load_local_model()  # ~800-1500ms in background
-        except Exception as e:
-            log.debug("LLM pre-warm failed: %s", e)
+        # Only pre-warm local LLM if user explicitly chose local-only mode.
+        # In hybrid mode, Groq handles most calls — pre-warming wastes memory and
+        # can crash the process via mlx-lm native extension (SIGTRAP).
+        if os.environ.get("LLM_PROVIDER") == "local":
+            try:
+                import llm as _llm
+                _llm._load_local_model()
+            except Exception as e:
+                log.debug("LLM pre-warm failed: %s", e)
         # 3. Pre-warm mem0 embedder (so first memory recall is instant)
         try:
             import memory as _mem
@@ -2160,15 +2174,23 @@ if __name__ == "__main__":
     # Meeting notifier — pill_notify when a meeting is 5 min away
     def meeting_notifier():
         _notified = set()
+        _last_events = []
+        _last_fetch = 0
         while True:
-            time.sleep(60)
+            time.sleep(120)  # every 2 minutes (was 60s — too spammy)
             try:
                 token = S.oauth.get_token("google") if S.oauth else None
                 if not token:
                     continue
                 from integrations.google_calendar import list_events
                 from datetime import datetime as dt, timezone as tz
-                r = list_events(token, days_ahead=1, max_results=10)
+                # Only refetch calendar every 5 min; use cached events between polls
+                _now = time.time()
+                if _now - _last_fetch >= 300:
+                    r = list_events(token, days_ahead=1, max_results=10)
+                    _last_events = r.get("events", [])
+                    _last_fetch = _now
+                r = {"events": _last_events}
                 for ev in r.get("events", []):
                     eid = ev.get("id", "")
                     if eid in _notified:

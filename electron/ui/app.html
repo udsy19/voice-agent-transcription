@@ -1032,7 +1032,7 @@ function nav(el){
   if(goingUp)page.classList.add('slideUp');
   page.classList.add('on');
   if(_nextMeetingTimer){clearInterval(_nextMeetingTimer);_nextMeetingTimer=null}
-  if(el.dataset.pg==='home'){loadBriefing();loadFollowUps();loadNextMeeting();_nextMeetingTimer=setInterval(loadNextMeeting,60000)}
+  if(el.dataset.pg==='home'){loadBriefing();loadFollowUps();loadNextMeeting();_nextMeetingTimer=setInterval(loadNextMeeting,300000)}
   if(el.dataset.pg==='meetings')loadMeetings();
   if(el.dataset.pg==='settings'){switchSettingsTab('ai',document.querySelector('.settings-tab[data-stab="ai"]'))}
   if(el.dataset.pg==='memories')loadMemories();
