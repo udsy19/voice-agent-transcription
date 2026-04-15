@@ -40,17 +40,41 @@ def _history_path() -> Path:
     return HISTORY_DIR / f"{datetime.now().strftime('%Y-%m-%d')}.jsonl"
 
 
+_history_queue = deque()
+
+
 def append_history(entry: dict) -> bool:
-    """Append a history entry to today's JSONL file. Survives crashes."""
+    """Queue a history entry — flushed to disk asynchronously (fast path)."""
     try:
         with _history_lock:
-            with open(_history_path(), "a") as f:
-                f.write(json.dumps(entry, default=str) + "\n")
+            _history_queue.append(entry)
+        # Auto-flush if queue grows large
+        if len(_history_queue) >= 20:
+            flush_history()
         return True
     except Exception as e:
-        log.error("History append failed: %s", e)
-        record_error("history_append", str(e))
+        log.error("History queue failed: %s", e)
         return False
+
+
+def flush_history():
+    """Write queued history entries to disk. Called periodically + on shutdown."""
+    with _history_lock:
+        if not _history_queue:
+            return
+        items = list(_history_queue)
+        _history_queue.clear()
+    try:
+        with open(_history_path(), "a") as f:
+            for entry in items:
+                f.write(json.dumps(entry, default=str) + "\n")
+    except Exception as e:
+        log.error("History flush failed: %s", e)
+        record_error("history_flush", str(e))
+        # Put items back in queue to retry
+        with _history_lock:
+            for item in items:
+                _history_queue.appendleft(item)
 
 
 def load_recent_history(limit: int = 100) -> list:

@@ -461,6 +461,7 @@ async def api_set_domain(body: DomainRequest):
     d = body.domain.strip()
     if S.domains:
         S.domains.set_active(d)
+        S._cached_domain_prompt = S.domains.get_whisper_prompt()  # refresh cache
     return {"ok": True, "active": d}
 
 
@@ -490,6 +491,7 @@ async def api_add_term(body: TermRequest):
     t = body.term.strip()
     if t and S.dictionary:
         S.dictionary.add_term(t)
+        S._cached_dict_prompt = S.dictionary.get_whisper_prompt()  # refresh cache
     return {"ok": True}
 
 
@@ -1585,16 +1587,18 @@ def process_audio(audio):
 
         set_status("processing", "Transcribing...")
 
-        # Build whisper prompt from dictionary + domain
+        # Build whisper prompt — use cached dictionary/domain prompts when available
         prompt_parts = []
-        if S.dictionary:
+        dp = getattr(S, '_cached_dict_prompt', None)
+        if dp is None and S.dictionary:
             dp = S.dictionary.get_whisper_prompt()
-            if dp:
-                prompt_parts.append(dp)
-        if S.domains:
+        if dp:
+            prompt_parts.append(dp)
+        ddp = getattr(S, '_cached_domain_prompt', None)
+        if ddp is None and S.domains:
             ddp = S.domains.get_whisper_prompt()
-            if ddp:
-                prompt_parts.append(ddp)
+        if ddp:
+            prompt_parts.append(ddp)
         # Add names from memory for better Whisper spelling
         try:
             mem_names = mem.get_names_for_dictation()
@@ -1901,7 +1905,7 @@ def audio_level_monitor():
             smooth_rms = 0.0
             time.sleep(0.3)
             continue
-        time.sleep(0.08)  # ~12fps for smooth animation
+        time.sleep(0.1)  # ~10fps — smooth but less WS overhead
         try:
             with S.recorder._lock:
                 if not S.recorder._frames:
@@ -1966,16 +1970,17 @@ def load_engine():
         except Exception:
             pass
 
+    # Fast-path init: only cheap objects before "Ready"
+    _t0 = time.time()
     S.recorder = Recorder()
-    # Restore persisted LLM mode + transcription backend
     _prefs = safe_json.load(str(DATA_DIR / "preferences.json"), {})
     saved_llm = _prefs.get("llm_mode")
     if saved_llm in ("local", "groq", "hybrid"):
         os.environ["LLM_PROVIDER"] = saved_llm
-    saved_backend = _prefs.get("transcription_backend",
-                               "groq" if GROQ_API_KEY else "faster-whisper")
-    S.transcriber = Transcriber(backend=saved_backend)
-    S.cleaner = Cleaner()
+    # Default transcription priority: groq (fast) → mlx (local GPU) → parakeet → faster-whisper (slow CPU)
+    saved_backend = _prefs.get("transcription_backend")
+    if not saved_backend:
+        saved_backend = "groq" if GROQ_API_KEY else "mlx"
     S.dictionary = PersonalDictionary()
     S.snippets = SnippetStore()
     S.styles = StyleManager()
@@ -1986,25 +1991,59 @@ def load_engine():
     S.oauth.set_emit_fn(emit)
     S.todos = TodoList()
     S.brain = Brain()
+    S.cleaner = Cleaner()
+    # Transcriber — cheap if backend=groq, heavy if local. Defer heavy init to background.
+    S.transcriber = Transcriber(backend=saved_backend)
     from llm import get_client as get_llm
     S.assistant = Assistant(get_llm(), S.oauth, emit, S.todos, S.brain)
-    # Meeting system
     from meeting_recorder import MeetingRecorder
     from meeting_detector import MeetingDetector
     S.meeting_recorder = MeetingRecorder(S.transcriber, emit)
     S.meeting_detector = MeetingDetector(S.oauth, emit)
-    # Meeting detector does NOT auto-start — user must enable it from Meetings page
+    log.info("Fast init done in %.2fs", time.time() - _t0)
+    set_status("idle", "Ready — hold ⌥R to dictate")
 
-    # Run schema migrations + restore persisted history
-    rb.run_migrations()
-    persisted = rb.load_recent_history(100)
-    if persisted:
-        with _history_lock:
-            S.history = list(reversed(persisted))  # oldest first in S.history
-        log.info("Restored %d history entries from disk", len(persisted))
+    # ── Background warm-up (invisible to user) ──────────────────────────
+    def _bg_warmup():
+        _wt0 = time.time()
+        # 1. Migrations + persisted history
+        try:
+            rb.run_migrations()
+            persisted = rb.load_recent_history(100)
+            if persisted:
+                with _history_lock:
+                    S.history = list(reversed(persisted))
+                log.info("Restored %d history entries", len(persisted))
+        except Exception as e:
+            log.error("History restore failed: %s", e)
+        # 2. Pre-warm local LLM (so first assistant call is instant)
+        try:
+            import llm as _llm
+            if os.environ.get("LLM_PROVIDER") in ("local", "hybrid"):
+                _llm._load_local_model()  # ~800-1500ms in background
+        except Exception as e:
+            log.debug("LLM pre-warm failed: %s", e)
+        # 3. Pre-warm mem0 embedder (so first memory recall is instant)
+        try:
+            import memory as _mem
+            _mem._get_mem0()  # ~500-800ms, triggers sentence-transformers load
+        except Exception as e:
+            log.debug("Mem0 pre-warm failed: %s", e)
+        # 4. Pre-build whisper prompts
+        try:
+            if S.dictionary:
+                S._cached_dict_prompt = S.dictionary.get_whisper_prompt()
+            if S.domains:
+                S._cached_domain_prompt = S.domains.get_whisper_prompt()
+        except Exception:
+            pass
+        log.info("Background warmup done in %.2fs", time.time() - _wt0)
 
-    # Start periodic health checks (every 5 min)
+    threading.Thread(target=_bg_warmup, daemon=True).start()
+
+    # Start periodic health checks (every 5 min) — first run deferred 60s
     def health_loop():
+        time.sleep(60)  # don't block startup
         while True:
             try:
                 rb.run_health_checks(S.oauth)
@@ -2012,9 +2051,6 @@ def load_engine():
                 rb.record_error("health_check", str(e))
             time.sleep(300)
     threading.Thread(target=health_loop, daemon=True).start()
-    rb.run_health_checks(S.oauth)  # initial run
-
-    set_status("idle", "Ready — hold ⌥R to dictate")
 
 
 def start_listener():
@@ -2063,6 +2099,7 @@ if __name__ == "__main__":
                 S.meeting_recorder.stop()
             if S.meeting_detector:
                 S.meeting_detector.stop_polling()
+            rb.flush_history()  # don't lose queued entries
         except Exception as e:
             log.error("Shutdown cleanup error: %s", e)
         sys.exit(0)
@@ -2108,6 +2145,10 @@ if __name__ == "__main__":
             time.sleep(30)
             try:
                 mem.flush_pending()
+            except Exception:
+                pass
+            try:
+                rb.flush_history()  # also flush batched history writes
             except Exception:
                 pass
     threading.Thread(target=memory_flusher, daemon=True).start()

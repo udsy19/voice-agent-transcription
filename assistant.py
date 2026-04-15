@@ -431,8 +431,8 @@ class Assistant:
     _cached_today_ts: float = 0
 
     def _prefetch_today(self) -> str:
-        """Get today's events — cached for 60s to avoid hammering Google API."""
-        if time.time() - self._cached_today_ts < 60 and self._cached_today:
+        """Get today's events — cached for 5min (calendars don't change that fast)."""
+        if time.time() - self._cached_today_ts < 300 and self._cached_today:
             return self._cached_today
         try:
             token = self._oauth.get_token("google") if self._oauth else None
