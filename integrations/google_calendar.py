@@ -85,25 +85,51 @@ def create_event(token_data: dict, summary: str, start_time: str,
         return _api_error(e)
 
 
+def _is_transient_ssl_error(e: Exception) -> bool:
+    """Detect transient SSL/network errors worth retrying."""
+    s = str(e).lower()
+    return any(m in s for m in (
+        "decryption_failed", "bad record mac", "ssl:",
+        "connection reset", "timed out", "timeout",
+        "eof occurred", "connection aborted",
+    ))
+
+
 def list_events(token_data: dict, days_ahead: int = 1, max_results: int = 15) -> dict:
-    """List events with full details."""
+    """List events with full details. Retries on transient SSL/network errors."""
     service = _get_service(token_data)
 
     # Google API needs RFC3339 with timezone. Use UTC with Z suffix.
     from datetime import timezone
+    import time as _time
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     time_min = today_start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
     time_max = (today_start + timedelta(days=max(1, days_ahead))).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
-    try:
-        result = service.events().list(
-            calendarId="primary",
-            timeMin=time_min, timeMax=time_max,
-            maxResults=max_results,
-            singleEvents=True, orderBy="startTime",
-        ).execute()
+    # Retry up to 3 times with exponential backoff on transient errors
+    result = None
+    last_err = None
+    for attempt in range(3):
+        try:
+            result = service.events().list(
+                calendarId="primary",
+                timeMin=time_min, timeMax=time_max,
+                maxResults=max_results,
+                singleEvents=True, orderBy="startTime",
+            ).execute()
+            break
+        except Exception as e:
+            last_err = e
+            if attempt < 2 and _is_transient_ssl_error(e):
+                _time.sleep(0.5 * (2 ** attempt))  # 0.5s, 1s
+                continue
+            log.error("list_events failed: %s", e)
+            return _api_error(e)
+    if result is None:
+        return _api_error(last_err)
 
+    try:
         events = []
         for item in result.get("items", []):
             ev = {

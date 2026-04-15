@@ -282,10 +282,11 @@ def run_health_checks(oauth_mgr=None):
         if not GROQ_API_KEY:
             update_health("groq", None, "No API key")
         else:
-            # Use httpx with certifi (already a dependency) — handles SSL properly
-            import httpx, certifi
+            # Use httpx with proper SSL context (certifi certificates)
+            import httpx, ssl, certifi
             try:
-                with httpx.Client(verify=certifi.where(), timeout=5) as client:
+                ctx = ssl.create_default_context(cafile=certifi.where())
+                with httpx.Client(verify=ctx, timeout=5) as client:
                     r = client.get("https://api.groq.com/openai/v1/models",
                                    headers={"Authorization": f"Bearer {GROQ_API_KEY}"})
                     if r.status_code == 200:
