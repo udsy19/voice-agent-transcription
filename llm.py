@@ -169,9 +169,12 @@ class LocalClient(LLMClient):
         # Build prompt from messages
         prompt = self._build_prompt(messages, tools)
 
+        # Tool calls require deterministic output — force low temperature
+        effective_temp = 0.01 if tools else max(temperature, 0.01)
+
         # Generate with sampler for temperature control
         t0 = time.time()
-        sampler = make_sampler(temp=max(temperature, 0.01))  # 0 = greedy breaks some versions
+        sampler = make_sampler(temp=effective_temp)
         try:
             output = generate(
                 model, tokenizer, prompt=prompt,
@@ -253,50 +256,81 @@ class LocalClient(LLMClient):
         return "\n".join(parts)
 
     def _format_tools(self, tools):
-        """Format tool definitions for injection into prompt."""
-        lines = ["Available tools (respond with JSON to call one):"]
+        """Format tool definitions for local LLM prompt injection.
+
+        Mirrors OpenAI/Groq function-calling semantics so the prompt layer is
+        identical across backends — only the delivery differs.
+        """
+        lines = ["You have access to the following tools:"]
         for t in tools:
             fn = t.get("function", {})
             name = fn.get("name", "")
             desc = fn.get("description", "")
-            params = fn.get("parameters", {}).get("properties", {})
-            param_str = ", ".join(f"{k}: {v.get('type', 'string')}" for k, v in params.items())
-            lines.append(f'- {name}({param_str}): {desc[:80]}')
-        lines.append('\nTo call a tool, respond ONLY with: {"tool": "tool_name", "args": {...}}')
-        lines.append("If no tool is needed, respond with plain text.")
+            props = fn.get("parameters", {}).get("properties", {})
+            required = fn.get("parameters", {}).get("required", [])
+            param_lines = []
+            for k, v in props.items():
+                req = " (required)" if k in required else ""
+                param_lines.append(f'    "{k}": {v.get("type", "string")}{req} — {v.get("description", "")[:60]}')
+            params_desc = "\n".join(param_lines) if param_lines else "    (no parameters)"
+            lines.append(f'\n- {name}: {desc[:120]}\n  Parameters:\n{params_desc}')
+        lines.append('\n\nWhen a tool is needed, respond with ONLY this exact JSON object (no other text, no markdown):')
+        lines.append('{"tool": "<tool_name>", "args": {"<param>": "<value>"}}')
+        lines.append('\nExample — user asks "what\'s on my calendar today":')
+        lines.append('{"tool": "list_calendar_events", "args": {"days": "1"}}')
+        lines.append('\nIf no tool is needed, respond with a brief helpful answer in plain text.')
+        lines.append('Never explain the tool call. Never wrap in markdown. Output the raw JSON only.')
         return "\n".join(lines)
 
     def _parse_tool_calls(self, output):
-        """Parse tool calls from local model output."""
+        """Parse tool calls from local model output — robust to extra text/markdown."""
         import re
-        output = output.strip()
+        text = output.strip()
 
-        # Try to extract JSON object
-        json_match = re.search(r'\{[\s\S]*\}', output)
-        if not json_match:
-            return []
+        # Strip markdown code fences
+        if text.startswith("```"):
+            fence = re.match(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
+            if fence:
+                text = fence.group(1).strip()
 
-        try:
-            data = json.loads(json_match.group())
-        except json.JSONDecodeError:
-            return []
+        # Collect candidate JSON objects — scan for balanced-brace spans
+        candidates = []
+        depth = 0
+        start = -1
+        for i, ch in enumerate(text):
+            if ch == '{':
+                if depth == 0:
+                    start = i
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0 and start >= 0:
+                    candidates.append(text[start:i + 1])
+                    start = -1
 
-        # Check for our tool call format: {"tool": "name", "args": {...}}
-        if "tool" in data and isinstance(data.get("args"), dict):
-            return [ToolCall(
-                id=f"local_{int(time.time())}",
-                name=data["tool"],
-                arguments=data["args"],
-            )]
-
-        # Also try OpenAI-style: {"name": "...", "arguments": {...}}
-        if "name" in data and "arguments" in data:
-            return [ToolCall(
-                id=f"local_{int(time.time())}",
-                name=data["name"],
-                arguments=data["arguments"],
-            )]
-
+        # Try each candidate, return first that matches our tool call shape
+        for cand in candidates:
+            try:
+                data = json.loads(cand)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(data, dict):
+                continue
+            # Shape 1: {"tool": "name", "args": {...}}
+            if "tool" in data and isinstance(data.get("args"), dict):
+                return [ToolCall(id=f"local_{int(time.time()*1000)}",
+                                 name=str(data["tool"]), arguments=data["args"])]
+            # Shape 2: OpenAI-style {"name": "...", "arguments": {...} or "..." }
+            if "name" in data and "arguments" in data:
+                args = data["arguments"]
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except json.JSONDecodeError:
+                        continue
+                if isinstance(args, dict):
+                    return [ToolCall(id=f"local_{int(time.time()*1000)}",
+                                     name=str(data["name"]), arguments=args)]
         return []
 
 
@@ -312,10 +346,14 @@ class HybridClient(LLMClient):
 
     def chat(self, messages, model_tier="small", tools=None, tool_choice=None,
              temperature=0.2, max_tokens=512, timeout=15):
-        # Route: tools or large tier → Groq (if available), else local
-        use_groq = self._groq and (tools or model_tier == "large")
+        # Routing:
+        # - Tools always prefer Groq when available (most reliable tool calling)
+        # - Large tier prefers Groq (better quality for complex reasoning)
+        # - Small/medium without tools: respect LLM_PROVIDER setting
+        provider = os.getenv("LLM_PROVIDER", "hybrid")
+        prefer_groq = self._groq and (tools or model_tier == "large" or provider == "groq")
 
-        if use_groq:
+        if prefer_groq:
             try:
                 return self._groq.chat(messages, model_tier, tools, tool_choice,
                                        temperature, max_tokens, timeout)
@@ -326,19 +364,23 @@ class HybridClient(LLMClient):
                 else:
                     log.warning("Groq failed (%s) — falling back to local", str(e)[:60])
 
-        # Local fallback
+        # Local path (or Groq fallback for non-tool calls)
         try:
             return self._local.chat(messages, model_tier, tools, tool_choice,
                                     temperature, max_tokens, timeout)
         except Exception as e:
-            # If tools were required and local failed, return a clear error
-            # Do NOT let the assistant hallucinate an answer without real tool data
+            # If tools required and local failed, try Groq one more time before giving up
+            if tools and self._groq and not prefer_groq:
+                try:
+                    return self._groq.chat(messages, model_tier, tools, tool_choice,
+                                           temperature, max_tokens, timeout)
+                except Exception:
+                    pass
             if tools:
                 return ChatResponse(
                     text="I need to look that up but I can't reach the cloud service right now. Check your connection or Groq API key.",
                 )
-            # If local also fails and we haven't tried Groq yet, try it
-            if self._groq and not use_groq:
+            if self._groq and not prefer_groq:
                 return self._groq.chat(messages, model_tier, tools, tool_choice,
                                        temperature, max_tokens, timeout)
             raise
